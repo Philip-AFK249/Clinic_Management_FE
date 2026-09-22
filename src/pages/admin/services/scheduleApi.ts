@@ -8,7 +8,7 @@ import axios from "axios";
 export const scheduleApi = axios.create({
   baseURL: "/api/v1/schedules",
   headers: { "Content-Type": "application/json" },
-  timeout: 15000,
+  timeout: 4000,
 });
 
 export type ShiftSession = "MORNING" | "AFTERNOON";
@@ -39,10 +39,13 @@ export interface DoctorReference {
 export interface DoctorShift {
   id: number;
   doctor: DoctorReference;
+  departmentId: number;
+  departmentName: string;
   shiftDate: string; // YYYY-MM-DD
   session: ShiftSession;
   dutyType: DutyType;
   maxPatientsPerSlot: number;
+  roomNumber?: string;
 }
 
 export interface TimeSlotResponse {
@@ -126,11 +129,14 @@ function toApiError(error: unknown): ScheduleApiError {
 // Departments
 // ---------------------------------------------------------------------------
 
-export async function getDepartments(): Promise<Department[]> {
+export async function getDepartments(signal?: AbortSignal): Promise<Department[]> {
   try {
-    const { data } = await scheduleApi.get<Department[]>("/departments");
+    const { data } = await scheduleApi.get<Department[]>("/departments", {
+      signal,
+    });
     return data;
   } catch (error) {
+    if (axios.isCancel(error)) throw error;
     throw toApiError(error);
   }
 }
@@ -141,13 +147,16 @@ export async function getDepartments(): Promise<Department[]> {
 
 export async function getDoctors(
   departmentId: number | string,
+  signal?: AbortSignal,
 ): Promise<Doctor[]> {
   try {
     const { data } = await scheduleApi.get<Doctor[]>("/doctors", {
       params: { departmentId },
+      signal,
     });
     return data;
   } catch (error) {
+    if (axios.isCancel(error)) throw error;
     throw toApiError(error);
   }
 }
@@ -159,24 +168,49 @@ export async function getDoctors(
 export async function getShifts(
   departmentId: number | string,
   shiftDate: string,
+  signal?: AbortSignal,
 ): Promise<DoctorShift[]> {
   try {
     const { data } = await scheduleApi.get<DoctorShift[]>("/shifts", {
       params: { departmentId, date: shiftDate },
+      signal,
     });
     return data;
   } catch (error) {
+    if (axios.isCancel(error)) throw error;
+    throw toApiError(error);
+  }
+}
+
+export async function getWeeklyShifts(
+  departmentId: number | string,
+  startDate: string,
+  endDate: string,
+  signal?: AbortSignal,
+): Promise<DoctorShift[]> {
+  try {
+    const { data } = await scheduleApi.get<DoctorShift[]>("/shifts/weekly", {
+      params: { departmentId, startDate, endDate },
+      signal,
+    });
+    return data;
+  } catch (error) {
+    if (axios.isCancel(error)) throw error;
     throw toApiError(error);
   }
 }
 
 export async function createShift(
   payload: CreateShiftPayload,
+  signal?: AbortSignal,
 ): Promise<DoctorShift> {
   try {
-    const { data } = await scheduleApi.post<DoctorShift>("/shifts", payload);
+    const { data } = await scheduleApi.post<DoctorShift>("/shifts", payload, {
+      signal,
+    });
     return data;
   } catch (error) {
+    if (axios.isCancel(error)) throw error;
     throw toApiError(error);
   }
 }
@@ -189,13 +223,16 @@ export async function validateRoster(
   departmentId: number | string,
   shiftDate: string,
   session: ShiftSession,
+  signal?: AbortSignal,
 ): Promise<boolean> {
   try {
     const { data } = await scheduleApi.get<boolean>("/roster/validate", {
       params: { departmentId, date: shiftDate, session },
+      signal,
     });
     return data;
   } catch (error) {
+    if (axios.isCancel(error)) throw error;
     throw toApiError(error);
   }
 }
@@ -203,14 +240,16 @@ export async function validateRoster(
 export async function getAvailableSlots(
   departmentId: number | string,
   shiftDate: string,
+  signal?: AbortSignal,
 ): Promise<TimeSlotResponse[]> {
   try {
     const { data } = await scheduleApi.get<TimeSlotResponse[]>(
       "/available-slots",
-      { params: { departmentId, date: shiftDate } },
+      { params: { departmentId, date: shiftDate }, signal },
     );
     return data;
   } catch (error) {
+    if (axios.isCancel(error)) throw error;
     throw toApiError(error);
   }
 }

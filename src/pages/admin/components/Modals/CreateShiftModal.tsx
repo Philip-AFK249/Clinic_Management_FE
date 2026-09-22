@@ -22,6 +22,7 @@ interface CreateShiftModalProps {
   onCreated: (shift: DoctorShift) => void;
   initialDepartmentId?: number;
   initialDate?: string;
+  initialSession?: ShiftSession;
 }
 
 const SESSION_OPTIONS: { value: ShiftSession; label: string }[] = [
@@ -39,6 +40,7 @@ export default function CreateShiftModal({
   onCreated,
   initialDepartmentId,
   initialDate,
+  initialSession,
 }: CreateShiftModalProps) {
   const [departments, setDepartments] = useState<Department[]>([]);
   const [departmentsLoading, setDepartmentsLoading] = useState(true);
@@ -49,7 +51,7 @@ export default function CreateShiftModal({
   const [doctorsLoading, setDoctorsLoading] = useState(Boolean(initialDepartmentId));
   const [selectedDoctorId, setSelectedDoctorId] = useState<number | "">("");
   const [shiftDate, setShiftDate] = useState(initialDate ?? toISODate(new Date()));
-  const [session, setSession] = useState<ShiftSession>("MORNING");
+  const [session, setSession] = useState<ShiftSession>(initialSession ?? "MORNING");
   const [dutyType, setDutyType] = useState<DutyType>("OUTPATIENT");
   const [submitting, setSubmitting] = useState(false);
 

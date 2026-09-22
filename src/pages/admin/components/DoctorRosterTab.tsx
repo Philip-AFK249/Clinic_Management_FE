@@ -1,10 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import axios from "axios";
 import { toast } from "sonner";
 import {
   Activity,
   AlertTriangle,
   CalendarDays,
+  CalendarRange,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   ClipboardList,
   Hourglass,
   LayoutGrid,
@@ -18,10 +22,12 @@ import {
   getAvailableSlots,
   getDepartments,
   getShifts,
+  getWeeklyShifts,
   validateRoster,
 } from "../services/scheduleApi";
 import type {
   Department,
+  DoctorReference,
   DoctorShift,
   DutyType,
   ShiftSession,
@@ -29,7 +35,7 @@ import type {
 } from "../services/scheduleApi";
 import CreateShiftModal from "./Modals/CreateShiftModal";
 
-type RosterView = "MATRIX" | "SLOTS";
+type RosterView = "TIMETABLE" | "DAILY_MATRIX" | "SLOTS";
 
 const SESSIONS: ShiftSession[] = ["MORNING", "AFTERNOON"];
 
@@ -63,6 +69,10 @@ const DUTY_TAG_COLORS: Record<DutyType, string> = {
   INPATIENT: "bg-purple-100 text-purple-800",
 };
 
+const DAY_LABELS = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"];
+
+const WEEK_COLUMNS = "130px repeat(7, minmax(0, 1fr))";
+
 function toShortTime(value: string): string {
   return value.slice(0, 5);
 }
@@ -78,6 +88,33 @@ function slotLoadPercentage(slot: TimeSlotResponse): number {
     100,
     Math.round((slot.bookedCount / slot.totalCapacity) * 100),
   );
+}
+
+function getWeekStartDate(anchor: Date): Date {
+  const start = new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate());
+  const weekday = start.getDay();
+  const diff = weekday === 0 ? -6 : 1 - weekday;
+  start.setDate(start.getDate() + diff);
+  return start;
+}
+
+function addDays(date: Date, days: number): Date {
+  const next = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function formatShortVN(date: Date): string {
+  return `${date.getDate()}/${date.getMonth() + 1}`;
+}
+
+function formatVNDate(date: Date): string {
+  return `${date.getDate()}/${date.getMonth() + 1}/${date.getFullYear()}`;
+}
+
+function shortLastName(fullName: string): string {
+  const tokens = fullName.trim().split(/\s+/).filter(Boolean);
+  return tokens[tokens.length - 1] ?? "";
 }
 
 function DutyTag({ dutyType }: { dutyType: DutyType }) {
@@ -105,6 +142,139 @@ function DoctorChip({ shift }: { shift: DoctorShift }) {
         </p>
       </div>
       <DutyTag dutyType={shift.dutyType} />
+    </div>
+  );
+}
+
+function TimetableDoctorBadge({
+  doctor,
+  dutyType,
+  showRoom,
+}: {
+  doctor: DoctorReference;
+  dutyType: DutyType;
+  showRoom: boolean;
+}) {
+  const color =
+    dutyType === "OUTPATIENT"
+      ? "border-teal-200 bg-teal-50 text-teal-800"
+      : "border-purple-200 bg-purple-50 text-purple-800";
+  const suffix =
+    dutyType === "OUTPATIENT"
+      ? showRoom && doctor.roomNumber
+        ? ` (${doctor.roomNumber})`
+        : ""
+      : " (Nội trú)";
+  return (
+    <p className={`truncate rounded-md border px-1.5 py-0.5 text-[10px] font-semibold ${color}`}>
+      {doctor.title}
+      {doctor.title ? " " : ""}
+      {shortLastName(doctor.fullName)}
+      {suffix}
+    </p>
+  );
+}
+
+interface TimetableCellProps {
+  dateISO: string;
+  dayLabel: string;
+  isToday: boolean;
+  session: ShiftSession;
+  shifts: DoctorShift[];
+  onQuickAdd: () => void;
+}
+
+function TimetableCell({
+  dateISO,
+  dayLabel,
+  isToday,
+  session,
+  shifts,
+  onQuickAdd,
+}: TimetableCellProps) {
+  const outpatientShifts = shifts.filter((s) => s.dutyType === "OUTPATIENT");
+  const inpatientShifts = shifts.filter((s) => s.dutyType === "INPATIENT");
+  const compliant =
+    outpatientShifts.length >= 1 && inpatientShifts.length >= 1;
+
+  return (
+    <div
+      className={`group relative flex min-h-[118px] flex-col gap-1.5 border-l border-slate-100 p-2 ${
+        isToday ? "bg-sky-50/60" : ""
+      }`}
+    >
+      <div className="flex items-center justify-between gap-1">
+        <span
+          className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-bold ${
+            isToday ? "bg-sky-600 text-white" : "bg-slate-100 text-slate-500"
+          }`}
+        >
+          {isToday ? "Hôm nay" : dayLabel}
+        </span>
+        <button
+          type="button"
+          onClick={onQuickAdd}
+          title={`Phân ca nhanh - ${SESSION_LABELS[session]} ${dayLabel}`}
+          aria-label={`Phân ca nhanh ${dateISO} - ${SESSION_LABELS[session]}`}
+          className="flex h-5 w-5 items-center justify-center rounded-md bg-slate-800 text-white opacity-0 transition-opacity hover:bg-slate-900 group-hover:opacity-100"
+        >
+          <Plus size={12} aria-hidden="true" />
+        </button>
+      </div>
+
+      <div className="space-y-1">
+        {outpatientShifts.length > 0 && (
+          <div className="space-y-0.5">
+            {outpatientShifts.slice(0, 2).map((shift) => (
+              <TimetableDoctorBadge
+                key={shift.id}
+                doctor={shift.doctor}
+                dutyType="OUTPATIENT"
+                showRoom
+              />
+            ))}
+            {outpatientShifts.length > 2 && (
+              <p className="text-[9px] font-medium text-slate-400">
+                +{outpatientShifts.length - 2} BS khác
+              </p>
+            )}
+          </div>
+        )}
+        {inpatientShifts.length > 0 && (
+          <div className="space-y-0.5">
+            {inpatientShifts.slice(0, 2).map((shift) => (
+              <TimetableDoctorBadge
+                key={shift.id}
+                doctor={shift.doctor}
+                dutyType="INPATIENT"
+                showRoom={false}
+              />
+            ))}
+            {inpatientShifts.length > 2 && (
+              <p className="text-[9px] font-medium text-slate-400">
+                +{inpatientShifts.length - 2} BS khác
+              </p>
+            )}
+          </div>
+        )}
+        {outpatientShifts.length === 0 && inpatientShifts.length === 0 && (
+          <p className="text-[9px] italic text-slate-300">Chưa phân ca</p>
+        )}
+      </div>
+
+      <div className="mt-auto pt-0.5">
+        {compliant ? (
+          <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700">
+            <CheckCircle2 size={11} aria-hidden="true" />
+            Đủ BS Ngoại trú &amp; Nội trú
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-600">
+            <AlertTriangle size={11} aria-hidden="true" />
+            Thiếu BS hoặc chưa đủ 2 loại
+          </span>
+        )}
+      </div>
     </div>
   );
 }
@@ -251,31 +421,66 @@ export default function DoctorRosterTab() {
   const [departmentsLoading, setDepartmentsLoading] = useState(true);
   const [selectedDepartmentId, setSelectedDepartmentId] = useState<number | "">("");
   const [selectedDate, setSelectedDate] = useState(toISODate(new Date()));
-  const [view, setView] = useState<RosterView>("MATRIX");
-  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [view, setView] = useState<RosterView>("TIMETABLE");
+  const [weekStart, setWeekStart] = useState<Date>(() => getWeekStartDate(new Date()));
+  const [createTarget, setCreateTarget] = useState<{
+    date?: string;
+    session?: ShiftSession;
+  } | null>(null);
 
   const [shifts, setShifts] = useState<DoctorShift[]>([]);
   const [slots, setSlots] = useState<TimeSlotResponse[]>([]);
+  const [weeklyShifts, setWeeklyShifts] = useState<DoctorShift[]>([]);
   const [compliance, setCompliance] = useState<Record<ShiftSession, boolean | null>>(
     { MORNING: null, AFTERNOON: null },
   );
   const [shiftsLoading, setShiftsLoading] = useState(true);
+  const [weeklyLoading, setWeeklyLoading] = useState(true);
 
-  const requestSeq = useRef(0);
+  const departmentsSeq = useRef(0);
+  const rosterSeq = useRef(0);
+  const weeklySeq = useRef(0);
+  const departmentsAbortRef = useRef<AbortController | null>(null);
+  const rosterAbortRef = useRef<AbortController | null>(null);
+  const weeklyAbortRef = useRef<AbortController | null>(null);
 
   const selectedDepartment = departments.find((d) => d.id === selectedDepartmentId);
 
+  const weekDates = useMemo(
+    () => Array.from({ length: 7 }, (_, index) => addDays(weekStart, index)),
+    [weekStart],
+  );
+
+  const weekISO = useMemo(() => weekDates.map(toISODate), [weekDates]);
+
+  const weekLabel = useMemo(
+    () =>
+      weekDates.length === 7
+        ? `${formatVNDate(weekDates[0])} - ${formatVNDate(weekDates[weekDates.length - 1])}`
+        : "",
+    [weekDates],
+  );
+
+  const todayISO = useMemo(() => toISODate(new Date()), []);
+
   const loadDepartments = useCallback(() => {
+    departmentsAbortRef.current?.abort();
+    const controller = new AbortController();
+    departmentsAbortRef.current = controller;
+    const seq = ++departmentsSeq.current;
     Promise.resolve()
       .then(() => setDepartmentsLoading(true))
-      .then(() => getDepartments())
+      .then(() => getDepartments(controller.signal))
       .then((list) => {
+        if (seq !== departmentsSeq.current) return;
         setDepartments(list);
         setSelectedDepartmentId((current) =>
           current !== "" ? current : (list[0]?.id ?? ""),
         );
       })
       .catch((error: unknown) => {
+        if (axios.isCancel(error)) return;
+        if (seq !== departmentsSeq.current) return;
         setDepartments([]);
         toast.error(
           error instanceof Error
@@ -283,7 +488,9 @@ export default function DoctorRosterTab() {
             : "Không tải được danh sách Khoa từ DoctorScheduleService.",
         );
       })
-      .finally(() => setDepartmentsLoading(false));
+      .finally(() => {
+        if (seq === departmentsSeq.current) setDepartmentsLoading(false);
+      });
   }, []);
 
   useEffect(() => {
@@ -291,10 +498,13 @@ export default function DoctorRosterTab() {
   }, [loadDepartments]);
 
   const loadRoster = useCallback((departmentId: number, date: string) => {
-    const seq = ++requestSeq.current;
+    rosterAbortRef.current?.abort();
+    const controller = new AbortController();
+    rosterAbortRef.current = controller;
+    const seq = ++rosterSeq.current;
     Promise.resolve()
       .then(() => {
-        if (seq !== requestSeq.current) return;
+        if (seq !== rosterSeq.current) return;
         setShiftsLoading(true);
         setShifts([]);
         setSlots([]);
@@ -302,20 +512,21 @@ export default function DoctorRosterTab() {
       })
       .then(() =>
         Promise.all([
-          getShifts(departmentId, date),
-          getAvailableSlots(departmentId, date),
-          validateRoster(departmentId, date, "MORNING"),
-          validateRoster(departmentId, date, "AFTERNOON"),
+          getShifts(departmentId, date, controller.signal),
+          getAvailableSlots(departmentId, date, controller.signal),
+          validateRoster(departmentId, date, "MORNING", controller.signal),
+          validateRoster(departmentId, date, "AFTERNOON", controller.signal),
         ]),
       )
       .then(([shiftList, slotList, morningOk, afternoonOk]) => {
-        if (seq !== requestSeq.current) return;
+        if (seq !== rosterSeq.current) return;
         setShifts(shiftList);
         setSlots(slotList);
         setCompliance({ MORNING: morningOk, AFTERNOON: afternoonOk });
       })
       .catch((error: unknown) => {
-        if (seq !== requestSeq.current) return;
+        if (axios.isCancel(error)) return;
+        if (seq !== rosterSeq.current) return;
         setCompliance({ MORNING: false, AFTERNOON: false });
         toast.error(
           error instanceof Error
@@ -324,7 +535,40 @@ export default function DoctorRosterTab() {
         );
       })
       .finally(() => {
-        if (seq === requestSeq.current) setShiftsLoading(false);
+        if (seq === rosterSeq.current) setShiftsLoading(false);
+      });
+  }, []);
+
+  const loadWeeklyRoster = useCallback((departmentId: number, start: Date) => {
+    const startISO = toISODate(start);
+    const endISO = toISODate(addDays(start, 6));
+    weeklyAbortRef.current?.abort();
+    const controller = new AbortController();
+    weeklyAbortRef.current = controller;
+    const seq = ++weeklySeq.current;
+    Promise.resolve()
+      .then(() => {
+        if (seq !== weeklySeq.current) return;
+        setWeeklyLoading(true);
+        setWeeklyShifts([]);
+      })
+      .then(() => getWeeklyShifts(departmentId, startISO, endISO, controller.signal))
+      .then((list) => {
+        if (seq !== weeklySeq.current) return;
+        setWeeklyShifts(list);
+      })
+      .catch((error: unknown) => {
+        if (axios.isCancel(error)) return;
+        if (seq !== weeklySeq.current) return;
+        setWeeklyShifts([]);
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "Không tải được thời khoá biểu tuần từ DoctorScheduleService.",
+        );
+      })
+      .finally(() => {
+        if (seq === weeklySeq.current) setWeeklyLoading(false);
       });
   }, []);
 
@@ -332,6 +576,38 @@ export default function DoctorRosterTab() {
     if (selectedDepartmentId === "") return;
     void loadRoster(selectedDepartmentId, selectedDate);
   }, [selectedDepartmentId, selectedDate, loadRoster]);
+
+  useEffect(() => {
+    if (selectedDepartmentId === "") return;
+    void loadWeeklyRoster(selectedDepartmentId, weekStart);
+  }, [selectedDepartmentId, weekStart, loadWeeklyRoster]);
+
+  useEffect(() => {
+    return () => {
+      departmentsAbortRef.current?.abort();
+      rosterAbortRef.current?.abort();
+      weeklyAbortRef.current?.abort();
+    };
+  }, []);
+
+  const weeklyByCell = useMemo(() => {
+    const grouped: Record<ShiftSession, Record<string, DoctorShift[]>> = {
+      MORNING: {},
+      AFTERNOON: {},
+    };
+    for (const session of SESSIONS) {
+      for (const iso of weekISO) {
+        grouped[session][iso] = [];
+      }
+    }
+    for (const shift of weeklyShifts) {
+      const bucket = grouped[shift.session];
+      if (bucket && bucket[shift.shiftDate]) {
+        bucket[shift.shiftDate]!.push(shift);
+      }
+    }
+    return grouped;
+  }, [weeklyShifts, weekISO]);
 
   const sessionPlans = useMemo(
     () =>
@@ -380,8 +656,23 @@ export default function DoctorRosterTab() {
     return grouped;
   }, [slots]);
 
+  function goToPreviousWeek() {
+    setWeekStart((current) => addDays(current, -7));
+  }
+
+  function goToNextWeek() {
+    setWeekStart((current) => addDays(current, 7));
+  }
+
+  function goToThisWeek() {
+    setWeekStart(getWeekStartDate(new Date()));
+  }
+
   function handleCreatedShift() {
-    if (selectedDepartmentId !== "") {
+    if (selectedDepartmentId === "") return;
+    if (view === "TIMETABLE") {
+      void loadWeeklyRoster(selectedDepartmentId, weekStart);
+    } else {
       void loadRoster(selectedDepartmentId, selectedDate);
     }
   }
@@ -394,13 +685,13 @@ export default function DoctorRosterTab() {
             Lịch Trực &amp; Phân Ca Bác Sĩ (DoctorScheduleService)
           </h2>
           <p className="mt-0.5 text-xs text-slate-500">
-            Phân bổ ca Sáng / Chiều (Ngoại trú &amp; Nội trú), giám sát tuân thủ và dung
-            lượng khung 60 phút cho từng Khoa
+            Thời khoá biểu tuần, phân bổ ca Sáng / Chiều (Ngoại trú &amp; Nội trú) và
+            giám sát dung lượng khung 60 phút cho từng Khoa
           </p>
         </div>
         <button
           type="button"
-          onClick={() => setShowCreateModal(true)}
+          onClick={() => setCreateTarget({ date: selectedDate })}
           className="inline-flex items-center gap-1.5 rounded-lg bg-slate-800 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-slate-900"
         >
           <Plus size={16} aria-hidden="true" />
@@ -411,19 +702,51 @@ export default function DoctorRosterTab() {
       {/* Filters */}
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex flex-wrap items-center gap-2">
-          <div className="relative">
-            <CalendarDays
-              size={14}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-              aria-hidden="true"
-            />
-            <input
-              type="date"
-              value={selectedDate}
-              onChange={(e) => setSelectedDate(e.target.value)}
-              className="h-9 w-44 rounded-lg border border-slate-200 bg-white pl-8 pr-3 text-xs text-slate-700 focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-300"
-            />
-          </div>
+          {view === "TIMETABLE" ? (
+            <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-slate-200/80 bg-white p-1 shadow-card">
+              <button
+                type="button"
+                onClick={goToPreviousWeek}
+                className="inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-100"
+              >
+                <ChevronLeft size={14} aria-hidden="true" />
+                Tuần trước
+              </button>
+              <button
+                type="button"
+                onClick={goToThisWeek}
+                className="rounded-md px-2.5 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-100"
+              >
+                Tuần này
+              </button>
+              <button
+                type="button"
+                onClick={goToNextWeek}
+                className="inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-100"
+              >
+                Tuần sau
+                <ChevronRight size={14} aria-hidden="true" />
+              </button>
+              <span className="mx-1 inline-flex items-center gap-1.5 rounded-md bg-slate-50 px-2.5 py-1.5 text-xs font-semibold text-slate-700">
+                <CalendarRange size={14} className="text-slate-400" aria-hidden="true" />
+                {weekLabel}
+              </span>
+            </div>
+          ) : (
+            <div className="relative">
+              <CalendarDays
+                size={14}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                aria-hidden="true"
+              />
+              <input
+                type="date"
+                value={selectedDate}
+                onChange={(e) => setSelectedDate(e.target.value)}
+                className="h-9 w-44 rounded-lg border border-slate-200 bg-white pl-8 pr-3 text-xs text-slate-700 focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-300"
+              />
+            </div>
+          )}
           <select
             value={selectedDepartmentId}
             onChange={(e) =>
@@ -442,18 +765,30 @@ export default function DoctorRosterTab() {
           </select>
         </div>
 
-        <div className="flex gap-1 rounded-lg border border-slate-200/80 bg-white p-1 shadow-card">
+        <div className="flex flex-wrap gap-1 rounded-lg border border-slate-200/80 bg-white p-1 shadow-card">
           <button
             type="button"
-            onClick={() => setView("MATRIX")}
+            onClick={() => setView("TIMETABLE")}
             className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
-              view === "MATRIX"
+              view === "TIMETABLE"
+                ? "bg-slate-800 text-white"
+                : "text-slate-600 hover:bg-slate-100"
+            }`}
+          >
+            <CalendarRange size={14} aria-hidden="true" />
+            Thời khoá biểu tuần
+          </button>
+          <button
+            type="button"
+            onClick={() => setView("DAILY_MATRIX")}
+            className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
+              view === "DAILY_MATRIX"
                 ? "bg-slate-800 text-white"
                 : "text-slate-600 hover:bg-slate-100"
             }`}
           >
             <ClipboardList size={14} aria-hidden="true" />
-            Phân ca &amp; Kiểm soát
+            Phân ca ngày &amp; Kiểm soát
           </button>
           <button
             type="button"
@@ -476,7 +811,117 @@ export default function DoctorRosterTab() {
         <EmptyDepartments onRetry={loadDepartments} />
       ) : selectedDepartmentId === "" ? (
         <LoadingBlock label="Vui lòng chọn Khoa điều trị để xem lịch trực." />
-      ) : view === "MATRIX" ? (
+      ) : view === "TIMETABLE" ? (
+        <>
+          <div className="mb-1 flex items-center gap-2">
+            <CalendarRange size={16} className="text-slate-500" aria-hidden="true" />
+            <h3 className="text-sm font-bold text-slate-900">
+              Thời khoá biểu tuần - {selectedDepartment?.name ?? "Khoa"}
+            </h3>
+            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+              7 ngày × 2 ca
+            </span>
+          </div>
+
+          {weeklyLoading ? (
+            <LoadingBlock label="Đang tải thời khoá biểu tuần từ DoctorScheduleService..." />
+          ) : (
+            <>
+              <div className="overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-card">
+                <div className="overflow-x-auto">
+                  <div className="min-w-[980px]">
+                    {/* Header row */}
+                    <div
+                      className="grid border-b border-slate-100 bg-slate-50"
+                      style={{ gridTemplateColumns: WEEK_COLUMNS }}
+                    >
+                      <div className="px-3 py-2 text-xs font-semibold text-slate-600">
+                        Ca trực
+                      </div>
+                      {weekDates.map((day, index) => {
+                        const isToday = weekISO[index] === todayISO;
+                        return (
+                          <div
+                            key={weekISO[index]}
+                            className={`border-l border-slate-100 px-3 py-2 text-center ${
+                              isToday ? "bg-sky-100/70" : ""
+                            }`}
+                          >
+                            <p className="text-xs font-bold text-slate-800">
+                              {DAY_LABELS[index]}
+                            </p>
+                            <p className="text-[10px] text-slate-400">
+                              {formatShortVN(day)}
+                            </p>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Session rows */}
+                    {SESSIONS.map((session) => (
+                      <div
+                        key={session}
+                        className="grid border-b border-slate-100 last:border-b-0"
+                        style={{ gridTemplateColumns: WEEK_COLUMNS }}
+                      >
+                        <div className="flex items-center bg-slate-50/60 px-3 py-2">
+                          <span
+                            className={`inline-flex flex-col rounded-lg border px-2 py-1 text-[10px] font-bold ${SESSION_SWATCH_COLORS[session]}`}
+                          >
+                            {SESSION_LABELS[session]}
+                            <span className="text-[9px] font-medium">
+                              {SESSION_TIMES[session]}
+                            </span>
+                          </span>
+                        </div>
+                        {weekDates.map((day, index) => {
+                          const iso = weekISO[index];
+                          return (
+                            <TimetableCell
+                              key={iso}
+                              dateISO={iso}
+                              dayLabel={formatShortVN(day)}
+                              isToday={iso === todayISO}
+                              session={session}
+                              shifts={weeklyByCell[session][iso] ?? []}
+                              onQuickAdd={() =>
+                                setCreateTarget({ date: iso, session })
+                              }
+                            />
+                          );
+                        })}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-500">
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="rounded border border-teal-200 bg-teal-50 px-1.5 py-0.5 font-semibold text-teal-800">
+                    Ngoại trú
+                  </span>
+                  Bác sĩ khám bệnh nhân tại phòng khám
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="rounded border border-purple-200 bg-purple-50 px-1.5 py-0.5 font-semibold text-purple-800">
+                    Nội trú
+                  </span>
+                  Trực buồng bệnh / thủ thuật
+                </span>
+                <span className="inline-flex items-center gap-1.5 text-emerald-700">
+                  <CheckCircle2 size={12} aria-hidden="true" />
+                  Đạt chuẩn: đủ ≥ 1 BS Ngoại trú &amp; ≥ 1 BS Nội trú
+                </span>
+                <span className="text-slate-400">
+                  Nhấn "+" tại ô khung giờ để phân ca nhanh cho ngày / buổi đó.
+                </span>
+              </div>
+            </>
+          )}
+        </>
+      ) : view === "DAILY_MATRIX" ? (
         <>
           {/* Compliance summary */}
           <div
@@ -697,12 +1142,13 @@ export default function DoctorRosterTab() {
         </>
       )}
 
-      {showCreateModal && (
+      {createTarget !== null && (
         <CreateShiftModal
-          onClose={() => setShowCreateModal(false)}
+          onClose={() => setCreateTarget(null)}
           onCreated={handleCreatedShift}
           initialDepartmentId={selectedDepartmentId === "" ? undefined : selectedDepartmentId}
-          initialDate={selectedDate}
+          initialDate={createTarget.date}
+          initialSession={createTarget.session}
         />
       )}
     </div>

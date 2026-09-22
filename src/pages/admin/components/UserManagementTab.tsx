@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Search,
   Plus,
@@ -7,6 +7,8 @@ import {
   Unlock,
   RefreshCw,
   Edit,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import type { StaffAccount } from "../data/adminMockData";
 import { ROLE_LABELS } from "../data/adminMockData";
@@ -27,6 +29,8 @@ const ROLE_FILTER_OPTIONS = [
   { value: "ADMIN", label: "Quản trị viên" },
 ] as const;
 
+const PAGE_SIZE = 10;
+
 export default function UserManagementTab({
   staffList,
   onToggleStatus,
@@ -35,16 +39,52 @@ export default function UserManagementTab({
 }: UserManagementTabProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState<string>("ALL");
+  const [page, setPage] = useState(1);
   const [showCreateModal, setShowCreateModal] = useState(false);
 
-  const filtered = staffList.filter((s) => {
-    const matchesSearch =
-      searchQuery === "" ||
-      s.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      s.email.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesRole = roleFilter === "ALL" || s.role === roleFilter;
-    return matchesSearch && matchesRole;
-  });
+  const roleCounts = useMemo(() => {
+    const counts: Record<StaffAccount["role"], number> = {
+      DOCTOR: 0,
+      PHARMACIST: 0,
+      NURSE: 0,
+      ADMIN: 0,
+    };
+    for (const staff of staffList) {
+      counts[staff.role] += 1;
+    }
+    return counts;
+  }, [staffList]);
+
+  const filtered = useMemo(
+    () =>
+      staffList.filter((staff) => {
+        const matchesSearch =
+          searchQuery === "" ||
+          staff.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          staff.email.toLowerCase().includes(searchQuery.toLowerCase());
+        const matchesRole =
+          roleFilter === "ALL" || staff.role === roleFilter;
+        return matchesSearch && matchesRole;
+      }),
+    [staffList, searchQuery, roleFilter],
+  );
+
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const effectivePage = Math.min(page, pageCount);
+  const paginated = filtered.slice(
+    (effectivePage - 1) * PAGE_SIZE,
+    effectivePage * PAGE_SIZE,
+  );
+
+  function handleSearchChange(value: string) {
+    setSearchQuery(value);
+    setPage(1);
+  }
+
+  function handleRoleFilterChange(value: string) {
+    setRoleFilter(value);
+    setPage(1);
+  }
 
   const roleBadgeColors: Record<StaffAccount["role"], string> = {
     DOCTOR: "bg-teal-100 text-teal-800 border-teal-200",
@@ -85,26 +125,39 @@ export default function UserManagementTab({
           <input
             type="text"
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => handleSearchChange(e.target.value)}
             placeholder="Tìm theo tên hoặc email..."
             className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-sm text-slate-800 placeholder-slate-400 focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-300"
           />
         </div>
-        <div className="flex items-center gap-1.5">
-          {ROLE_FILTER_OPTIONS.map((opt) => (
-            <button
-              key={opt.value}
-              type="button"
-              onClick={() => setRoleFilter(opt.value)}
-              className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
-                roleFilter === opt.value
-                  ? "bg-slate-800 text-white"
-                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-              }`}
-            >
-              {opt.label}
-            </button>
-          ))}
+        <div className="flex flex-wrap items-center gap-1.5">
+          {ROLE_FILTER_OPTIONS.map((opt) => {
+            const count =
+              opt.value === "ALL" ? staffList.length : roleCounts[opt.value];
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => handleRoleFilterChange(opt.value)}
+                className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+                  roleFilter === opt.value
+                    ? "bg-slate-800 text-white"
+                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                }`}
+              >
+                {opt.label}
+                <span
+                  className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
+                    roleFilter === opt.value
+                      ? "bg-white/20 text-white"
+                      : "bg-white text-slate-500"
+                  }`}
+                >
+                  {count}
+                </span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -124,7 +177,7 @@ export default function UserManagementTab({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {filtered.map((staff) => (
+              {paginated.map((staff) => (
                 <tr key={staff.id} className="transition-colors hover:bg-slate-50/50">
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2.5">
@@ -219,6 +272,44 @@ export default function UserManagementTab({
               )}
             </tbody>
           </table>
+        </div>
+      </div>
+
+      {/* Pagination */}
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-[11px] text-slate-500">
+          Hiển thị{" "}
+          <span className="font-semibold text-slate-700">
+            {filtered.length === 0
+              ? 0
+              : (effectivePage - 1) * PAGE_SIZE + 1}
+            -{Math.min(effectivePage * PAGE_SIZE, filtered.length)}
+          </span>{" "}
+          trong <span className="font-semibold text-slate-700">{filtered.length}</span>{" "}
+          nhân sự
+        </p>
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={effectivePage <= 1}
+            className="inline-flex h-8 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <ChevronLeft size={14} aria-hidden="true" />
+            Trước
+          </button>
+          <span className="rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700">
+            Trang {effectivePage} / {pageCount}
+          </span>
+          <button
+            type="button"
+            onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
+            disabled={effectivePage >= pageCount}
+            className="inline-flex h-8 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Sau
+            <ChevronRight size={14} aria-hidden="true" />
+          </button>
         </div>
       </div>
 
