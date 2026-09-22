@@ -1,9 +1,9 @@
 import {
   LayoutDashboard,
   Users,
+  CalendarDays,
   Brain,
   Pill,
-  Cpu,
   ChevronLeft,
   ChevronRight,
   Database,
@@ -19,10 +19,10 @@ interface AdminSidebarProps {
 
 const NAV_ITEMS: { tab: AdminTab; label: string; icon: typeof LayoutDashboard }[] = [
   { tab: "OVERVIEW", label: "Tổng quan Vận hành", icon: LayoutDashboard },
+  { tab: "ROSTER", label: "Lịch trực & Phân ca Bác sĩ", icon: CalendarDays },
   { tab: "USERS", label: "Quản lý Nhân sự (RBAC)", icon: Users },
-  { tab: "RAG_KB", label: "Tri thức RAG & Chatbot", icon: Brain },
   { tab: "CATALOGS", label: "Danh mục Thuốc & Viện phí", icon: Pill },
-  { tab: "AI_CONFIG", label: "Cấu hình AI & Hạ tầng", icon: Cpu },
+  { tab: "AI_GATEWAY", label: "AI Gateway & Logs", icon: Brain },
 ];
 
 export default function AdminSidebar({

@@ -1,13 +1,17 @@
 import { useState } from "react";
 import { toast } from "sonner";
-import type { StaffAccount, KnowledgeDocument, AdminTab } from "./data/adminMockData";
+import type {
+  StaffAccount,
+  KnowledgeDocument,
+  AdminTab,
+} from "./data/adminMockData";
 import AdminSidebar from "./components/AdminSidebar";
 import AdminHeader from "./components/AdminHeader";
 import OverviewTab from "./components/OverviewTab";
+import DoctorRosterTab from "./components/DoctorRosterTab";
 import UserManagementTab from "./components/UserManagementTab";
-import RagKnowledgeBaseTab from "./components/RagKnowledgeBaseTab";
 import MedicalCatalogTab from "./components/MedicalCatalogTab";
-import AiConfigAndLogsTab from "./components/AiConfigAndLogsTab";
+import AiGatewayTab from "./components/AiGatewayTab";
 import { useAdminMetrics } from "./hooks/useAdminMetrics";
 import { useKnowledgeBase } from "./hooks/useKnowledgeBase";
 
@@ -54,6 +58,7 @@ export default function AdminDashboardPage() {
         <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
           <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-5">
             {activeTab === "OVERVIEW" && <OverviewTab metrics={metrics.metrics} />}
+            {activeTab === "ROSTER" && <DoctorRosterTab />}
             {activeTab === "USERS" && (
               <UserManagementTab
                 staffList={metrics.staffList}
@@ -62,19 +67,17 @@ export default function AdminDashboardPage() {
                 onAddStaff={handleAddStaff}
               />
             )}
-            {activeTab === "RAG_KB" && (
-              <RagKnowledgeBaseTab
+            {activeTab === "CATALOGS" && <MedicalCatalogTab />}
+            {activeTab === "AI_GATEWAY" && (
+              <AiGatewayTab
                 documents={kb.documents}
+                ocrLogs={metrics.ocrLogs}
                 isReindexing={kb.isReindexing}
                 reindexProgress={kb.reindexProgress}
                 onAddDocument={handleAddKnowledgeDoc}
                 onDeleteDocument={handleDeleteKnowledgeDoc}
                 onTriggerReindex={kb.triggerReindex}
               />
-            )}
-            {activeTab === "CATALOGS" && <MedicalCatalogTab />}
-            {activeTab === "AI_CONFIG" && (
-              <AiConfigAndLogsTab ocrLogs={metrics.ocrLogs} />
             )}
           </div>
 

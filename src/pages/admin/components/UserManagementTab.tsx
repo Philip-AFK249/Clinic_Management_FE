@@ -23,6 +23,7 @@ const ROLE_FILTER_OPTIONS = [
   { value: "ALL", label: "Tất cả" },
   { value: "DOCTOR", label: "Bác sĩ" },
   { value: "PHARMACIST", label: "Dược sĩ" },
+  { value: "NURSE", label: "Điều dưỡng" },
   { value: "ADMIN", label: "Quản trị viên" },
 ] as const;
 
@@ -48,6 +49,7 @@ export default function UserManagementTab({
   const roleBadgeColors: Record<StaffAccount["role"], string> = {
     DOCTOR: "bg-teal-100 text-teal-800 border-teal-200",
     PHARMACIST: "bg-emerald-100 text-emerald-800 border-emerald-200",
+    NURSE: "bg-violet-100 text-violet-800 border-violet-200",
     ADMIN: "bg-slate-100 text-slate-800 border-slate-300",
   };
 
@@ -133,7 +135,10 @@ export default function UserManagementTab({
                         <p className="truncate font-semibold text-slate-800">
                           {staff.fullName}
                         </p>
-                        <p className="truncate text-[11px] text-slate-400">{staff.id}</p>
+                        <p className="truncate text-[11px] text-slate-400">
+                          {staff.id}
+                          {staff.title ? ` · ${staff.title}` : ""}
+                        </p>
                       </div>
                     </div>
                   </td>

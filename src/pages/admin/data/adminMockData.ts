@@ -1,4 +1,59 @@
-export type AdminTab = "OVERVIEW" | "USERS" | "RAG_KB" | "CATALOGS" | "AI_CONFIG";
+export type AdminTab =
+  | "OVERVIEW"
+  | "ROSTER"
+  | "USERS"
+  | "CATALOGS"
+  | "AI_GATEWAY";
+
+export type ShiftSession = "MORNING" | "AFTERNOON";
+
+export type DutyType = "OUTPATIENT" | "INPATIENT";
+
+export interface Department {
+  id: string;
+  code: string;
+  name: string;
+}
+
+export interface Doctor {
+  id: string;
+  fullName: string;
+  title: string;
+  roomNumber: string;
+  departmentId: string;
+  active: boolean;
+}
+
+export interface DoctorShift {
+  id: string;
+  doctorId: string;
+  doctorName: string;
+  departmentId: string;
+  departmentName: string;
+  shiftDate: string; // YYYY-MM-DD
+  session: ShiftSession;
+  dutyType: DutyType;
+  maxPatientsPerSlot: number;
+}
+
+export interface DoctorSlotLoad {
+  doctorId: string;
+  doctorName: string;
+  title: string;
+  roomNumber: string;
+  currentPatients: number;
+}
+
+export interface TimeSlot {
+  startTime: string;
+  endTime: string;
+  session: ShiftSession;
+  totalCapacity: number;
+  bookedCount: number;
+  availableCapacity: number;
+  isAvailable: boolean;
+  doctors: DoctorSlotLoad[];
+}
 
 export interface SystemMetrics {
   activeEncounters: number;
@@ -15,8 +70,10 @@ export interface StaffAccount {
   id: string;
   fullName: string;
   email: string;
-  role: "DOCTOR" | "PHARMACIST" | "ADMIN";
+  role: "DOCTOR" | "PHARMACIST" | "NURSE" | "ADMIN";
   department: string;
+  departmentId?: string;
+  title?: string;
   roomNumber?: string;
   phone: string;
   status: "ACTIVE" | "SUSPENDED";
@@ -91,6 +148,109 @@ export const MOCK_SYSTEM_METRICS: SystemMetrics = {
   triageAccuracyPercent: 96.2,
 };
 
+export const MOCK_DEPARTMENTS: Department[] = [
+  { id: "DEP-CARD", code: "CARD", name: "Khoa Tim mạch" },
+  { id: "DEP-GIM", code: "GIM", name: "Khoa Nội Tổng quát" },
+  { id: "DEP-PED", code: "PED", name: "Khoa Nhi" },
+  { id: "DEP-ALL", code: "ALLR", name: "Khoa Dị ứng & Miễn dịch lâm sàng" },
+  { id: "DEP-ENT", code: "ENT", name: "Khoa Tai Mũi Họng" },
+];
+
+export const MOCK_DOCTORS: Doctor[] = [
+  {
+    id: "D001",
+    fullName: "PGS. TS. BS. Trần Minh Tuấn",
+    title: "PGS.TS",
+    roomNumber: "Phòng 201",
+    departmentId: "DEP-ALL",
+    active: true,
+  },
+  {
+    id: "D002",
+    fullName: "BS. CKI. Nguyễn Văn Dũng",
+    title: "BS.CKI",
+    roomNumber: "Phòng 104",
+    departmentId: "DEP-GIM",
+    active: true,
+  },
+  {
+    id: "D003",
+    fullName: "ThS. BS. Phạm Thị Hoa",
+    title: "ThS.BS",
+    roomNumber: "Phòng 105",
+    departmentId: "DEP-GIM",
+    active: true,
+  },
+  {
+    id: "D004",
+    fullName: "BS. CKI. Lê Văn Bảo",
+    title: "BS.CKI",
+    roomNumber: "Phòng 301",
+    departmentId: "DEP-CARD",
+    active: true,
+  },
+  {
+    id: "D005",
+    fullName: "BS. Nguyễn Thanh Hà",
+    title: "BS",
+    roomNumber: "Phòng 302",
+    departmentId: "DEP-CARD",
+    active: true,
+  },
+  {
+    id: "D006",
+    fullName: "BS. CKI. Trần Quốc Khánh",
+    title: "BS.CKI",
+    roomNumber: "Phòng 401",
+    departmentId: "DEP-PED",
+    active: true,
+  },
+  {
+    id: "D007",
+    fullName: "ThS. BS. Đỗ Thu Vân",
+    title: "ThS.BS",
+    roomNumber: "Phòng 402",
+    departmentId: "DEP-PED",
+    active: true,
+  },
+  {
+    id: "D008",
+    fullName: "BS. CKI. Hoàng Kim Ngân",
+    title: "BS.CKI",
+    roomNumber: "Phòng 501",
+    departmentId: "DEP-ENT",
+    active: true,
+  },
+  {
+    id: "D009",
+    fullName: "BS. Vũ Đức Minh",
+    title: "BS",
+    roomNumber: "Phòng 202",
+    departmentId: "DEP-ALL",
+    active: true,
+  },
+  {
+    id: "D010",
+    fullName: "BS. CKI. Ngô Bá Khôi",
+    title: "BS.CKI",
+    roomNumber: "Phòng 502",
+    departmentId: "DEP-ENT",
+    active: true,
+  },
+  {
+    id: "D011",
+    fullName: "BS. Lê Thị Ngọc",
+    title: "BS",
+    roomNumber: "Phòng 106",
+    departmentId: "DEP-GIM",
+    active: true,
+  },
+];
+
+function getDepartmentName(departmentId: string): string {
+  return MOCK_DEPARTMENTS.find((d) => d.id === departmentId)?.name ?? departmentId;
+}
+
 export const MOCK_STAFF: StaffAccount[] = [
   {
     id: "STF-001",
@@ -98,6 +258,8 @@ export const MOCK_STAFF: StaffAccount[] = [
     email: "tuan.tran@smartclinic.vn",
     role: "DOCTOR",
     department: "Khoa Dị ứng & Miễn dịch lâm sàng",
+    departmentId: "DEP-ALL",
+    title: "PGS.TS",
     roomNumber: "Phòng 201",
     phone: "0901 234 567",
     status: "ACTIVE",
@@ -109,6 +271,8 @@ export const MOCK_STAFF: StaffAccount[] = [
     email: "dung.nguyen@smartclinic.vn",
     role: "DOCTOR",
     department: "Khoa Nội Tổng quát",
+    departmentId: "DEP-GIM",
+    title: "BS.CKI",
     roomNumber: "Phòng 104",
     phone: "0912 345 678",
     status: "ACTIVE",
@@ -134,7 +298,443 @@ export const MOCK_STAFF: StaffAccount[] = [
     status: "ACTIVE",
     lastLogin: "10/09/2026 09:00",
   },
+  {
+    id: "STF-005",
+    fullName: "ĐD. Trịnh Thu Hằng, CNĐD",
+    email: "hang.trinh@smartclinic.vn",
+    role: "NURSE",
+    department: "Khối Chẩn đoán & Thăm dò chức năng",
+    roomNumber: "Trạm Điều dưỡng A (Tầng 1)",
+    phone: "0905 122 111",
+    status: "ACTIVE",
+    lastLogin: "10/09/2026 07:55",
+  },
+  {
+    id: "STF-006",
+    fullName: "ĐD. Trần Kim Oanh",
+    email: "oanh.tran@smartclinic.vn",
+    role: "NURSE",
+    department: "Quầy Tiếp đón & Phân luồng Cấp cứu",
+    roomNumber: "Quầy Điều phối Kiosk (Tầng Trệt)",
+    phone: "0905 122 116",
+    status: "ACTIVE",
+    lastLogin: "10/09/2026 08:05",
+  },
+  {
+    id: "STF-007",
+    fullName: "ĐD. Nguyễn Thảo Ly",
+    email: "ly.nguyen@smartclinic.vn",
+    role: "NURSE",
+    department: "Phòng Điều trị & Truyền thuốc trong ngày",
+    roomNumber: "Phòng Thủ thuật 3 (Tầng 2)",
+    phone: "0905 122 118",
+    status: "ACTIVE",
+    lastLogin: "10/09/2026 07:40",
+  },
 ];
+
+export function toISODate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+export function getWeekDates(anchor: Date = new Date()): string[] {
+  const monday = new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate());
+  const weekday = monday.getDay();
+  const diff = weekday === 0 ? -6 : 1 - weekday;
+  monday.setDate(monday.getDate() + diff);
+  return Array.from({ length: 7 }, (_, index) => {
+    const day = new Date(monday);
+    day.setDate(monday.getDate() + index);
+    return toISODate(day);
+  });
+}
+
+function buildMockDoctorShifts(): DoctorShift[] {
+  const week = getWeekDates();
+  const shifts: DoctorShift[] = [];
+  let sequence = 0;
+
+  function shift(weekday: number, seed: Omit<DoctorShift, "id" | "shiftDate">) {
+    sequence += 1;
+    shifts.push({
+      ...seed,
+      id: `DRSHIFT-${String(sequence).padStart(3, "0")}`,
+      shiftDate: week[weekday],
+    });
+  }
+
+  // --- DEP-ALL (Dị ứng & Miễn dịch lâm sàng) ---
+  // Thứ 2: Sáng đủ (1 Ngoại trú + 1 Nội trú), Chiều thiếu Nội trú
+  shift(0, {
+    doctorId: "D001",
+    doctorName: "PGS. TS. BS. Trần Minh Tuấn",
+    departmentId: "DEP-ALL",
+    departmentName: getDepartmentName("DEP-ALL"),
+    session: "MORNING",
+    dutyType: "OUTPATIENT",
+    maxPatientsPerSlot: 4,
+  });
+  shift(0, {
+    doctorId: "D009",
+    doctorName: "BS. Vũ Đức Minh",
+    departmentId: "DEP-ALL",
+    departmentName: getDepartmentName("DEP-ALL"),
+    session: "MORNING",
+    dutyType: "INPATIENT",
+    maxPatientsPerSlot: 3,
+  });
+  shift(0, {
+    doctorId: "D001",
+    doctorName: "PGS. TS. BS. Trần Minh Tuấn",
+    departmentId: "DEP-ALL",
+    departmentName: getDepartmentName("DEP-ALL"),
+    session: "AFTERNOON",
+    dutyType: "OUTPATIENT",
+    maxPatientsPerSlot: 4,
+  });
+  // Thứ 4: Sáng đủ, Chiều thiếu Ngoại trú
+  shift(2, {
+    doctorId: "D001",
+    doctorName: "PGS. TS. BS. Trần Minh Tuấn",
+    departmentId: "DEP-ALL",
+    departmentName: getDepartmentName("DEP-ALL"),
+    session: "MORNING",
+    dutyType: "OUTPATIENT",
+    maxPatientsPerSlot: 4,
+  });
+  shift(2, {
+    doctorId: "D009",
+    doctorName: "BS. Vũ Đức Minh",
+    departmentId: "DEP-ALL",
+    departmentName: getDepartmentName("DEP-ALL"),
+    session: "MORNING",
+    dutyType: "INPATIENT",
+    maxPatientsPerSlot: 3,
+  });
+  shift(2, {
+    doctorId: "D001",
+    doctorName: "PGS. TS. BS. Trần Minh Tuấn",
+    departmentId: "DEP-ALL",
+    departmentName: getDepartmentName("DEP-ALL"),
+    session: "AFTERNOON",
+    dutyType: "INPATIENT",
+    maxPatientsPerSlot: 3,
+  });
+  // Thứ 5 chiều: chỉ Nội trú
+  shift(3, {
+    doctorId: "D009",
+    doctorName: "BS. Vũ Đức Minh",
+    departmentId: "DEP-ALL",
+    departmentName: getDepartmentName("DEP-ALL"),
+    session: "AFTERNOON",
+    dutyType: "INPATIENT",
+    maxPatientsPerSlot: 3,
+  });
+  shift(4, {
+    doctorId: "D001",
+    doctorName: "PGS. TS. BS. Trần Minh Tuấn",
+    departmentId: "DEP-ALL",
+    departmentName: getDepartmentName("DEP-ALL"),
+    session: "MORNING",
+    dutyType: "OUTPATIENT",
+    maxPatientsPerSlot: 4,
+  });
+
+  // --- DEP-GIM (Nội Tổng quát) ---
+  // Thứ 2: Sáng 2 Ngoại trú + 1 Nội trú (capacity 8), Chiều đủ chuẩn
+  shift(0, {
+    doctorId: "D002",
+    doctorName: "BS. CKI. Nguyễn Văn Dũng",
+    departmentId: "DEP-GIM",
+    departmentName: getDepartmentName("DEP-GIM"),
+    session: "MORNING",
+    dutyType: "OUTPATIENT",
+    maxPatientsPerSlot: 4,
+  });
+  shift(0, {
+    doctorId: "D011",
+    doctorName: "BS. Lê Thị Ngọc",
+    departmentId: "DEP-GIM",
+    departmentName: getDepartmentName("DEP-GIM"),
+    session: "MORNING",
+    dutyType: "OUTPATIENT",
+    maxPatientsPerSlot: 4,
+  });
+  shift(0, {
+    doctorId: "D003",
+    doctorName: "ThS. BS. Phạm Thị Hoa",
+    departmentId: "DEP-GIM",
+    departmentName: getDepartmentName("DEP-GIM"),
+    session: "MORNING",
+    dutyType: "INPATIENT",
+    maxPatientsPerSlot: 3,
+  });
+  shift(0, {
+    doctorId: "D002",
+    doctorName: "BS. CKI. Nguyễn Văn Dũng",
+    departmentId: "DEP-GIM",
+    departmentName: getDepartmentName("DEP-GIM"),
+    session: "AFTERNOON",
+    dutyType: "OUTPATIENT",
+    maxPatientsPerSlot: 4,
+  });
+  shift(0, {
+    doctorId: "D003",
+    doctorName: "ThS. BS. Phạm Thị Hoa",
+    departmentId: "DEP-GIM",
+    departmentName: getDepartmentName("DEP-GIM"),
+    session: "AFTERNOON",
+    dutyType: "INPATIENT",
+    maxPatientsPerSlot: 3,
+  });
+  // Thứ 3: Sáng + Chiều đều đủ chuẩn
+  shift(1, {
+    doctorId: "D002",
+    doctorName: "BS. CKI. Nguyễn Văn Dũng",
+    departmentId: "DEP-GIM",
+    departmentName: getDepartmentName("DEP-GIM"),
+    session: "MORNING",
+    dutyType: "OUTPATIENT",
+    maxPatientsPerSlot: 4,
+  });
+  shift(1, {
+    doctorId: "D003",
+    doctorName: "ThS. BS. Phạm Thị Hoa",
+    departmentId: "DEP-GIM",
+    departmentName: getDepartmentName("DEP-GIM"),
+    session: "MORNING",
+    dutyType: "INPATIENT",
+    maxPatientsPerSlot: 3,
+  });
+  shift(1, {
+    doctorId: "D002",
+    doctorName: "BS. CKI. Nguyễn Văn Dũng",
+    departmentId: "DEP-GIM",
+    departmentName: getDepartmentName("DEP-GIM"),
+    session: "AFTERNOON",
+    dutyType: "OUTPATIENT",
+    maxPatientsPerSlot: 4,
+  });
+  shift(1, {
+    doctorId: "D003",
+    doctorName: "ThS. BS. Phạm Thị Hoa",
+    departmentId: "DEP-GIM",
+    departmentName: getDepartmentName("DEP-GIM"),
+    session: "AFTERNOON",
+    dutyType: "INPATIENT",
+    maxPatientsPerSlot: 3,
+  });
+  // Thứ 4 chiều: chỉ Ngoại trú -> không đủ điều kiện
+  shift(2, {
+    doctorId: "D002",
+    doctorName: "BS. CKI. Nguyễn Văn Dũng",
+    departmentId: "DEP-GIM",
+    departmentName: getDepartmentName("DEP-GIM"),
+    session: "AFTERNOON",
+    dutyType: "OUTPATIENT",
+    maxPatientsPerSlot: 4,
+  });
+  // Thứ 5 + Thứ 6: Sáng đủ chuẩn
+  shift(3, {
+    doctorId: "D002",
+    doctorName: "BS. CKI. Nguyễn Văn Dũng",
+    departmentId: "DEP-GIM",
+    departmentName: getDepartmentName("DEP-GIM"),
+    session: "MORNING",
+    dutyType: "OUTPATIENT",
+    maxPatientsPerSlot: 4,
+  });
+  shift(3, {
+    doctorId: "D003",
+    doctorName: "ThS. BS. Phạm Thị Hoa",
+    departmentId: "DEP-GIM",
+    departmentName: getDepartmentName("DEP-GIM"),
+    session: "MORNING",
+    dutyType: "INPATIENT",
+    maxPatientsPerSlot: 3,
+  });
+  shift(4, {
+    doctorId: "D002",
+    doctorName: "BS. CKI. Nguyễn Văn Dũng",
+    departmentId: "DEP-GIM",
+    departmentName: getDepartmentName("DEP-GIM"),
+    session: "MORNING",
+    dutyType: "OUTPATIENT",
+    maxPatientsPerSlot: 4,
+  });
+  shift(4, {
+    doctorId: "D003",
+    doctorName: "ThS. BS. Phạm Thị Hoa",
+    departmentId: "DEP-GIM",
+    departmentName: getDepartmentName("DEP-GIM"),
+    session: "MORNING",
+    dutyType: "INPATIENT",
+    maxPatientsPerSlot: 3,
+  });
+
+  // --- DEP-CARD (Tim mạch) ---
+  // Thứ 2: Sáng đủ, Chiều thiếu Nội trú
+  shift(0, {
+    doctorId: "D004",
+    doctorName: "BS. CKI. Lê Văn Bảo",
+    departmentId: "DEP-CARD",
+    departmentName: getDepartmentName("DEP-CARD"),
+    session: "MORNING",
+    dutyType: "OUTPATIENT",
+    maxPatientsPerSlot: 4,
+  });
+  shift(0, {
+    doctorId: "D005",
+    doctorName: "BS. Nguyễn Thanh Hà",
+    departmentId: "DEP-CARD",
+    departmentName: getDepartmentName("DEP-CARD"),
+    session: "MORNING",
+    dutyType: "INPATIENT",
+    maxPatientsPerSlot: 3,
+  });
+  shift(0, {
+    doctorId: "D004",
+    doctorName: "BS. CKI. Lê Văn Bảo",
+    departmentId: "DEP-CARD",
+    departmentName: getDepartmentName("DEP-CARD"),
+    session: "AFTERNOON",
+    dutyType: "OUTPATIENT",
+    maxPatientsPerSlot: 4,
+  });
+  // Thứ 5: Sáng đủ, Chiều thiếu Nội trú
+  shift(3, {
+    doctorId: "D004",
+    doctorName: "BS. CKI. Lê Văn Bảo",
+    departmentId: "DEP-CARD",
+    departmentName: getDepartmentName("DEP-CARD"),
+    session: "MORNING",
+    dutyType: "OUTPATIENT",
+    maxPatientsPerSlot: 4,
+  });
+  shift(3, {
+    doctorId: "D005",
+    doctorName: "BS. Nguyễn Thanh Hà",
+    departmentId: "DEP-CARD",
+    departmentName: getDepartmentName("DEP-CARD"),
+    session: "MORNING",
+    dutyType: "INPATIENT",
+    maxPatientsPerSlot: 3,
+  });
+  shift(3, {
+    doctorId: "D004",
+    doctorName: "BS. CKI. Lê Văn Bảo",
+    departmentId: "DEP-CARD",
+    departmentName: getDepartmentName("DEP-CARD"),
+    session: "AFTERNOON",
+    dutyType: "OUTPATIENT",
+    maxPatientsPerSlot: 4,
+  });
+
+  // --- DEP-PED (Nhi) ---
+  // Thứ 2: Sáng đủ, Chiều trống
+  shift(0, {
+    doctorId: "D006",
+    doctorName: "BS. CKI. Trần Quốc Khánh",
+    departmentId: "DEP-PED",
+    departmentName: getDepartmentName("DEP-PED"),
+    session: "MORNING",
+    dutyType: "OUTPATIENT",
+    maxPatientsPerSlot: 4,
+  });
+  shift(0, {
+    doctorId: "D007",
+    doctorName: "ThS. BS. Đỗ Thu Vân",
+    departmentId: "DEP-PED",
+    departmentName: getDepartmentName("DEP-PED"),
+    session: "MORNING",
+    dutyType: "INPATIENT",
+    maxPatientsPerSlot: 3,
+  });
+  // Thứ 3: Sáng đủ, Chiều chỉ Nội trú
+  shift(1, {
+    doctorId: "D006",
+    doctorName: "BS. CKI. Trần Quốc Khánh",
+    departmentId: "DEP-PED",
+    departmentName: getDepartmentName("DEP-PED"),
+    session: "MORNING",
+    dutyType: "OUTPATIENT",
+    maxPatientsPerSlot: 4,
+  });
+  shift(1, {
+    doctorId: "D007",
+    doctorName: "ThS. BS. Đỗ Thu Vân",
+    departmentId: "DEP-PED",
+    departmentName: getDepartmentName("DEP-PED"),
+    session: "MORNING",
+    dutyType: "INPATIENT",
+    maxPatientsPerSlot: 3,
+  });
+  shift(1, {
+    doctorId: "D007",
+    doctorName: "ThS. BS. Đỗ Thu Vân",
+    departmentId: "DEP-PED",
+    departmentName: getDepartmentName("DEP-PED"),
+    session: "AFTERNOON",
+    dutyType: "INPATIENT",
+    maxPatientsPerSlot: 3,
+  });
+
+  // --- DEP-ENT (Tai Mũi Họng) ---
+  // Thứ 2: Sáng chỉ Ngoại trú, Chiều chỉ Nội trú -> cả hai không đạt
+  shift(0, {
+    doctorId: "D008",
+    doctorName: "BS. CKI. Hoàng Kim Ngân",
+    departmentId: "DEP-ENT",
+    departmentName: getDepartmentName("DEP-ENT"),
+    session: "MORNING",
+    dutyType: "OUTPATIENT",
+    maxPatientsPerSlot: 4,
+  });
+  shift(0, {
+    doctorId: "D008",
+    doctorName: "BS. CKI. Hoàng Kim Ngân",
+    departmentId: "DEP-ENT",
+    departmentName: getDepartmentName("DEP-ENT"),
+    session: "AFTERNOON",
+    dutyType: "INPATIENT",
+    maxPatientsPerSlot: 3,
+  });
+  shift(0, {
+    doctorId: "D010",
+    doctorName: "BS. CKI. Ngô Bá Khôi",
+    departmentId: "DEP-ENT",
+    departmentName: getDepartmentName("DEP-ENT"),
+    session: "AFTERNOON",
+    dutyType: "INPATIENT",
+    maxPatientsPerSlot: 3,
+  });
+  // Thứ 6: Sáng đủ chuẩn
+  shift(4, {
+    doctorId: "D008",
+    doctorName: "BS. CKI. Hoàng Kim Ngân",
+    departmentId: "DEP-ENT",
+    departmentName: getDepartmentName("DEP-ENT"),
+    session: "MORNING",
+    dutyType: "OUTPATIENT",
+    maxPatientsPerSlot: 4,
+  });
+  shift(4, {
+    doctorId: "D010",
+    doctorName: "BS. CKI. Ngô Bá Khôi",
+    departmentId: "DEP-ENT",
+    departmentName: getDepartmentName("DEP-ENT"),
+    session: "MORNING",
+    dutyType: "INPATIENT",
+    maxPatientsPerSlot: 3,
+  });
+
+  return shifts;
+}
+
+export const MOCK_DOCTOR_SHIFTS: DoctorShift[] = buildMockDoctorShifts();
 
 export const MOCK_KNOWLEDGE_BASE: KnowledgeDocument[] = [
   {
@@ -333,11 +933,130 @@ export const CATEGORY_LABELS: Record<KnowledgeDocument["category"], string> = {
 export const ROLE_LABELS: Record<StaffAccount["role"], string> = {
   DOCTOR: "Bác sĩ",
   PHARMACIST: "Dược sĩ",
+  NURSE: "Điều dưỡng",
   ADMIN: "Quản trị viên",
 };
+
+export const SHIFT_SESSION_LABELS: Record<ShiftSession, string> = {
+  MORNING: "Sáng (07:30 - 11:30)",
+  AFTERNOON: "Chiều (13:00 - 17:00)",
+};
+
+export const SHIFT_SESSION_SHORT_LABELS: Record<ShiftSession, string> = {
+  MORNING: "Sáng",
+  AFTERNOON: "Chiều",
+};
+
+export const DUTY_TYPE_LABELS: Record<DutyType, string> = {
+  OUTPATIENT: "Ngoại trú",
+  INPATIENT: "Nội trú",
+};
+
+export const DOCTOR_TITLE_OPTIONS = ["PGS.TS", "BS.CKI", "ThS.BS", "BS"] as const;
 
 export const DOC_TYPE_LABELS: Record<OcrAuditLog["documentType"], string> = {
   BHYT_CARD: "Thẻ BHYT",
   OLD_PRESCRIPTION: "Đơn thuốc cũ",
   CCCD: "CCCD",
 };
+
+export const MAX_PATIENTS_PER_SLOT = 4;
+
+export interface SlotDefinition {
+  startTime: string;
+  endTime: string;
+}
+
+export const MORNING_SLOTS: SlotDefinition[] = [
+  { startTime: "07:30", endTime: "08:30" },
+  { startTime: "08:30", endTime: "09:30" },
+  { startTime: "09:30", endTime: "10:30" },
+  { startTime: "10:30", endTime: "11:30" },
+];
+
+export const AFTERNOON_SLOTS: SlotDefinition[] = [
+  { startTime: "13:00", endTime: "14:00" },
+  { startTime: "14:00", endTime: "15:00" },
+  { startTime: "15:00", endTime: "16:00" },
+  { startTime: "16:00", endTime: "17:00" },
+];
+
+function seededInt(seed: string, max: number): number {
+  let hash = 2166136261;
+  for (let i = 0; i < seed.length; i += 1) {
+    hash ^= seed.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return Math.abs(hash) % (max + 1);
+}
+
+function distributePatientLoad(
+  doctors: Doctor[],
+  bookedCount: number,
+  seed: string,
+): DoctorSlotLoad[] {
+  const loads: DoctorSlotLoad[] = doctors.map((doctor) => ({
+    doctorId: doctor.id,
+    doctorName: doctor.fullName,
+    title: doctor.title,
+    roomNumber: doctor.roomNumber,
+    currentPatients: 0,
+  }));
+  if (loads.length === 0 || bookedCount === 0) {
+    return loads;
+  }
+  let index = seededInt(seed, Math.max(loads.length - 1, 0)) % loads.length;
+  let remaining = bookedCount;
+  while (remaining > 0) {
+    loads[index % loads.length].currentPatients += 1;
+    index += 1;
+    remaining -= 1;
+  }
+  return loads;
+}
+
+export function buildTimeSlots(
+  shiftDate: string,
+  departmentId: string,
+  shifts: DoctorShift[],
+): TimeSlot[] {
+  const slots: TimeSlot[] = [];
+
+  function buildForSession(session: ShiftSession) {
+    const slotDefinitions =
+      session === "MORNING" ? MORNING_SLOTS : AFTERNOON_SLOTS;
+    const outpatientDoctors = shifts
+      .filter(
+        (s) =>
+          s.shiftDate === shiftDate &&
+          s.departmentId === departmentId &&
+          s.session === session &&
+          s.dutyType === "OUTPATIENT",
+      )
+      .map((s) => MOCK_DOCTORS.find((d) => d.id === s.doctorId))
+      .filter((d): d is Doctor => Boolean(d));
+    const totalCapacity =
+      outpatientDoctors.length * MAX_PATIENTS_PER_SLOT;
+
+    for (const definition of slotDefinitions) {
+      const seed = `${shiftDate}::${departmentId}::${session}::${definition.startTime}`;
+      const bookedCount =
+        totalCapacity === 0 ? 0 : seededInt(seed, totalCapacity);
+      slots.push({
+        startTime: definition.startTime,
+        endTime: definition.endTime,
+        session,
+        totalCapacity,
+        bookedCount,
+        availableCapacity: totalCapacity - bookedCount,
+        isAvailable: bookedCount < totalCapacity,
+        doctors: distributePatientLoad(outpatientDoctors, bookedCount, seed),
+      });
+    }
+  }
+
+  buildForSession("MORNING");
+  buildForSession("AFTERNOON");
+
+  return slots;
+}

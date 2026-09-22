@@ -2,6 +2,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { X, UserPlus } from "lucide-react";
 import type { StaffAccount } from "../../data/adminMockData";
+import { DOCTOR_TITLE_OPTIONS, MOCK_DEPARTMENTS } from "../../data/adminMockData";
 
 interface CreateUserModalProps {
   onClose: () => void;
@@ -11,6 +12,7 @@ interface CreateUserModalProps {
 const ROLE_OPTIONS = [
   { value: "DOCTOR", label: "Bác sĩ (DOCTOR)" },
   { value: "PHARMACIST", label: "Dược sĩ (PHARMACIST)" },
+  { value: "NURSE", label: "Điều dưỡng (NURSE)" },
   { value: "ADMIN", label: "Quản trị viên (ADMIN)" },
 ] as const;
 
@@ -19,15 +21,32 @@ export default function CreateUserModal({ onClose, onCreate }: CreateUserModalPr
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [role, setRole] = useState<StaffAccount["role"]>("DOCTOR");
-  const [department, setDepartment] = useState("");
+  const [departmentId, setDepartmentId] = useState(MOCK_DEPARTMENTS[0]?.id ?? "");
+  const [departmentText, setDepartmentText] = useState("");
+  const [title, setTitle] = useState<typeof DOCTOR_TITLE_OPTIONS[number]>("BS.CKI");
   const [roomNumber, setRoomNumber] = useState("");
+
+  const isDoctor = role === "DOCTOR";
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!fullName.trim() || !email.trim() || !department.trim()) {
-      toast.error("Vui lòng điền đầy đủ Họ tên, Email và Khoa / Phòng ban.");
+    if (!fullName.trim() || !email.trim()) {
+      toast.error("Vui lòng điền đầy đủ Họ tên và Email công việc.");
       return;
     }
+
+    if (isDoctor) {
+      if (!departmentId) {
+        toast.error("Vui lòng chọn Khoa điều trị cho Bác sĩ.");
+        return;
+      }
+      if (!roomNumber.trim()) {
+        toast.error("Bắt buộc nhập Phòng khám đối với tài khoản Bác sĩ.");
+        return;
+      }
+    }
+
+    const selectedDepartment = MOCK_DEPARTMENTS.find((d) => d.id === departmentId);
 
     const newStaff: StaffAccount = {
       id: `STF-${Date.now().toString().slice(-6)}`,
@@ -35,11 +54,20 @@ export default function CreateUserModal({ onClose, onCreate }: CreateUserModalPr
       email: email.trim(),
       phone: phone.trim() || "Chưa cập nhật",
       role,
-      department: department.trim(),
-      roomNumber: roomNumber.trim() || undefined,
+      department: isDoctor
+        ? selectedDepartment?.name ?? departmentText.trim()
+        : departmentText.trim(),
+      departmentId: isDoctor ? selectedDepartment?.id : undefined,
+      title: isDoctor ? title : undefined,
+      roomNumber: isDoctor ? roomNumber.trim() : undefined,
       status: "ACTIVE",
       lastLogin: "Chưa đăng nhập",
     };
+
+    if (!newStaff.department) {
+      toast.error("Vui lòng điền Khoa / Phòng ban.");
+      return;
+    }
 
     onCreate(newStaff);
     toast.success(
@@ -136,21 +164,61 @@ export default function CreateUserModal({ onClose, onCreate }: CreateUserModalPr
           </div>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {isDoctor ? (
+              <>
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-slate-700">
+                    Khoa điều trị *
+                  </label>
+                  <select
+                    value={departmentId}
+                    onChange={(e) => setDepartmentId(e.target.value)}
+                    className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-300"
+                  >
+                    {MOCK_DEPARTMENTS.map((dept) => (
+                      <option key={dept.id} value={dept.id}>
+                        {dept.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-slate-700">
+                    Học hàm / Học vị *
+                  </label>
+                  <select
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value as typeof DOCTOR_TITLE_OPTIONS[number])}
+                    className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-300"
+                  >
+                    {DOCTOR_TITLE_OPTIONS.map((opt) => (
+                      <option key={opt} value={opt}>
+                        {opt}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </>
+            ) : (
+              <div className="sm:col-span-2">
+                <label className="mb-1 block text-xs font-semibold text-slate-700">
+                  Khoa / Phòng ban *
+                </label>
+                <input
+                  type="text"
+                  value={departmentText}
+                  onChange={(e) => setDepartmentText(e.target.value)}
+                  placeholder="VD: Quầy Dược Lâm Sàng #1"
+                  className="h-10 w-full rounded-lg border border-slate-200 px-3 text-sm text-slate-800 placeholder-slate-400 focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-300"
+                />
+              </div>
+            )}
+          </div>
+
+          {isDoctor && (
             <div>
               <label className="mb-1 block text-xs font-semibold text-slate-700">
-                Khoa / Phòng ban *
-              </label>
-              <input
-                type="text"
-                value={department}
-                onChange={(e) => setDepartment(e.target.value)}
-                placeholder="VD: Khoa Nội Tổng quát"
-                className="h-10 w-full rounded-lg border border-slate-200 px-3 text-sm text-slate-800 placeholder-slate-400 focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-300"
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-semibold text-slate-700">
-                Phòng (nếu là Bác sĩ)
+                Phòng khám *
               </label>
               <input
                 type="text"
@@ -159,8 +227,12 @@ export default function CreateUserModal({ onClose, onCreate }: CreateUserModalPr
                 placeholder="VD: Phòng 104"
                 className="h-10 w-full rounded-lg border border-slate-200 px-3 text-sm text-slate-800 placeholder-slate-400 focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-300"
               />
+              <p className="mt-1 text-[11px] text-slate-400">
+                Bắt buộc đối với Bác sĩ - phòng khám được gán cho bác sĩ khi phân ca
+                Ngoại trú.
+              </p>
             </div>
-          </div>
+          )}
 
           <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
             <button
