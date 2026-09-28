@@ -26,6 +26,14 @@ export const ROLE_THEMES: Record<UserRole, RoleTheme> = {
     badge: "bg-teal-100 text-teal-800 border-teal-200",
     portalLabel: "Bác sĩ (EHR)",
   },
+  RECEPTIONIST: {
+    heroBg: "bg-clinical-700",
+    chipActive: "bg-clinical-600 text-white shadow-sm border-transparent",
+    button: "bg-clinical-600 hover:bg-clinical-700",
+    focusClasses: "focus:ring-clinical-500/20 focus:border-clinical-600",
+    badge: "bg-clinical-100 text-clinical-800 border-clinical-200",
+    portalLabel: "Quầy Tiếp Đón",
+  },
   PHARMACIST: {
     heroBg: "bg-emerald-700",
     chipActive: "bg-emerald-600 text-white shadow-sm border-transparent",

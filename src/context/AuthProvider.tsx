@@ -38,9 +38,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           ? "Nguyễn Văn An"
           : role === "DOCTOR"
             ? "PGS. TS. BS. Trần Minh Tuấn"
-            : role === "PHARMACIST"
-              ? "DS. Đặng Thu Thảo"
-              : "Quản trị viên Hệ thống",
+            : role === "RECEPTIONIST"
+              ? "Nguyễn Thị Hồng Nhung"
+              : role === "PHARMACIST"
+                ? "DS. Đặng Thu Thảo"
+                : "Quản trị viên Hệ thống",
         role,
         token: `mock_jwt_${role.toLowerCase()}_${Date.now()}`,
       };

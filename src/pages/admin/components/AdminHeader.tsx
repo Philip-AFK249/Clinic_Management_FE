@@ -1,5 +1,6 @@
 import { Bell, LogOut, ShieldCheck } from "lucide-react";
 import { useAuth } from "../../../context/useAuth";
+import PortalSwitcher from "../../../components/PortalSwitcher";
 import type { SystemMetrics } from "../data/adminMockData";
 
 interface AdminHeaderProps {
@@ -42,6 +43,7 @@ export default function AdminHeader({ metrics }: AdminHeaderProps) {
       </div>
 
       <div className="flex items-center gap-3">
+        <PortalSwitcher />
         <button
           type="button"
           className="relative flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700"

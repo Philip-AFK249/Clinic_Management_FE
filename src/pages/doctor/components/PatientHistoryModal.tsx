@@ -37,7 +37,8 @@ export default function PatientHistoryModal({
               {patient.name}
             </p>
             <p className="text-xs text-slate-500">
-              {patient.patientId} &middot; {patient.age} tuổi
+              {patient.patientId}
+              {patient.age > 0 && ` · ${patient.age} tuổi`}
             </p>
           </div>
           <button
@@ -57,6 +58,11 @@ export default function PatientHistoryModal({
               Lịch sử khám bệnh ({patient.pastEncounters.length})
             </h3>
             <div className="mt-2 space-y-2">
+              {patient.pastEncounters.length === 0 && (
+                <p className="text-xs text-slate-400">
+                  Chưa có lần khám trước nào trong hồ sơ này.
+                </p>
+              )}
               {patient.pastEncounters.map((encounter) => (
                 <article
                   key={encounter.id}

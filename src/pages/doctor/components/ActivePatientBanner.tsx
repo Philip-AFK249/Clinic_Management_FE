@@ -33,7 +33,8 @@ export default function ActivePatientBanner({
         <div className="flex items-baseline gap-2">
           <h2 className="text-base font-bold text-slate-900">{patient.name}</h2>
           <span className="text-xs font-medium text-slate-500">
-            {patient.age} tuổi, {patient.gender}
+            {patient.age > 0 ? `${patient.age} tuổi` : "Chưa rõ tuổi"},{" "}
+            {patient.gender}
           </span>
           <span className="text-xs font-semibold text-teal-700">
             Số phiếu: {patient.ticketNumber}
@@ -68,6 +69,10 @@ export default function ActivePatientBanner({
             patient.allergies.map((allergy) => (
               <AllergyBadge key={allergy.name} allergy={allergy} />
             ))
+          ) : patient.allergiesKnown === false ? (
+            <span className="text-xs font-medium text-amber-700">
+              Chưa có dữ liệu dị ứng trong hồ sơ - cần khai hỏi bệnh nhân
+            </span>
           ) : (
             <span className="text-xs text-slate-400">Không có tiền sử dị ứng</span>
           )}
@@ -76,10 +81,18 @@ export default function ActivePatientBanner({
 
       {/* Vitals */}
       <div className="col-span-4 flex items-center gap-5 border-x border-slate-200/80 px-4">
-        <Vital label="Huyết áp" value={patient.vitals.bp} unit="mmHg" />
-        <Vital label="Mạch" value={String(patient.vitals.hr)} unit="ck/p" />
-        <Vital label="Nhiệt độ" value={patient.vitals.temp} unit="" />
-        <Vital label="SpO2" value={String(patient.vitals.spo2)} unit="%" />
+        {patient.vitalsRecorded === false ? (
+          <span className="text-xs text-slate-400">
+            Chưa đo sinh hiệu tại phòng tiếp đón
+          </span>
+        ) : (
+          <>
+            <Vital label="Huyết áp" value={patient.vitals.bp} unit="mmHg" />
+            <Vital label="Mạch" value={String(patient.vitals.hr)} unit="ck/p" />
+            <Vital label="Nhiệt độ" value={patient.vitals.temp} unit="" />
+            <Vital label="SpO2" value={String(patient.vitals.spo2)} unit="%" />
+          </>
+        )}
       </div>
 
       {/* Chief complaint + history trigger */}

@@ -1,6 +1,10 @@
 export type TriageLevel = "P1" | "P2" | "P3";
-export type BookingSource = "Kiosk QR" | "Ứng dụng Bệnh nhân";
-export type Gender = "Nam" | "Nữ";
+export type BookingSource =
+  | "Kiosk QR"
+  | "Kiosk OCR"
+  | "Quầy tiếp đón"
+  | "Ứng dụng Bệnh nhân";
+export type Gender = "Nam" | "Nữ" | "Khác";
 export type BhyCoverage = "BHYT 80%" | "BHYT 100%" | "Tự túc";
 
 export interface Allergy {
@@ -59,7 +63,15 @@ export interface PatientRecord {
   priorityScore: number;
   disclaimerAccepted: boolean;
   allergies: Allergy[];
+  /**
+   * Set to false when the source genuinely has no allergy data, so the UI can
+   * say "unknown" rather than implying the patient has no known allergies.
+   * Omitted by the seeded mock records, which are treated as complete.
+   */
+  allergiesKnown?: boolean;
   vitals: Vitals;
+  /** Same idea as `allergiesKnown`, for not-yet-measured vitals. */
+  vitalsRecorded?: boolean;
   pastEncounters: PastEncounter[];
   labReports: LabReport[];
   scannedOldPrescriptions: ScannedPrescription[];

@@ -1,4 +1,4 @@
-export type UserRole = "PATIENT" | "DOCTOR" | "PHARMACIST" | "ADMIN";
+export type UserRole = "PATIENT" | "DOCTOR" | "RECEPTIONIST" | "PHARMACIST" | "ADMIN";
 
 export type Gender = "MALE" | "FEMALE" | "OTHER";
 
@@ -50,6 +50,13 @@ export const DEMO_ACCOUNTS: DemoAccount[] = [
     email: "doctor.tran@clinic.vn",
     password: "Demo@1234",
     redirectPath: "/doctor/ehr",
+  },
+  {
+    label: "Tiếp đón viên",
+    role: "RECEPTIONIST",
+    email: "reception@clinic.vn",
+    password: "Demo@1234",
+    redirectPath: "/reception",
   },
   {
     label: "Dược sĩ",

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { RotateCcw, Volume2, X } from "lucide-react";
+import PortalSwitcher from "../../../components/PortalSwitcher";
 
 interface KioskHeaderProps {
   onReset: () => void;
@@ -77,7 +78,8 @@ export default function KioskHeader({ onReset }: KioskHeaderProps) {
 
         {/* Actions */}
         <div className="flex items-center gap-3">
-          <span className="inline-flex items-center gap-2 rounded-full border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-bold text-red-700 animate-pulse">
+          <PortalSwitcher />
+          <span className="hidden items-center gap-2 rounded-full border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-bold text-red-700 animate-pulse xl:inline-flex">
             🚨 Cấp Cứu Khẩn Cấp: Gọi 115 hoặc Bấm Chuông Quầy
           </span>
           <button

@@ -68,8 +68,12 @@ export default function DoctorEHRPage() {
         <PatientQueueDrawer
           queue={queue.queue}
           activePatient={queue.activePatient}
-          onCallNext={queue.callNext}
-          onSkip={queue.skipPatient}
+          source={queue.source}
+          isRefreshing={queue.isRefreshing}
+          isCalling={queue.isCalling}
+          onCallNext={() => void queue.callNext()}
+          onSkip={(ticketNumber) => void queue.skipPatient(ticketNumber)}
+          onRefresh={queue.refresh}
         />
 
         {/* Main workspace */}
@@ -159,11 +163,14 @@ export default function DoctorEHRPage() {
               </span>
               <div>
                 <p className="text-base font-bold text-slate-900">
-                  Hàng đợi đã sẵn sàng cho bệnh nhân kế tiếp
+                  {queue.source === "live"
+                    ? "Hàng đợi đã sẵn sàng cho bệnh nhân kế tiếp"
+                    : "Chưa có bệnh nhân nào trong hàng đợi"}
                 </p>
                 <p className="mt-1 text-sm text-slate-500">
-                  Nhấn "Gọi Bệnh Nhân Tiếp Theo" trong khung hàng đợi để bắt
-                  đầu ca khám.
+                  {queue.source === "live"
+                    ? 'Nhấn "Gọi Bệnh Nhân Tiếp Theo" trong khung hàng đợi để bắt đầu ca khám.'
+                    : "Hãy cấp số cho bệnh nhân tại Quầy Tiếp Đón hoặc tại Kiosk. Phiếu sẽ xuất hiện tại đây trong vòng 8 giây."}
                 </p>
               </div>
             </div>
