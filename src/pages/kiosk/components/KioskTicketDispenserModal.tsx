@@ -146,7 +146,7 @@ export default function KioskTicketDispenserModal({
                 <ThermalBarcode value={ticket?.ticketNumber ?? ""} height={28} />
               </div>
               <div className="mt-2 flex justify-center">
-                <QRCodeSVG value={qrPayload} size={88} level="M" fgColor="#0F172A" />
+                <QRCodeSVG value={qrPayload} size={88} level="M" fgColor="#000000" />
               </div>
             </div>
           </div>

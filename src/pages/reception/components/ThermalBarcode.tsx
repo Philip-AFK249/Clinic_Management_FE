@@ -126,7 +126,9 @@ export default function ThermalBarcode({
       style={{ height }}
     >
       <rect x="0" y="0" width={viewBoxWidth} height="10" fill="#ffffff" />
-      <g transform={`translate(${QUIET_ZONE_UNITS}, 0)`} fill="#0f172a">
+      {/* Pure black: thermal heads are monochrome, so anything lighter than
+          #000000 risks a scanner missing a 2-unit bar. */}
+      <g transform={`translate(${QUIET_ZONE_UNITS}, 0)`} fill="#000000">
         {spaces.map((segment) => (
           <rect
             key={`s-${segment.x}`}

@@ -119,7 +119,7 @@ export default function TicketPrintModal({
                 {ticket.ticketNumber}
               </p>
               <div className="mt-3 flex justify-center">
-                <QRCodeSVG value={qrPayload} size={104} level="M" fgColor="#0F172A" />
+                <QRCodeSVG value={qrPayload} size={104} level="M" fgColor="#000000" />
               </div>
               <p className="mt-1.5 text-center text-[9px] leading-relaxed text-slate-500">
                 Quét mã QR tại cổng soát vé để lấy số thứ tự hoặc kiểm tra

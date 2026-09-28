@@ -68,8 +68,9 @@
 --------------------------------------------------------------------------- */
 @media print {
   @page {
+    /* Standard 80mm POS receipt roll, no browser header/footer band. */
+    size: 80mm auto;
     margin: 0;
-    size: auto;
   }
 
   body:has([data-print-portal]),
@@ -83,9 +84,14 @@
     display: none !important;
   }
 
-  /* 80mm receipt paper. `size: auto` lets the driver pick the roll width. */
+  /*
+   * The 80mm receipt itself. `box-sizing: border-box` is set globally in
+   * index.css, so the padding stays inside the 80mm page box instead of
+   * overflowing the printable width and forcing a second sheet.
+   */
   [data-print-ticket] {
     display: block !important;
+    box-sizing: border-box !important;
     max-width: 80mm !important;
     width: 100% !important;
     margin: 0 auto !important;
@@ -113,10 +119,14 @@
     text-shadow: none !important;
   }
 
-  /* Barcodes and QR codes must stay crisp and un-inverted for the scanner. */
-  [data-print-ticket] svg,
-  [data-print-ticket] svg * {
-    color: #000000 !important;
+  /*
+   * Machine-readable codes must stay scannable: the bars and modules are
+   * already drawn with a black fill attribute (never a CSS background, which
+   * the rule above would have flattened), and crispEdges stops the rasteriser
+   * from blurring 2-unit-wide Code 39 bars at the printer's low DPI.
+   */
+  [data-print-ticket] svg {
     filter: none !important;
+    shape-rendering: crispEdges;
   }
 }

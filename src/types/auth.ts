@@ -10,6 +10,12 @@ export interface User {
   token?: string;
   phone?: string;
   avatarUrl?: string;
+  /**
+   * `doctors.id` in DoctorScheduleService. Only set for DOCTOR accounts; the
+   * doctor portal scopes every queue request by it, so it must come from the
+   * auth backend rather than being inferred from the email at render time.
+   */
+  doctorId?: number;
 }
 
 export interface LoginCredentials {
@@ -47,7 +53,14 @@ export const DEMO_ACCOUNTS: DemoAccount[] = [
   {
     label: "Bác sĩ",
     role: "DOCTOR",
-    email: "doctor.tran@clinic.vn",
+    email: "yen.le@smartclinic.vn",
+    password: "Demo@1234",
+    redirectPath: "/doctor/ehr",
+  },
+  {
+    label: "Bác sĩ (Nội - Tim mạch)",
+    role: "DOCTOR",
+    email: "tuan.tran@smartclinic.vn",
     password: "Demo@1234",
     redirectPath: "/doctor/ehr",
   },

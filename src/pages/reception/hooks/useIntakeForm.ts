@@ -32,25 +32,28 @@ export type IntakeErrors = Partial<Record<IntakeField, string>>;
 // ---------------------------------------------------------------------------
 
 /** CCCD (căn cước công dân gắn chip): exactly 12 digits, no separators. */
-const CCCD_PATTERN = /^[0-9]{12}$/;
+const CCCD_PATTERN = /^\d{12}$/;
 
 /**
- * Thẻ BHYT: 15 characters = 2 letters (mã tỉnh/thành phố) + 1 digit (mã tỉnh)
- * + 2 digits (mã quận/huyện) + 2 digits (mã cơ sở KCB) + 8 digits (mã số).
- * The card prints the groups separated by spaces, so spaces are stripped before
- * matching; anything else (dashes, dots, lowercase) is rejected.
+ * Thẻ BHYT, 15 characters in the printed order:
+ *   2 letters      - mã tỉnh / thành phố (e.g. "DN")
+ *   1 digit [1-5]  - mã tuyến (insurance tier: khám chữa bệnh in-depth)
+ *   2 digits 01-99 - mã tỉnh / thành phố issuing the card
+ *   10 digits      - mã số của người tham gia bảo hiểm
+ * The card prints these groups separated by spaces or dashes, so both are
+ * stripped before matching.
  */
-const BHYT_PATTERN = /^[A-Z]{2}[0-9]{13}$/;
+const BHYT_PATTERN = /^[A-Z]{2}[1-5](0[1-9]|[1-9][0-9])\d{10}$/;
 
 /** Mobile numbers only: 10 digits starting 03 / 05 / 07 / 08 / 09. */
-const PHONE_PATTERN = /^0[35789][0-9]{8}$/;
+const PHONE_PATTERN = /^(03|05|07|08|09)\d{8}$/;
 
 /**
- * Vietnamese names: Latin + the precomposed Vietnamese block (U+1EA0-U+1EF9,
- * which falls inside À-ỹ), spaces, and the punctuation that legitimately appears
- * in a registered name (dot, hyphen, apostrophe).
+ * Vietnamese names: any Unicode letter or combining mark (so precomposed
+ * U+1EA0-U+1EF9 and NFD input both pass) plus the separators and punctuation a
+ * registered name may legitimately carry: space, dot, hyphen, apostrophe.
  */
-const ILLEGAL_NAME_CHARS = /[^A-Za-zÀ-ỹ\s.'’-]/;
+const ILLEGAL_NAME_CHARS = /[^\p{L}\p{M}\s.'’-]/u;
 const MIN_NAME_WORDS = 2;
 const MIN_COMPLAINT_LENGTH = 10;
 
@@ -58,9 +61,12 @@ function today(): string {
   return toIsoDate(new Date());
 }
 
-/** Compact form of a BHYT card number: "DN 4 79 79 12345678" -> "DN4797912345678". */
+/**
+ * Compact form of a BHYT card number, which the backend stores and matches on:
+ * "DN 4 79 79 12345678" / "DN-4-79-79-12345678" -> "DN4797912345678".
+ */
 export function normalizeInsuranceCode(value: string): string {
-  return value.replace(/\s+/g, "").toUpperCase();
+  return value.replace(/[\s-]+/g, "").toUpperCase();
 }
 
 function createInitialState(): IntakeFormState {
@@ -110,7 +116,7 @@ export function validateIntakeForm(form: IntakeFormState): IntakeErrors {
   const insurance = normalizeInsuranceCode(form.insuranceCode);
   if (insurance.length > 0 && !BHYT_PATTERN.test(insurance)) {
     errors.insuranceCode =
-      "Mã thẻ BHYT phải gồm 15 ký tự: 2 chữ cái + 13 chữ số (dạng DN 4 79 79 12345678).";
+      "Mã thẻ BHYT phải gồm 15 ký tự: 2 chữ cái + 1 số (1-5) + 2 số tỉnh + 10 số (dạng DN 4 79 79 12345678).";
   }
 
   if (form.dateOfBirth) {
@@ -132,7 +138,6 @@ export function validateIntakeForm(form: IntakeFormState): IntakeErrors {
     errors.phone =
       "Số điện thoại di động Việt Nam phải gồm 10 chữ số, bắt đầu bằng 03, 05, 07, 08 hoặc 09.";
   }
-
   if (!Number.isFinite(form.departmentId) || form.departmentId <= 0) {
     errors.departmentId = "Vui lòng chọn chuyên khoa tiếp nhận.";
   }

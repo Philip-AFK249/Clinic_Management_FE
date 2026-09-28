@@ -9,14 +9,8 @@ import { IntakeApiError } from "../../../services/intakeApi";
 import type { QueueTicket } from "../../../services/intakeApi";
 import { ACTIVE_PATIENT, QUEUE_PATIENTS } from "../data/doctorMockData";
 import type { PatientRecord } from "../data/doctorMockData";
+import { useDoctorSession } from "./useDoctorSession";
 import { ticketToPatientRecord } from "../data/ticketMapper";
-
-/**
- * The doctor session in DoctorHeader is
- * "BS. CKI. Lê Thị Hoàng Yến - Phòng 201 - Khoa Hô hấp & Dị ứng",
- * which is doctor id 4 in the DoctorScheduleService seed data.
- */
-export const DOCTOR_SESSION_ID = 4;
 
 const POLL_INTERVAL_MS = 8_000;
 
@@ -37,7 +31,15 @@ function sortByPriority(queue: PatientRecord[]): PatientRecord[] {
   return [...queue].sort((a, b) => b.priorityScore - a.priorityScore);
 }
 
-export function useDoctorQueue(doctorId: number = DOCTOR_SESSION_ID) {
+/**
+ * `doctorIdOverride` exists for tests and for screens that deliberately pin a
+ * roster row; the EHR itself always follows the signed-in account so the queue
+ * can never be scoped to a different doctor than the one in the header.
+ */
+export function useDoctorQueue(doctorIdOverride?: number) {
+  const { doctorId: sessionDoctorId } = useDoctorSession();
+  const doctorId = doctorIdOverride ?? sessionDoctorId;
+
   const [activePatient, setActivePatient] = useState<PatientRecord | null>(
     ACTIVE_PATIENT,
   );
@@ -213,6 +215,8 @@ export function useDoctorQueue(doctorId: number = DOCTOR_SESSION_ID) {
   const emergencyCount = queue.filter((p) => p.triage === "P1").length;
 
   return {
+    /** The doctor every request in this hook is scoped to. */
+    doctorId,
     activePatient,
     queue,
     waitingCount,
