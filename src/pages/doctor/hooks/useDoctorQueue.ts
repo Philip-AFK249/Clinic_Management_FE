@@ -22,6 +22,17 @@ const POLL_INTERVAL_MS = 8_000;
 
 export type QueueSource = "live" | "mock";
 
+/**
+ * The doctor workspace is a long-lived single-page screen. Once the tab is
+ * backgrounded the poll interval is torn down entirely - browsers throttle
+ * timers in hidden tabs, which turns a dormant tab into a burst of catch-up
+ * requests on wake - and a single immediate fetch runs the moment the tab
+ * becomes visible again.
+ */
+function tabIsVisible(): boolean {
+  return typeof document === "undefined" || document.visibilityState === "visible";
+}
+
 function sortByPriority(queue: PatientRecord[]): PatientRecord[] {
   return [...queue].sort((a, b) => b.priorityScore - a.priorityScore);
 }
@@ -37,6 +48,7 @@ export function useDoctorQueue(doctorId: number = DOCTOR_SESSION_ID) {
   const [source, setSource] = useState<QueueSource>("mock");
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isCalling, setIsCalling] = useState(false);
+  const [isTabVisible, setIsTabVisible] = useState(tabIsVisible);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
 
@@ -46,7 +58,25 @@ export function useDoctorQueue(doctorId: number = DOCTOR_SESSION_ID) {
 
   const refresh = useCallback(() => setReloadToken((token) => token + 1), []);
 
+  // Returning to the tab means the queue has almost certainly moved on, so
+  // fetch immediately instead of waiting out the rest of the poll interval.
   useEffect(() => {
+    function onVisibilityChange() {
+      const visible = tabIsVisible();
+      setIsTabVisible(visible);
+      if (visible) refresh();
+    }
+
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () =>
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+  }, [refresh]);
+
+  useEffect(() => {
+    // Hidden tab: no interval, no requests. Becoming visible re-runs this
+    // effect, which performs the single catch-up fetch.
+    if (!isTabVisible) return undefined;
+
     let cancelled = false;
     const controller = new AbortController();
 
@@ -112,7 +142,7 @@ export function useDoctorQueue(doctorId: number = DOCTOR_SESSION_ID) {
       controller.abort();
       window.clearInterval(interval);
     };
-  }, [doctorId, reloadToken]);
+  }, [doctorId, isTabVisible, reloadToken]);
 
   /** Promote the head of the waiting list into the consultation room. */
   const callNext = useCallback(async () => {
@@ -191,6 +221,8 @@ export function useDoctorQueue(doctorId: number = DOCTOR_SESSION_ID) {
     source,
     isRefreshing,
     isCalling,
+    /** False while the tab is hidden, i.e. polling is suspended. */
+    isTabVisible,
     lastUpdatedAt,
     refresh,
     callNext,

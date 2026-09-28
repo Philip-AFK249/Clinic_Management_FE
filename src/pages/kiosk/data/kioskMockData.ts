@@ -23,6 +23,12 @@ export interface SymptomOption {
   room: string;
   priorityLabel: string;
   isEmergency?: boolean;
+  /**
+   * `departments.id` in DoctorScheduleService (:8081), i.e. the id
+   * PatientIntakeService expects on /check-in. The `department` string above is
+   * kiosk signage; the backend row is the source of truth for routing.
+   */
+  departmentId: number;
 }
 
 export interface RoomInfo {
@@ -47,6 +53,12 @@ export const KIOSK_PATIENT: KioskPatient = {
   checkoutCode: "#APT-2026-8821",
 };
 
+/**
+ * Each kiosk symptom routes to one of the three seeded departments:
+ * 1 = Nội Tổng quát & Tim mạch, 2 = Hô hấp & Dị ứng, 3 = Da liễu.
+ * Paediatrics, emergency walk-ins and follow-ups have no dedicated seeded
+ * department, so they are absorbed by general medicine.
+ */
 export const SYMPTOM_OPTIONS: SymptomOption[] = [
   {
     id: "symptom-throat",
@@ -56,6 +68,7 @@ export const SYMPTOM_OPTIONS: SymptomOption[] = [
     department: "Khoa Dị ứng & Hô hấp",
     room: "Phòng 201",
     priorityLabel: "CẦN KHÁM SỚM",
+    departmentId: 2,
   },
   {
     id: "symptom-breathing",
@@ -66,6 +79,7 @@ export const SYMPTOM_OPTIONS: SymptomOption[] = [
     room: "Phòng 101",
     priorityLabel: "KHẨN CẤP",
     isEmergency: true,
+    departmentId: 1,
   },
   {
     id: "symptom-rash",
@@ -75,6 +89,7 @@ export const SYMPTOM_OPTIONS: SymptomOption[] = [
     department: "Khoa Da liễu & Dị ứng",
     room: "Phòng 205",
     priorityLabel: "CẦN KHÁM SỚM",
+    departmentId: 3,
   },
   {
     id: "symptom-pediatric",
@@ -84,6 +99,7 @@ export const SYMPTOM_OPTIONS: SymptomOption[] = [
     department: "Khoa Nhi",
     room: "Phòng 108",
     priorityLabel: "THƯỜNG",
+    departmentId: 1,
   },
   {
     id: "symptom-general",
@@ -93,6 +109,7 @@ export const SYMPTOM_OPTIONS: SymptomOption[] = [
     department: "Khoa Nội",
     room: "Phòng 104",
     priorityLabel: "THƯỜNG",
+    departmentId: 1,
   },
   {
     id: "symptom-followup",
@@ -102,6 +119,7 @@ export const SYMPTOM_OPTIONS: SymptomOption[] = [
     department: "Tái khám",
     room: "Phòng 108",
     priorityLabel: "THƯỜNG",
+    departmentId: 1,
   },
 ];
 

@@ -1,3 +1,4 @@
+import { createPortal } from "react-dom";
 import { Printer, TicketCheck, X } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import ThermalBarcode from "./ThermalBarcode";
@@ -38,23 +39,16 @@ export default function TicketPrintModal({
     doctor: ticket.doctorName,
   });
 
-  return (
+  // Portalled to <body> so the global @media print rules in index.css can drop
+  // the whole app shell with `body > *:not([data-print-portal])`.
+  return createPortal(
     <div
+      data-print-portal
       className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/50 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
       aria-label="Xác nhận cấp số thứ tự"
     >
-      {/* Restrict the browser print job to the receipt only. */}
-      <style>{`
-        @media print {
-          body * { visibility: hidden !important; }
-          [data-print-ticket], [data-print-ticket] * { visibility: visible !important; }
-          [data-print-ticket] { position: absolute; left: 0; top: 0; width: 100%; }
-          @page { margin: 8mm; }
-        }
-      `}</style>
-
       <div className="grid min-h-full place-items-center p-4">
         <div className="flex w-full max-w-sm flex-col items-center gap-4">
           {/* Thermal paper preview (~80mm) */}
@@ -155,7 +149,7 @@ export default function TicketPrintModal({
               className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
             >
               <Printer className="h-4 w-4" aria-hidden="true" />
-              In phiếu nhiệt
+              In Phiếu Khám
             </button>
             <button
               type="button"
@@ -168,7 +162,8 @@ export default function TicketPrintModal({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

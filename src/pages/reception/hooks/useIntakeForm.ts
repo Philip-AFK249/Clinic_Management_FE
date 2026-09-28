@@ -27,12 +27,40 @@ export type IntakeField = Exclude<keyof IntakeFormState, "mode" | "isOcrVerified
 
 export type IntakeErrors = Partial<Record<IntakeField, string>>;
 
-const CCCD_PATTERN = /^\d{9}(\d{3})?$/;
-const PHONE_PATTERN = /^0\d{9,10}$/;
+// ---------------------------------------------------------------------------
+// Vietnamese identity formats
+// ---------------------------------------------------------------------------
+
+/** CCCD (căn cước công dân gắn chip): exactly 12 digits, no separators. */
+const CCCD_PATTERN = /^[0-9]{12}$/;
+
+/**
+ * Thẻ BHYT: 15 characters = 2 letters (mã tỉnh/thành phố) + 1 digit (mã tỉnh)
+ * + 2 digits (mã quận/huyện) + 2 digits (mã cơ sở KCB) + 8 digits (mã số).
+ * The card prints the groups separated by spaces, so spaces are stripped before
+ * matching; anything else (dashes, dots, lowercase) is rejected.
+ */
+const BHYT_PATTERN = /^[A-Z]{2}[0-9]{13}$/;
+
+/** Mobile numbers only: 10 digits starting 03 / 05 / 07 / 08 / 09. */
+const PHONE_PATTERN = /^0[35789][0-9]{8}$/;
+
+/**
+ * Vietnamese names: Latin + the precomposed Vietnamese block (U+1EA0-U+1EF9,
+ * which falls inside À-ỹ), spaces, and the punctuation that legitimately appears
+ * in a registered name (dot, hyphen, apostrophe).
+ */
+const ILLEGAL_NAME_CHARS = /[^A-Za-zÀ-ỹ\s.'’-]/;
+const MIN_NAME_WORDS = 2;
 const MIN_COMPLAINT_LENGTH = 10;
 
 function today(): string {
   return toIsoDate(new Date());
+}
+
+/** Compact form of a BHYT card number: "DN 4 79 79 12345678" -> "DN4797912345678". */
+export function normalizeInsuranceCode(value: string): string {
+  return value.replace(/\s+/g, "").toUpperCase();
 }
 
 function createInitialState(): IntakeFormState {
@@ -66,18 +94,23 @@ export function validateIntakeForm(form: IntakeFormState): IntakeErrors {
   const fullName = form.fullName.trim();
   if (fullName.length === 0) {
     errors.fullName = "Họ tên bệnh nhân là bắt buộc.";
-  } else if (fullName.length < 2) {
-    errors.fullName = "Họ tên quá ngắn, vui lòng nhập đầy đủ họ và tên.";
+  } else if (ILLEGAL_NAME_CHARS.test(fullName)) {
+    errors.fullName =
+      "Họ tên chứa ký tự không hợp lệ. Chỉ dùng chữ cái, dấu cách và các dấu . - '.";
+  } else if (fullName.split(/\s+/).filter(Boolean).length < MIN_NAME_WORDS) {
+    errors.fullName = "Vui lòng nhập đầy đủ họ và tên (tối thiểu 2 từ).";
   }
 
   const idCard = form.identityCardNumber.trim();
   if (idCard.length > 0 && !CCCD_PATTERN.test(idCard)) {
-    errors.identityCardNumber = "Số CCCD phải gồm 9 hoặc 12 chữ số.";
+    errors.identityCardNumber =
+      "Số CCCD phải gồm đúng 12 chữ số, không có khoảng trắng hoặc dấu gạch.";
   }
 
-  const insurance = form.insuranceCode.trim();
-  if (insurance.length > 0 && insurance.length < 10) {
-    errors.insuranceCode = "Mã thẻ BHYT phải có ít nhất 10 ký tự (dạng DN 4 79 79 ......).";
+  const insurance = normalizeInsuranceCode(form.insuranceCode);
+  if (insurance.length > 0 && !BHYT_PATTERN.test(insurance)) {
+    errors.insuranceCode =
+      "Mã thẻ BHYT phải gồm 15 ký tự: 2 chữ cái + 13 chữ số (dạng DN 4 79 79 12345678).";
   }
 
   if (form.dateOfBirth) {
@@ -96,7 +129,8 @@ export function validateIntakeForm(form: IntakeFormState): IntakeErrors {
 
   const phone = form.phone.trim();
   if (phone.length > 0 && !PHONE_PATTERN.test(phone)) {
-    errors.phone = "Số điện thoại phải bắt đầu bằng 0 và có 10-11 chữ số.";
+    errors.phone =
+      "Số điện thoại di động Việt Nam phải gồm 10 chữ số, bắt đầu bằng 03, 05, 07, 08 hoặc 09.";
   }
 
   if (!Number.isFinite(form.departmentId) || form.departmentId <= 0) {
@@ -185,9 +219,10 @@ export function useIntakeForm() {
 
   const toRequest = useCallback((): AdministrativeIntakeRequest => {
     return {
-      fullName: form.fullName.trim(),
+      fullName: form.fullName.trim().replace(/\s+/g, " "),
       identityCardNumber: optional(form.identityCardNumber),
-      insuranceCode: optional(form.insuranceCode),
+      // The card is printed in spaced groups; the stored number is compact.
+      insuranceCode: optional(normalizeInsuranceCode(form.insuranceCode)),
       initialHospitalCode: optional(form.initialHospitalCode),
       dateOfBirth: optional(form.dateOfBirth),
       gender: optional(form.gender),

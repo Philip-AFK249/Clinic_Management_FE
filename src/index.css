@@ -48,3 +48,75 @@
     min-height: 44px;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Thermal receipt printing (80mm POS printers)
+   ---------------------------------------------------------------------------
+   Contract: a printable surface is rendered through a React portal as a direct
+   child of <body> and carries `data-print-portal`; the receipt itself carries
+   `data-print-ticket`.
+
+   Every rule below is gated on `body:has([data-print-portal])` so the sheet
+   printer is only hijacked while a receipt is actually on screen - a plain
+   Ctrl+P on any other page still prints that page normally.
+
+   Hiding `body > *:not([data-print-portal])` with `display: none` (rather than
+   `visibility: hidden` on everything) is what keeps the receipt's internal
+   flex/grid layout intact while guaranteeing the rest of the SPA - header,
+   sidebar, backdrop, toasts - occupies zero space and cannot spill onto a
+   second blank sheet.
+--------------------------------------------------------------------------- */
+@media print {
+  @page {
+    margin: 0;
+    size: auto;
+  }
+
+  body:has([data-print-portal]),
+  body:has([data-print-portal]) #root {
+    height: auto !important;
+    overflow: visible !important;
+    background: #ffffff !important;
+  }
+
+  body:has([data-print-portal]) > *:not([data-print-portal]) {
+    display: none !important;
+  }
+
+  /* 80mm receipt paper. `size: auto` lets the driver pick the roll width. */
+  [data-print-ticket] {
+    display: block !important;
+    max-width: 80mm !important;
+    width: 100% !important;
+    margin: 0 auto !important;
+    padding: 4mm !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    /* Cancel the kiosk "paper peeling" animation before it is captured. */
+    transform: none !important;
+    transition: none !important;
+    animation: none !important;
+  }
+
+  /*
+   * Thermal heads are monochrome, so the receipt is flattened to pure
+   * black-on-white: status colours, tinted pills and the dark header band
+   * would otherwise print as unreadable grey smears.
+   */
+  [data-print-ticket],
+  [data-print-ticket] * {
+    background: transparent !important;
+    color: #000000 !important;
+    border-color: #000000 !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+
+  /* Barcodes and QR codes must stay crisp and un-inverted for the scanner. */
+  [data-print-ticket] svg,
+  [data-print-ticket] svg * {
+    color: #000000 !important;
+    filter: none !important;
+  }
+}

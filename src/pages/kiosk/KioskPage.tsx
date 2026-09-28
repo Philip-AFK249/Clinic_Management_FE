@@ -13,7 +13,6 @@ import {
   ESTIMATED_WAIT_MINUTES,
   KIOSK_PATIENT,
   PATIENTS_AHEAD,
-  TICKET_NUMBER,
 } from "./data/kioskMockData";
 
 const INACTIVITY_TIMEOUT_MS = 45_000;
@@ -24,6 +23,8 @@ export default function KioskPage() {
     step,
     selection,
     patient,
+    ticket,
+    isIssuing,
     startQrScan,
     startCardOcr,
     handleQrMatched,
@@ -131,8 +132,15 @@ export default function KioskPage() {
             </h1>
             <p className="text-lg text-slate-600">
               {KIOSK_PATIENT.patientName} • Số thứ tự{" "}
-              <span className="font-bold text-clinical-700">{TICKET_NUMBER}</span>
+              <span className="font-bold text-clinical-700">
+                {ticket?.ticketNumber ?? "…"}
+              </span>
             </p>
+            {ticket && (
+              <p className="text-base font-semibold text-slate-700">
+                {ticket.departmentName} • {ticket.roomNumber} • {ticket.doctorName}
+              </p>
+            )}
             <div className="flex items-center gap-4">
               <p className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700">
                 <Clock className="h-4 w-4 text-clinical-600" aria-hidden="true" />
@@ -146,7 +154,9 @@ export default function KioskPage() {
             <p className="text-sm text-slate-400">
               {ticketIssued
                 ? `Quay về màn hình chính sau ${resetCountdown}s`
-                : "Vui lòng đợi giây lát..."}
+                : isIssuing
+                  ? "Đang đồng bộ với hệ thống tiếp đón..."
+                  : "Vui lòng đợi giây lát..."}
             </p>
             <button
               type="button"
@@ -182,6 +192,8 @@ export default function KioskPage() {
         <KioskTicketDispenserModal
           patient={patient}
           symptom={selection.symptom}
+          ticket={ticket}
+          isIssuing={isIssuing}
           onIssued={() => {
             setTicketIssued(true);
             handleTicketIssued();

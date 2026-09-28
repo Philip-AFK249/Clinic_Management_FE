@@ -87,7 +87,7 @@ export default function PatientIdentityForm({
           label="Số CCCD / CMND"
           htmlFor="intake-identityCardNumber"
           error={errors.identityCardNumber}
-          hint="9 hoặc 12 chữ số"
+          hint="12 chữ số"
         >
           <input
             id="intake-identityCardNumber"
@@ -127,12 +127,13 @@ export default function PatientIdentityForm({
           label="Mã thẻ BHYT"
           htmlFor="intake-insuranceCode"
           error={errors.insuranceCode}
-          hint="Dùng làm khoá nhận diện thay thế CCCD"
+          hint="15 ký tự: 2 chữ cái + 13 chữ số"
         >
           <input
             id="intake-insuranceCode"
             type="text"
-            className={`${controlClass(Boolean(errors.insuranceCode))} font-mono`}
+            maxLength={20}
+            className={`${controlClass(Boolean(errors.insuranceCode))} font-mono uppercase`}
             placeholder="DN 4 79 79 12345678"
             value={form.insuranceCode}
             onChange={(event) => onChange("insuranceCode", event.target.value)}
@@ -188,16 +189,18 @@ export default function PatientIdentityForm({
           label="Số điện thoại"
           htmlFor="intake-phone"
           error={errors.phone}
+          hint="10 chữ số, đầu 03 / 05 / 07 / 08 / 09"
         >
           <input
             id="intake-phone"
             type="tel"
             inputMode="numeric"
+            maxLength={10}
             className={`${controlClass(Boolean(errors.phone))} font-mono`}
             placeholder="0905123456"
             value={form.phone}
             onChange={(event) =>
-              onChange("phone", event.target.value.replace(/\D/g, "").slice(0, 11))
+              onChange("phone", event.target.value.replace(/\D/g, "").slice(0, 10))
             }
             onBlur={() => onFieldBlur("phone")}
           />
