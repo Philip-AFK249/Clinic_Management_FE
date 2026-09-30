@@ -4,7 +4,14 @@ import { ShieldCheck } from "lucide-react";
 import { ROLE_THEMES } from "../../config/roleThemes";
 import type { UserRole } from "../../types/auth";
 
-const VALID_ROLES: UserRole[] = ["PATIENT", "DOCTOR", "PHARMACIST", "ADMIN"];
+const VALID_ROLES: UserRole[] = [
+  "PATIENT",
+  "DOCTOR",
+  "NURSE",
+  "RECEPTIONIST",
+  "PHARMACIST",
+  "ADMIN",
+];
 
 const FEATURES = [
   "Bảo mật dữ liệu chuẩn HIPAA & Nghị định 13/2023/NĐ-CP",
@@ -75,8 +82,8 @@ export default function AuthLayout() {
       </div>
 
       {/* Right / Form Section */}
-      <div className="flex w-full flex-1 items-center justify-center p-6 sm:p-10">
-        <div className="w-full max-w-md">
+      <div className="flex w-full flex-1 items-start justify-center p-6 sm:p-10 lg:items-center">
+        <div className="w-full max-w-md py-4 lg:py-0">
           {/* Mobile-only brand */}
           <div className="mb-8 flex items-center gap-2.5 lg:hidden">
             <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-clinical-600 text-sm font-bold text-white">

@@ -31,14 +31,49 @@ export interface DoctorProfile {
 /** Displayed when nobody is signed in (standalone demo / kiosk deep-link). */
 export const FALLBACK_DOCTOR_ID = 4;
 
-const DEPARTMENT_NAMES: Record<number, string> = {
-  1: "Khoa Nội Tổng quát & Tim mạch",
-  2: "Khoa Hô hấp & Dị ứng - Miễn dịch lâm sàng",
-  3: "Khoa Da liễu",
-};
+export interface ClinicalDepartment {
+  /** `departments.id` - the value stamped on an encounter. */
+  id: number;
+  name: string;
+  /** Compact label for the login-screen khoa cards. */
+  shortName: string;
+  /** Clinical scope shown as the card sub-caption. */
+  specialties: string;
+}
 
-/** Department used when the session is anonymous and no roster row matches. */
-const FALLBACK_DEPARTMENT_ID = 1;
+/** The three khoa the clinic runs, in `departments.id` order. */
+export const CLINICAL_DEPARTMENTS: ClinicalDepartment[] = [
+  {
+    id: 1,
+    name: "Khoa Nội Tổng quát & Tim mạch",
+    shortName: "Nội tổng quát & Tim mạch",
+    specialties: "Bệnh tim mạch, nội tiết, chuyển hóa",
+  },
+  {
+    id: 2,
+    name: "Khoa Hô hấp & Dị ứng - Miễn dịch lâm sàng",
+    shortName: "Hô hấp & Dị ứng",
+    specialties: "Hen suyễn, viêm mũi họng, dị ứng, TMH",
+  },
+  {
+    id: 3,
+    name: "Khoa Da liễu",
+    shortName: "Da liễu",
+    specialties: "Viêm da cơ địa, mẩn ngứa, dị ứng tiếp xúc",
+  },
+];
+
+const DEPARTMENT_BY_ID = new Map(
+  CLINICAL_DEPARTMENTS.map((department) => [department.id, department]),
+);
+
+/** Used when an encounter or account references a khoa outside the registry. */
+export const FALLBACK_DEPARTMENT_ID = CLINICAL_DEPARTMENTS[0].id;
+
+export function departmentNameOf(departmentId: number | undefined): string {
+  if (departmentId === undefined) return "Chuyên khoa";
+  return DEPARTMENT_BY_ID.get(departmentId)?.name ?? "Chuyên khoa";
+}
 
 interface SeededDoctor extends Omit<DoctorProfile, "departmentName"> {
   departmentId: number;
@@ -122,8 +157,15 @@ const SEEDED_DOCTORS: SeededDoctor[] = [
 
 export const DOCTOR_DIRECTORY: DoctorProfile[] = SEEDED_DOCTORS.map((doctor) => ({
   ...doctor,
-  departmentName: DEPARTMENT_NAMES[doctor.departmentId] ?? "Chuyên khoa",
+  departmentName: departmentNameOf(doctor.departmentId),
 }));
+
+/** Roster rows of one khoa, in `doctors.id` order - drives the staff picker. */
+export function doctorsOfDepartment(departmentId: number): DoctorProfile[] {
+  return DOCTOR_DIRECTORY.filter(
+    (doctor) => doctor.departmentId === departmentId,
+  );
+}
 
 const DOCTOR_BY_ID = new Map(DOCTOR_DIRECTORY.map((doctor) => [doctor.id, doctor]));
 

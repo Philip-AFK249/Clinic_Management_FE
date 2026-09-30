@@ -1,11 +1,70 @@
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate, useOutletContext } from "react-router-dom";
-import { Mail, Lock, Eye, EyeOff } from "lucide-react";
+import {
+  Mail,
+  Lock,
+  Eye,
+  EyeOff,
+  Stethoscope,
+  Building2,
+  UserRound,
+} from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "../../context/useAuth";
-import { DEMO_ACCOUNTS } from "../../types/auth";
+import { DEMO_ACCOUNTS, demoAccountFor, ROLE_HOME } from "../../types/auth";
 import type { UserRole } from "../../types/auth";
+import { ROLE_LABELS, ROLE_ORDER } from "../../config/roleThemes";
 import type { AuthOutletContext } from "../../config/roleThemes";
+import {
+  CLINICAL_DEPARTMENTS,
+  doctorsOfDepartment,
+  FALLBACK_DEPARTMENT_ID,
+  initialsOf,
+} from "../doctor/data/doctorDirectory";
+import type { DoctorProfile } from "../doctor/data/doctorDirectory";
+import {
+  NURSE_DIRECTORY,
+  nurseDepartmentName,
+} from "../reception/data/nurseDirectory";
+
+/** All seeded staff share one demo password; read it so it cannot drift. */
+const DEMO_PASSWORD = DEMO_ACCOUNTS[0].password;
+
+interface PickedIdentity {
+  email: string;
+  password: string;
+  departmentId: number;
+  doctorId: number | null;
+}
+
+/**
+ * The account a role/khoa/doctor selection resolves to. Doctors come from
+ * DOCTOR_DIRECTORY so the picker, the directory and the stamped encounter
+ * department can never disagree.
+ */
+function identityFor(
+  role: UserRole,
+  departmentId: number,
+  doctor?: DoctorProfile,
+): PickedIdentity {
+  if (role === "DOCTOR") {
+    const chosen = doctor ?? doctorsOfDepartment(departmentId)[0];
+    return {
+      email: chosen?.email ?? "",
+      password: DEMO_PASSWORD,
+      departmentId: chosen?.departmentId ?? departmentId,
+      doctorId: chosen?.id ?? null,
+    };
+  }
+
+  const account = demoAccountFor(role);
+  return {
+    email: account?.email ?? "",
+    password: account?.password ?? "",
+    departmentId: account?.departmentId ?? departmentId,
+    doctorId: null,
+  };
+}
 
 function GoogleIcon() {
   return (
@@ -35,18 +94,33 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const { activeRole, setActiveRole, theme } = useOutletContext<AuthOutletContext>();
 
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  // Seeded from the role the layout resolved from ?role=, so arriving at
+  // /login?role=DOCTOR already shows a usable doctor identity.
+  const [email, setEmail] = useState(
+    () => identityFor(activeRole, FALLBACK_DEPARTMENT_ID).email,
+  );
+  const [password, setPassword] = useState(
+    () => identityFor(activeRole, FALLBACK_DEPARTMENT_ID).password,
+  );
   const [showPassword, setShowPassword] = useState(false);
   const [remember, setRemember] = useState(false);
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
   const [loading, setLoading] = useState(false);
+  const [selectedDepartmentId, setSelectedDepartmentId] = useState(
+    FALLBACK_DEPARTMENT_ID,
+  );
+  const [selectedDoctorId, setSelectedDoctorId] = useState<number | null>(
+    () => identityFor(activeRole, FALLBACK_DEPARTMENT_ID).doctorId,
+  );
 
-  function redirectFor(role: UserRole): string {
-    return (
-      DEMO_ACCOUNTS.find((d) => d.role === role)?.redirectPath ??
-      "/patient/dashboard"
-    );
+  const selectedDoctors = doctorsOfDepartment(selectedDepartmentId);
+
+  function applyIdentity(identity: PickedIdentity) {
+    setEmail(identity.email);
+    setPassword(identity.password);
+    setSelectedDepartmentId(identity.departmentId);
+    setSelectedDoctorId(identity.doctorId);
+    setErrors({});
   }
 
   function validate(): boolean {
@@ -67,12 +141,21 @@ export default function LoginPage() {
 
   function handleSelectRole(role: UserRole) {
     setActiveRole(role);
-    const account = DEMO_ACCOUNTS.find((d) => d.role === role);
-    if (account) {
-      setEmail(account.email);
-      setPassword(account.password);
-    }
-    setErrors({});
+    const account = demoAccountFor(role);
+    const departmentId =
+      role === "DOCTOR"
+        ? FALLBACK_DEPARTMENT_ID
+        : (account?.departmentId ?? FALLBACK_DEPARTMENT_ID);
+    applyIdentity(identityFor(role, departmentId));
+  }
+
+  function handleSelectDepartment(departmentId: number) {
+    // Landing on a khoa pre-picks its first bác sĩ so the form stays submittable.
+    applyIdentity(identityFor("DOCTOR", departmentId));
+  }
+
+  function handleSelectDoctor(doctor: DoctorProfile) {
+    applyIdentity(identityFor("DOCTOR", doctor.departmentId, doctor));
   }
 
   async function handleSubmit(e: FormEvent) {
@@ -81,9 +164,13 @@ export default function LoginPage() {
 
     setLoading(true);
     try {
-      const user = await login({ email, password }, activeRole);
+      const user = await login(
+        { email, password },
+        activeRole,
+        { departmentId: selectedDepartmentId },
+      );
       toast.success(`Chào mừng trở lại, ${user.fullName}`);
-      navigate(redirectFor(activeRole));
+      navigate(ROLE_HOME[activeRole]);
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : "Đăng nhập không thành công. Vui lòng kiểm tra lại thông tin.",
@@ -94,19 +181,22 @@ export default function LoginPage() {
   }
 
   async function handleGoogleSignin() {
-    const account = DEMO_ACCOUNTS.find((d) => d.role === activeRole);
-    if (!account) return;
+    // Signs in whatever the picker resolved to, so a chosen bác sĩ survives.
+    const identity = email && password
+      ? { email, password }
+      : identityFor(activeRole, selectedDepartmentId);
 
     setLoading(true);
     try {
       await login(
-        { email: account.email, password: account.password },
+        { email: identity.email, password: identity.password },
         activeRole,
+        { departmentId: selectedDepartmentId },
       );
       toast.success(
         `Đăng nhập Google thành công với vai trò ${theme.portalLabel}`,
       );
-      navigate(account.redirectPath);
+      navigate(ROLE_HOME[activeRole]);
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : "Đăng nhập Google không thành công.",
@@ -121,6 +211,8 @@ export default function LoginPage() {
   const inputNormal = `border-slate-200 ${theme.focusClasses}`;
   const inputError =
     "border-triage-p1 focus:border-triage-p1 focus:ring-triage-p1/20";
+  const chipIdle =
+    "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50";
 
   return (
     <div className="space-y-6">
@@ -139,31 +231,158 @@ export default function LoginPage() {
         </p>
       </div>
 
-      {/* Quick Demo Sign-in */}
+      {/* Role selector */}
       <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-card">
         <p className="mb-3 text-xs font-medium text-slate-500">
-          Đăng nhập nhanh tài khoản mẫu (Demo)
+          Chọn vai trò đăng nhập
         </p>
-        <div className="flex flex-wrap gap-2">
-          {DEMO_ACCOUNTS.map((account) => {
-            const isActive = account.role === activeRole;
+        <div
+          role="radiogroup"
+          aria-label="Vai trò đăng nhập"
+          className="grid grid-cols-2 gap-2 sm:grid-cols-3"
+        >
+          {ROLE_ORDER.map((role) => {
+            const isActive = role === activeRole;
+            const { label, emoji } = ROLE_LABELS[role];
             return (
               <button
-                key={account.role}
+                key={role}
                 type="button"
+                role="radio"
+                aria-checked={isActive}
                 disabled={loading}
-                onClick={() => handleSelectRole(account.role)}
-                className={`inline-flex items-center rounded-lg border px-3.5 py-2 text-xs font-medium transition-colors duration-300 ease-in-out focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-clinical-600 disabled:opacity-50 ${
-                  isActive
-                    ? theme.chipActive
-                    : "border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100"
+                onClick={() => handleSelectRole(role)}
+                className={`inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-xs font-medium transition-all duration-300 ease-in-out focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-clinical-600 disabled:opacity-50 ${
+                  isActive ? theme.chipActive : chipIdle
                 }`}
               >
-                {account.label}
+                <span aria-hidden="true" className="text-sm leading-none">
+                  {emoji}
+                </span>
+                {label}
               </button>
             );
           })}
         </div>
+      </div>
+
+      {/* Role-specific pickers */}
+      <div
+        key={activeRole}
+        className="animate-fade-rise space-y-4 motion-reduce:animate-none"
+      >
+        {activeRole === "DOCTOR" && (
+          <>
+            <section className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-card">
+              <div className="mb-3 flex items-center gap-2 text-xs font-medium text-slate-500">
+                <Building2 className="h-4 w-4 text-slate-400" aria-hidden="true" />
+                Khoa phụ trách
+              </div>
+              <div className="grid gap-2 sm:grid-cols-3">
+                {CLINICAL_DEPARTMENTS.map((department) => {
+                  const isActive = department.id === selectedDepartmentId;
+                  return (
+                    <button
+                      key={department.id}
+                      type="button"
+                      aria-pressed={isActive}
+                      disabled={loading}
+                      onClick={() => handleSelectDepartment(department.id)}
+                      className={`rounded-lg border px-3 py-2.5 text-left transition-all duration-300 ease-in-out focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-clinical-600 disabled:opacity-50 ${
+                        isActive ? theme.chipActive : chipIdle
+                      }`}
+                    >
+                      <span className="block text-xs font-semibold">
+                        {department.shortName}
+                      </span>
+                      <span
+                        className={`mt-1 block text-[11px] leading-snug ${
+                          isActive ? "text-white/85" : "text-slate-500"
+                        }`}
+                      >
+                        {department.specialties}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+
+            <section
+              key={selectedDepartmentId}
+              className="animate-fade-rise rounded-xl border border-slate-200/80 bg-white p-4 shadow-card motion-reduce:animate-none"
+            >
+              <div className="mb-3 flex items-center gap-2 text-xs font-medium text-slate-500">
+                <Stethoscope className="h-4 w-4 text-slate-400" aria-hidden="true" />
+                Bác sĩ trực (
+                {CLINICAL_DEPARTMENTS.find(
+                  (department) => department.id === selectedDepartmentId,
+                )?.shortName ?? "Chuyên khoa"}
+                )
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {selectedDoctors.map((doctor) => {
+                  const isActive = doctor.id === selectedDoctorId;
+                  return (
+                    <button
+                      key={doctor.id}
+                      type="button"
+                      aria-pressed={isActive}
+                      disabled={loading}
+                      onClick={() => handleSelectDoctor(doctor)}
+                      className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-left transition-all duration-300 ease-in-out focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-clinical-600 disabled:opacity-50 ${
+                        isActive ? theme.chipActive : chipIdle
+                      }`}
+                    >
+                      <span
+                        aria-hidden="true"
+                        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${
+                          isActive
+                            ? "bg-white/20 text-white"
+                            : "bg-slate-100 text-slate-600"
+                        }`}
+                      >
+                        {initialsOf(doctor.fullName)}
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block truncate text-xs font-semibold">
+                          {doctor.fullName}
+                        </span>
+                        <span
+                          className={`block text-[11px] ${
+                            isActive ? "text-white/85" : "text-slate-500"
+                          }`}
+                        >
+                          {doctor.roomNumber}
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+          </>
+        )}
+
+        {activeRole === "NURSE" && (
+          <section className="flex items-start gap-3 rounded-xl border border-slate-200/80 bg-white p-4 shadow-card">
+            <span
+              aria-hidden="true"
+              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${theme.badge}`}
+            >
+              <UserRound className="h-4 w-4" />
+            </span>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-slate-900">
+                {NURSE_DIRECTORY[0].fullName}
+              </p>
+              <p className="mt-0.5 text-xs text-slate-500">
+                Bàn tiếp đón & sàng lọc sinh hiệu —{" "}
+                {nurseDepartmentName(NURSE_DIRECTORY[0])}
+              </p>
+            </div>
+          </section>
+        )}
       </div>
 
       {/* Continue with Google */}

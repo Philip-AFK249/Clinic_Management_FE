@@ -1,34 +1,85 @@
 import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { AuthContext } from "./authContext";
-import type { LoginCredentials, RegisterPayload, User, UserRole } from "../types/auth";
+import type {
+  LoginCredentials,
+  LoginExtraContext,
+  RegisterPayload,
+  User,
+  UserRole,
+} from "../types/auth";
 import {
+  departmentNameOf,
   DOCTOR_DIRECTORY,
+  FALLBACK_DEPARTMENT_ID,
   FALLBACK_DOCTOR_ID,
 } from "../pages/doctor/data/doctorDirectory";
 import {
   FALLBACK_PHARMACIST_ID,
   pharmacistIdFor,
 } from "../pages/pharmacy/data/pharmacyDirectory";
+import {
+  FALLBACK_NURSE,
+  nurseFor,
+} from "../pages/reception/data/nurseDirectory";
 
 const STORAGE_KEY = "clinic_auth_user";
 
-/**
- * Links a doctor account to its `doctors` row so the EHR can scope queue
- * requests without re-deriving the id from the email on every render.
- */
-function doctorIdFor(email: string): number | undefined {
-  return DOCTOR_DIRECTORY.find(
-    (doctor) => doctor.email.toLowerCase() === email.trim().toLowerCase(),
-  )?.id;
+function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase();
 }
 
-/** Falls back to the seeded display name when the account is a known doctor. */
-function doctorNameFor(email: string, fallback: string): string {
-  return (
-    DOCTOR_DIRECTORY.find(
-      (doctor) => doctor.email.toLowerCase() === email.trim().toLowerCase(),
-    )?.fullName ?? fallback
+function findDoctor(email: string) {
+  return DOCTOR_DIRECTORY.find(
+    (doctor) => doctor.email.toLowerCase() === normalizeEmail(email),
   );
+}
+
+/**
+ * Turns credentials + the role/khoa chosen on the login screen into the identity
+ * that gets persisted. Kept separate from the state updates so `login` and
+ * `register` stamp the session identically.
+ */
+function resolveIdentity(
+  email: string,
+  role: UserRole,
+  extraContext?: LoginExtraContext,
+) {
+  const doctor = role === "DOCTOR" ? findDoctor(email) : undefined;
+  // An unknown doctor email still needs a khoa, so fall back to the card the
+  // user picked on the login screen before the backend knows better.
+  const departmentId =
+    doctor?.departmentId ??
+    (role === "NURSE"
+      ? (nurseFor(email)?.departmentId ?? FALLBACK_DEPARTMENT_ID)
+      : extraContext?.departmentId);
+
+  const fullName =
+    role === "PATIENT"
+      ? "Nguyễn Văn An"
+      : role === "DOCTOR"
+        ? (doctor?.fullName ?? "Bác sĩ chưa đăng ký danh mục")
+        : role === "NURSE"
+          ? (nurseFor(email)?.fullName ?? FALLBACK_NURSE.fullName)
+          : role === "RECEPTIONIST"
+            ? "Nguyễn Thị Hồng Nhung"
+            : role === "PHARMACIST"
+              ? "DS. Đặng Thu Thảo"
+              : "Quản trị viên Hệ thống";
+
+  return {
+    fullName,
+    departmentId,
+    departmentName:
+      role === "DOCTOR" || role === "NURSE"
+        ? departmentNameOf(departmentId)
+        : undefined,
+    // Only doctors are queue-scoped; every other role leaves it undefined.
+    doctorId: role === "DOCTOR" ? (doctor?.id ?? FALLBACK_DOCTOR_ID) : undefined,
+    pharmacistId:
+      role === "PHARMACIST"
+        ? (pharmacistIdFor(email) ?? FALLBACK_PHARMACIST_ID)
+        : undefined,
+  };
 }
 
 function loadStoredUser(): User | null {
@@ -53,31 +104,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(loadStoredUser);
 
   const login = useCallback(
-    async (credentials: LoginCredentials, role: UserRole): Promise<User> => {
+    async (
+      credentials: LoginCredentials,
+      role: UserRole,
+      extraContext?: LoginExtraContext,
+    ): Promise<User> => {
       if (!credentials.email || !credentials.password) {
         throw new Error("Email và mật khẩu là bắt buộc.");
       }
 
+      const identity = resolveIdentity(credentials.email, role, extraContext);
+
       const mockUser: User = {
         id: crypto.randomUUID(),
         email: credentials.email,
-        fullName: role === "PATIENT"
-          ? "Nguyễn Văn An"
-          : role === "DOCTOR"
-            ? doctorNameFor(credentials.email, "Bác sĩ chưa đăng ký danh mục")
-            : role === "RECEPTIONIST"
-              ? "Nguyễn Thị Hồng Nhung"
-              : role === "PHARMACIST"
-                ? "DS. Đặng Thu Thảo"
-                : "Quản trị viên Hệ thống",
         role,
-        // Only doctors are queue-scoped; every other role leaves it undefined.
-        doctorId: role === "DOCTOR" ? doctorIdFor(credentials.email) : undefined,
-        pharmacistId:
-          role === "PHARMACIST"
-            ? (pharmacistIdFor(credentials.email) ?? FALLBACK_PHARMACIST_ID)
-            : undefined,
         token: `mock_jwt_${role.toLowerCase()}_${Date.now()}`,
+        ...identity,
       };
 
       setUser(mockUser);
@@ -93,21 +136,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         throw new Error("Mật khẩu xác nhận không khớp.");
       }
 
+      const identity = resolveIdentity(payload.email, payload.role);
+
       const mockUser: User = {
         id: crypto.randomUUID(),
         email: payload.email,
-        fullName: payload.fullName,
         role: payload.role,
         phone: payload.phone,
-        doctorId:
-          payload.role === "DOCTOR"
-            ? (doctorIdFor(payload.email) ?? FALLBACK_DOCTOR_ID)
-            : undefined,
-        pharmacistId:
-          payload.role === "PHARMACIST"
-            ? (pharmacistIdFor(payload.email) ?? FALLBACK_PHARMACIST_ID)
-            : undefined,
         token: `mock_jwt_${payload.role.toLowerCase()}_${Date.now()}`,
+        ...identity,
+        // Self-registration supplies its own name; only the id/department links
+        // come from the directory.
+        fullName: payload.fullName,
       };
 
       setUser(mockUser);

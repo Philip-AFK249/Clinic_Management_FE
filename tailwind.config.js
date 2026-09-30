@@ -59,10 +59,16 @@ export default {
           '50%': { top: '92%' },
           '100%': { top: '4%' },
         },
+        // Used when the login screen swaps the role / khoa picker in.
+        'fade-rise': {
+          '0%': { opacity: '0', transform: 'translateY(6px)' },
+          '100%': { opacity: '1', transform: 'translateY(0)' },
+        },
       },
       animation: {
         'pulse-dot': 'pulse-dot 1.5s ease-in-out infinite',
         'laser-scan': 'laser-scan 1.6s ease-in-out infinite',
+        'fade-rise': 'fade-rise 260ms ease-out both',
       },
     },
   },

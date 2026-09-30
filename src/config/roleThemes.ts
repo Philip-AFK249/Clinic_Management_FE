@@ -26,6 +26,14 @@ export const ROLE_THEMES: Record<UserRole, RoleTheme> = {
     badge: "bg-teal-100 text-teal-800 border-teal-200",
     portalLabel: "Bác sĩ (EHR)",
   },
+  NURSE: {
+    heroBg: "bg-violet-700",
+    chipActive: "bg-violet-600 text-white shadow-sm border-transparent",
+    button: "bg-violet-600 hover:bg-violet-700",
+    focusClasses: "focus:ring-violet-500/20 focus:border-violet-600",
+    badge: "bg-violet-100 text-violet-800 border-violet-200",
+    portalLabel: "Điều Dưỡng Lâm Sàng",
+  },
   RECEPTIONIST: {
     heroBg: "bg-clinical-700",
     chipActive: "bg-clinical-600 text-white shadow-sm border-transparent",
@@ -57,3 +65,26 @@ export interface AuthOutletContext {
   setActiveRole: (role: UserRole) => void;
   theme: RoleTheme;
 }
+
+/** Display order of the role picker on the login screen. */
+export const ROLE_ORDER: UserRole[] = [
+  "PATIENT",
+  "DOCTOR",
+  "NURSE",
+  "RECEPTIONIST",
+  "PHARMACIST",
+  "ADMIN",
+];
+
+/**
+ * Chip label + emoji per role. Exhaustive over `UserRole` so a new role cannot
+ * ship without a picker entry.
+ */
+export const ROLE_LABELS: Record<UserRole, { label: string; emoji: string }> = {
+  PATIENT: { label: "Bệnh nhân", emoji: "🧑‍🦽" },
+  DOCTOR: { label: "Bác sĩ", emoji: "🩺" },
+  NURSE: { label: "Điều dưỡng", emoji: "💉" },
+  RECEPTIONIST: { label: "Tiếp đón viên", emoji: "🏢" },
+  PHARMACIST: { label: "Dược sĩ", emoji: "💊" },
+  ADMIN: { label: "Quản trị viên", emoji: "🛡️" },
+};
