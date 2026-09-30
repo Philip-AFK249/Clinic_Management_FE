@@ -11,8 +11,12 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "../../context/useAuth";
-import { DEMO_ACCOUNTS, demoAccountFor, ROLE_HOME } from "../../types/auth";
-import type { UserRole } from "../../types/auth";
+import {
+  DEMO_PASSWORD,
+  demoAccountFor,
+  ROLE_HOME,
+} from "../../types/auth";
+import type { User, UserRole } from "../../types/auth";
 import { ROLE_LABELS, ROLE_ORDER } from "../../config/roleThemes";
 import type { AuthOutletContext } from "../../config/roleThemes";
 import {
@@ -26,9 +30,6 @@ import {
   NURSE_DIRECTORY,
   nurseDepartmentName,
 } from "../reception/data/nurseDirectory";
-
-/** All seeded staff share one demo password; read it so it cannot drift. */
-const DEMO_PASSWORD = DEMO_ACCOUNTS[0].password;
 
 interface PickedIdentity {
   email: string;
@@ -169,8 +170,7 @@ export default function LoginPage() {
         activeRole,
         { departmentId: selectedDepartmentId },
       );
-      toast.success(`Chào mừng trở lại, ${user.fullName}`);
-      navigate(ROLE_HOME[activeRole]);
+      completeSignIn(user);
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : "Đăng nhập không thành công. Vui lòng kiểm tra lại thông tin.",
@@ -178,6 +178,28 @@ export default function LoginPage() {
     } finally {
       setLoading(false);
     }
+  }
+
+  /**
+   * The clicked chip is only a guess: AuthService decides the role. When the two
+   * disagree the account is signed into the portal it actually has access to,
+   * with a warning, rather than landing somewhere that will 401.
+   */
+  function completeSignIn(user: User) {
+    if (user.role !== activeRole) {
+      toast.warning(
+        `Tài khoản này thuộc vai trò ${ROLE_LABELS[user.role].label}, không phải ${ROLE_LABELS[activeRole].label}. Đã chuyển bạn sang đúng cổng.`,
+        { duration: 5000 },
+      );
+    }
+    if (user.role === "DOCTOR" && user.doctorId === undefined) {
+      toast.warning(
+        "Tài khoản bác sĩ chưa được liên kết với hồ sơ bác sĩ (doctorId) trên hệ thống. Vui lòng liên hệ Quản trị viên.",
+        { duration: 6000 },
+      );
+    }
+    toast.success(`Chào mừng trở lại, ${user.fullName}`);
+    navigate(ROLE_HOME[user.role]);
   }
 
   async function handleGoogleSignin() {
@@ -188,7 +210,7 @@ export default function LoginPage() {
 
     setLoading(true);
     try {
-      await login(
+      const user = await login(
         { email: identity.email, password: identity.password },
         activeRole,
         { departmentId: selectedDepartmentId },
@@ -196,7 +218,7 @@ export default function LoginPage() {
       toast.success(
         `Đăng nhập Google thành công với vai trò ${theme.portalLabel}`,
       );
-      navigate(ROLE_HOME[activeRole]);
+      navigate(ROLE_HOME[user.role]);
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : "Đăng nhập Google không thành công.",

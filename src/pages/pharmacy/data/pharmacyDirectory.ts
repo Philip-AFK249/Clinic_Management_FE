@@ -15,15 +15,23 @@ export interface PharmacistProfile {
   email: string;
 }
 
-/** Used by an anonymous session or a login missing from the roster below. */
-export const FALLBACK_PHARMACIST_ID = 9;
+/**
+ * Used by an anonymous session or a login missing from the roster below.
+ * Matches the `pharmacists.id` seeded by the schedule service so a signed-out
+ * kiosk session stamps the same id as a real dược sĩ.
+ */
+export const FALLBACK_PHARMACIST_ID = 20;
 
-/** Mirrors the seeded `pharmacists` rows. */
+/**
+ * Mirrors the `pharmacists` seed rows. The email must match the `users.email`
+ * AuthService authenticates, because the id is resolved from the account before
+ * any roster column exists on the token.
+ */
 export const PHARMACIST_DIRECTORY: PharmacistProfile[] = [
   {
-    id: 9,
+    id: 20,
     fullName: "DS. Đặng Thu Thảo",
-    email: "pharmacy@clinic.vn",
+    email: "thao.dang@smartclinic.vn",
   },
 ];
 

@@ -9,11 +9,17 @@ export type UserRole =
 export type Gender = "MALE" | "FEMALE" | "OTHER";
 
 export interface User {
-  id: string;
+  /**
+   * `users.id` from AuthService. That service uses a numeric identity PK, so a
+   * real session always carries a number; `string` stays in the type for
+   * payloads persisted before the AuthService migration.
+   */
+  id: string | number;
   email: string;
   fullName: string;
   role: UserRole;
-  token?: string;
+  /** The signed JWT. Always present for a live session. */
+  token: string;
   phone?: string;
   avatarUrl?: string;
   /**
@@ -35,7 +41,62 @@ export interface User {
   departmentId?: number;
   /** Denormalised from `departmentId` so the header can render it without a lookup. */
   departmentName?: string;
+
+  /* ---------------------------------------------------------------------
+   * Patient self-service fields, edited on /patient/profile.
+   *
+   * These are NOT columns on AuthService's `users` table: that entity carries
+   * only id/email/password/full_name/phone/role/department/doctor/pharmacist,
+   * and AuthService exposes no endpoint to write them. They are therefore
+   * client-only - persisted in `clinic_auth_user` and carried across a re-login
+   * by `readStoredProfileFields()` - so they survive a reload but are not yet
+   * shared with the backend. Do not treat them as authoritative.
+   * ------------------------------------------------------------------- */
+  /** ISO `YYYY-MM-DD`, matching `<input type="date">`. */
+  dateOfBirth?: string;
+  gender?: Gender;
+  address?: string;
+  /** CCCD / mã định danh: 12 digits. */
+  nationalId?: string;
+  /** Mã số thẻ BHYT, 15 characters, e.g. `DN 4 79 79 12345678`. */
+  insuranceCode?: string;
+  /** Mã cơ sở khám chữa bệnh ban đầu, e.g. `79-014`. */
+  initialHospitalCode?: string;
+  /** True once the BHYT card has been read back through the OCR scanner. */
+  insuranceVerified?: boolean;
 }
+
+/**
+ * The subset of `User` that only ever exists on the client. Used to carry a
+ * patient's saved profile and BHYT card across a fresh sign-in, because the
+ * login response cannot know about them.
+ */
+export type PatientProfileFields = Pick<
+  User,
+  | "dateOfBirth"
+  | "gender"
+  | "address"
+  | "nationalId"
+  | "insuranceCode"
+  | "initialHospitalCode"
+  | "insuranceVerified"
+>;
+
+/**
+ * Whitelist of the keys `readStoredProfileFields` is allowed to carry forward.
+ * Identity, role and token are deliberately absent: those always come from the
+ * auth backend, and replaying a stale copy of them would resurrect a revoked
+ * session.
+ */
+export const PATIENT_PROFILE_FIELDS: (keyof PatientProfileFields)[] = [
+  "dateOfBirth",
+  "gender",
+  "address",
+  "nationalId",
+  "insuranceCode",
+  "initialHospitalCode",
+  "insuranceVerified",
+];
 
 /**
  * Department context chosen on the login screen before the account is known,
@@ -70,6 +131,8 @@ export interface DemoAccount {
   redirectPath: string;
   /** Only on DOCTOR presets: the `doctors.id` this account signs in as. */
   doctorId?: number;
+  /** Only on the PHARMACIST preset: the `pharmacists.id` stamped on dispensing. */
+  pharmacistId?: number;
   /**
    * Set when the preset is tied to one khoa (DOCTOR presets, NURSE post). The
    * name is deliberately absent: it is resolved from the shared department /
@@ -91,19 +154,26 @@ export const ROLE_HOME: Record<UserRole, string> = {
   ADMIN: "/admin/overview",
 };
 
+/**
+ * The password every account seeded by AuthService's `DataInitializer` shares.
+ * Read from the first preset so the login screen can prefill staff chips
+ * without repeating the literal.
+ */
+export const DEMO_PASSWORD = "password123";
+
 export const DEMO_ACCOUNTS: DemoAccount[] = [
   {
     label: "Bệnh nhân",
     role: "PATIENT",
     email: "patient@clinic.vn",
-    password: "Demo@1234",
+    password: DEMO_PASSWORD,
     redirectPath: "/patient/dashboard",
   },
   {
     label: "Điều dưỡng",
     role: "NURSE",
     email: "hang.trinh@smartclinic.vn",
-    password: "Demo@1234",
+    password: DEMO_PASSWORD,
     redirectPath: "/reception",
     departmentId: 1,
   },
@@ -114,7 +184,7 @@ export const DEMO_ACCOUNTS: DemoAccount[] = [
     label: "Bác sĩ (Nội - Tim mạch)",
     role: "DOCTOR",
     email: "tuan.tran@smartclinic.vn",
-    password: "Demo@1234",
+    password: DEMO_PASSWORD,
     redirectPath: "/doctor/ehr",
     doctorId: 1,
     departmentId: 1,
@@ -123,7 +193,7 @@ export const DEMO_ACCOUNTS: DemoAccount[] = [
     label: "Bác sĩ (Hô hấp - Dị ứng)",
     role: "DOCTOR",
     email: "yen.le@smartclinic.vn",
-    password: "Demo@1234",
+    password: DEMO_PASSWORD,
     redirectPath: "/doctor/ehr",
     doctorId: 4,
     departmentId: 2,
@@ -132,7 +202,7 @@ export const DEMO_ACCOUNTS: DemoAccount[] = [
     label: "Bác sĩ (Da liễu)",
     role: "DOCTOR",
     email: "lan.nguyen@smartclinic.vn",
-    password: "Demo@1234",
+    password: DEMO_PASSWORD,
     redirectPath: "/doctor/ehr",
     doctorId: 7,
     departmentId: 3,
@@ -141,21 +211,22 @@ export const DEMO_ACCOUNTS: DemoAccount[] = [
     label: "Tiếp đón viên",
     role: "RECEPTIONIST",
     email: "reception@clinic.vn",
-    password: "Demo@1234",
+    password: DEMO_PASSWORD,
     redirectPath: "/reception",
   },
   {
     label: "Dược sĩ",
     role: "PHARMACIST",
-    email: "pharmacy@clinic.vn",
-    password: "Demo@1234",
+    email: "thao.dang@smartclinic.vn",
+    password: DEMO_PASSWORD,
     redirectPath: "/pharmacy/queue",
+    pharmacistId: 20,
   },
   {
     label: "Quản trị viên",
     role: "ADMIN",
-    email: "admin@clinic.vn",
-    password: "Demo@1234",
+    email: "admin@smartclinic.vn",
+    password: DEMO_PASSWORD,
     redirectPath: "/admin/overview",
   },
 ];

@@ -20,6 +20,13 @@ export interface AuthContextValue {
     extraContext?: LoginExtraContext,
   ) => Promise<User>;
   register: (payload: RegisterPayload) => Promise<User>;
+  /**
+   * Merge a patch into the signed-in user and re-persist the session.
+   *
+   * This is how /patient/profile saves: AuthService has no columns for the
+   * profile and BHYT fields, so the update is local to the stored session.
+   */
+  updateUser: (patch: Partial<User>) => void;
   logout: () => void;
 }
 

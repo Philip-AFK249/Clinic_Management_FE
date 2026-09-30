@@ -1,4 +1,5 @@
 import axios from "axios";
+import { attachBearerInterceptor } from "./authToken";
 
 /**
  * Typed HTTP client for the PatientIntakeService (Spring Boot at
@@ -14,6 +15,10 @@ export const intakeApi = axios.create({
   headers: { "Content-Type": "application/json" },
   timeout: 6000,
 });
+
+// Carries the AuthService JWT when signed in, so the intake service can bind
+// the record to a real account instead of an anonymous kiosk session.
+attachBearerInterceptor(intakeApi);
 
 // ---------------------------------------------------------------------------
 // Enums (mirroring the Java enums, all serialized as plain uppercase strings)

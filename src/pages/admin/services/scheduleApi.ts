@@ -1,4 +1,5 @@
 import axios from "axios";
+import { attachBearerInterceptor } from "../../../services/authToken";
 
 /**
  * Typed HTTP client for the DoctorScheduleService (Spring Boot at
@@ -10,6 +11,8 @@ export const scheduleApi = axios.create({
   headers: { "Content-Type": "application/json" },
   timeout: 4000,
 });
+
+attachBearerInterceptor(scheduleApi);
 
 export type ShiftSession = "MORNING" | "AFTERNOON";
 

@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { User, Mail, Lock, Phone, Info } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "../../context/useAuth";
+import { ROLE_HOME } from "../../types/auth";
 import type { Gender } from "../../types/auth";
 
 export default function RegisterPage() {
@@ -64,7 +65,7 @@ export default function RegisterPage() {
       toast.success(
         `Chào mừng ${user.fullName}. Tài khoản đã được tạo thành công.`,
       );
-      navigate("/patient/dashboard");
+      navigate(ROLE_HOME[user.role]);
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : "Đăng ký không thành công. Vui lòng thử lại.",

@@ -1,4 +1,5 @@
 import axios from "axios";
+import { attachBearerInterceptor } from "./authToken";
 
 /**
  * Typed HTTP client for the ClinicalConsultationService (Spring Boot @
@@ -19,6 +20,10 @@ export const clinicalApi = axios.create({
   headers: { "Content-Type": "application/json" },
   timeout: 8000,
 });
+
+// ClinicalConsultationService is the service most likely to grow RBAC on
+// encounters and prescriptions, so it receives the AuthService JWT on every call.
+attachBearerInterceptor(clinicalApi);
 
 // ---------------------------------------------------------------------------
 // Enums (mirroring the Java enums, all serialized as plain uppercase strings)

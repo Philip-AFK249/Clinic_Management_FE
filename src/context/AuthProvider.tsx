@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AuthContext } from "./authContext";
 import type {
   LoginCredentials,
@@ -8,21 +8,25 @@ import type {
   UserRole,
 } from "../types/auth";
 import {
+  AuthApiError,
+  getMyProfileApi,
+  loginApi,
+  registerPatientApi,
+} from "../services/authApi";
+import type { AuthResponseDto } from "../services/authApi";
+import {
+  clearStoredSession,
+  isUsableStoredSession,
+  persistSession,
+  readStoredProfileFields,
+  readStoredSession,
+} from "../services/authToken";
+import {
   departmentNameOf,
   DOCTOR_DIRECTORY,
-  FALLBACK_DEPARTMENT_ID,
-  FALLBACK_DOCTOR_ID,
 } from "../pages/doctor/data/doctorDirectory";
-import {
-  FALLBACK_PHARMACIST_ID,
-  pharmacistIdFor,
-} from "../pages/pharmacy/data/pharmacyDirectory";
-import {
-  FALLBACK_NURSE,
-  nurseFor,
-} from "../pages/reception/data/nurseDirectory";
-
-const STORAGE_KEY = "clinic_auth_user";
+import { PHARMACIST_DIRECTORY } from "../pages/pharmacy/data/pharmacyDirectory";
+import { NURSE_DIRECTORY } from "../pages/reception/data/nurseDirectory";
 
 function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
@@ -34,100 +38,143 @@ function findDoctor(email: string) {
   );
 }
 
-/**
- * Turns credentials + the role/khoa chosen on the login screen into the identity
- * that gets persisted. Kept separate from the state updates so `login` and
- * `register` stamp the session identically.
- */
-function resolveIdentity(
-  email: string,
-  role: UserRole,
-  extraContext?: LoginExtraContext,
-) {
-  const doctor = role === "DOCTOR" ? findDoctor(email) : undefined;
-  // An unknown doctor email still needs a khoa, so fall back to the card the
-  // user picked on the login screen before the backend knows better.
-  const departmentId =
-    doctor?.departmentId ??
-    (role === "NURSE"
-      ? (nurseFor(email)?.departmentId ?? FALLBACK_DEPARTMENT_ID)
-      : extraContext?.departmentId);
+function findPharmacist(email: string) {
+  return PHARMACIST_DIRECTORY.find(
+    (pharmacist) => pharmacist.email.toLowerCase() === normalizeEmail(email),
+  );
+}
 
-  const fullName =
-    role === "PATIENT"
-      ? "Nguyễn Văn An"
-      : role === "DOCTOR"
-        ? (doctor?.fullName ?? "Bác sĩ chưa đăng ký danh mục")
-        : role === "NURSE"
-          ? (nurseFor(email)?.fullName ?? FALLBACK_NURSE.fullName)
-          : role === "RECEPTIONIST"
-            ? "Nguyễn Thị Hồng Nhung"
-            : role === "PHARMACIST"
-              ? "DS. Đặng Thu Thảo"
-              : "Quản trị viên Hệ thống";
+function findNurse(email: string) {
+  return NURSE_DIRECTORY.find(
+    (nurse) => nurse.email.toLowerCase() === normalizeEmail(email),
+  );
+}
+
+/**
+ * `AuthResponseDto` -> the `User` the app renders.
+ *
+ * The backend is authoritative: the ids come straight from its `users` row. The
+ * local staff directories are only a safety net for rows created before those
+ * columns were populated - a DOCTOR without a `doctorId` would otherwise be
+ * silently resolved to another doctor's queue by `resolveDoctorId`.
+ */
+function toUser(dto: AuthResponseDto, extraContext?: LoginExtraContext): User {
+  // Only a doctor may fall back to the khoa picked on the login screen: it is
+  // the one role whose department the user chooses before the account is known.
+  // Everyone else either has a department in the DB or has no business having
+  // one, so a stale picker selection must not leak into their session.
+  const departmentId =
+    dto.departmentId ??
+    (dto.role === "DOCTOR"
+      ? (findDoctor(dto.email)?.departmentId ?? extraContext?.departmentId)
+      : dto.role === "NURSE"
+        ? findNurse(dto.email)?.departmentId
+        : undefined);
+  const isDepartmentScoped = dto.role === "DOCTOR" || dto.role === "NURSE";
 
   return {
-    fullName,
-    departmentId,
-    departmentName:
-      role === "DOCTOR" || role === "NURSE"
-        ? departmentNameOf(departmentId)
-        : undefined,
-    // Only doctors are queue-scoped; every other role leaves it undefined.
-    doctorId: role === "DOCTOR" ? (doctor?.id ?? FALLBACK_DOCTOR_ID) : undefined,
+    id: dto.userId,
+    email: dto.email,
+    fullName: dto.fullName,
+    role: dto.role,
+    // Only `POST /admin/users` answers with a null token, and that response is
+    // never turned into a session.
+    token: dto.token ?? "",
+    departmentId: isDepartmentScoped ? departmentId : undefined,
+    departmentName: isDepartmentScoped
+      ? (dto.departmentName ?? departmentNameOf(departmentId))
+      : undefined,
+    doctorId:
+      dto.doctorId ??
+      (dto.role === "DOCTOR" ? findDoctor(dto.email)?.id : undefined),
     pharmacistId:
-      role === "PHARMACIST"
-        ? (pharmacistIdFor(email) ?? FALLBACK_PHARMACIST_ID)
-        : undefined,
+      dto.pharmacistId ??
+      (dto.role === "PHARMACIST" ? findPharmacist(dto.email)?.id : undefined),
+    // Spliced rather than listed explicitly: these live in the stored session
+    // only, and a new sign-in must not discard the BHYT card the patient saved.
+    ...readStoredProfileFields(),
   };
 }
 
-function loadStoredUser(): User | null {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    return JSON.parse(raw) as User;
-  } catch {
-    return null;
-  }
-}
-
-function persistUser(user: User): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
-}
-
-function clearStoredUser(): void {
-  localStorage.removeItem(STORAGE_KEY);
+/**
+ * A stored session survives a reload only if it still carries a JWT and a role
+ * this build understands. Anything else is treated as signed out rather than
+ * replayed into a portal that will immediately 401.
+ */
+function restoreUser(): User | null {
+  const stored = readStoredSession();
+  return isUsableStoredSession(stored) ? (stored as User) : null;
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(loadStoredUser);
+  const [user, setUser] = useState<User | null>(restoreUser);
+
+  const commit = useCallback((next: User): User => {
+    setUser(next);
+    persistSession(next);
+    return next;
+  }, []);
+
+  /**
+   * Re-validate the restored session once on mount.
+   *
+   * A rejected token (400/401 - AuthService answers 400 for both an invalid and
+   * an expired JWT) drops the session. A network failure keeps the cached user
+   * instead: the backend being briefly unreachable is not evidence that anyone
+   * signed out, and each microservice call re-authorises on its own. Success also
+   * refreshes a role or department that changed server-side.
+   */
+  const bootToken = useRef(user?.token);
+  useEffect(() => {
+    const token = bootToken.current;
+    if (!token) return;
+    let cancelled = false;
+
+    void getMyProfileApi(token).then(
+      (profile) => {
+        if (cancelled) return;
+        // `/me` echoes the token back; keep the one we already hold.
+        const refreshed = toUser({ ...profile, token: profile.token ?? token });
+        setUser(refreshed);
+        persistSession(refreshed);
+      },
+      (cause: unknown) => {
+        if (cancelled) return;
+        const rejected =
+          cause instanceof AuthApiError &&
+          (cause.kind === "invalid" || cause.kind === "unauthorized");
+        if (!rejected) return;
+        setUser(null);
+        clearStoredSession();
+      },
+    );
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const login = useCallback(
     async (
       credentials: LoginCredentials,
-      role: UserRole,
+      // Kept for call-site readability: the role chip the user pressed is a
+      // guess, and only the caller can act on a mismatch (by re-routing and
+      // warning), so it is deliberately not consulted here.
+      _role: UserRole,
       extraContext?: LoginExtraContext,
     ): Promise<User> => {
       if (!credentials.email || !credentials.password) {
         throw new Error("Email và mật khẩu là bắt buộc.");
       }
 
-      const identity = resolveIdentity(credentials.email, role, extraContext);
+      const dto = await loginApi({
+        email: credentials.email.trim(),
+        password: credentials.password,
+      });
 
-      const mockUser: User = {
-        id: crypto.randomUUID(),
-        email: credentials.email,
-        role,
-        token: `mock_jwt_${role.toLowerCase()}_${Date.now()}`,
-        ...identity,
-      };
-
-      setUser(mockUser);
-      persistUser(mockUser);
-      return mockUser;
+      return commit(toUser(dto, extraContext));
     },
-    [],
+    [commit],
   );
 
   const register = useCallback(
@@ -135,32 +182,47 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (payload.password !== payload.confirmPassword) {
         throw new Error("Mật khẩu xác nhận không khớp.");
       }
+      if (payload.password.length < 6) {
+        throw new Error("Mật khẩu phải có tối thiểu 6 ký tự.");
+      }
 
-      const identity = resolveIdentity(payload.email, payload.role);
+      // `role` is dropped because AuthService forces PATIENT on
+      // self-registration, `confirmPassword` has no server counterpart, and
+      // `RegisterPatientRequest` has no field for `dateOfBirth`/`gender` - the
+      // `users` table has no column for them, so they are collected by the form
+      // and dropped here rather than silently posted and ignored.
+      const dto = await registerPatientApi({
+        fullName: payload.fullName.trim(),
+        email: payload.email.trim(),
+        phone: payload.phone.trim(),
+        password: payload.password,
+      });
 
-      const mockUser: User = {
-        id: crypto.randomUUID(),
-        email: payload.email,
-        role: payload.role,
-        phone: payload.phone,
-        token: `mock_jwt_${payload.role.toLowerCase()}_${Date.now()}`,
-        ...identity,
-        // Self-registration supplies its own name; only the id/department links
-        // come from the directory.
-        fullName: payload.fullName,
-      };
-
-      setUser(mockUser);
-      persistUser(mockUser);
-      return mockUser;
+      return commit(toUser(dto));
     },
-    [],
+    [commit],
   );
 
   const logout = useCallback(() => {
     setUser(null);
-    clearStoredUser();
+    clearStoredSession();
   }, []);
+
+  /**
+   * Apply a self-service edit to the live session.
+   *
+   * Reads `user` from the closure instead of computing inside the `setUser`
+   * updater so the `persistSession` write stays outside React's state updater
+   * (which StrictMode is free to call twice). Reuses `commit`, so an edit is
+   * persisted exactly the way a login is.
+   */
+  const updateUser = useCallback(
+    (patch: Partial<User>) => {
+      if (!user) return;
+      commit({ ...user, ...patch });
+    },
+    [user, commit],
+  );
 
   const value = useMemo(
     () => ({
@@ -168,9 +230,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isAuthenticated: user !== null,
       login,
       register,
+      updateUser,
       logout,
     }),
-    [user, login, register, logout],
+    [user, login, register, updateUser, logout],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

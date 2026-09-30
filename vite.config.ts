@@ -6,9 +6,14 @@ export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
+      // AuthService (Spring Boot @ :8085): JWT issue/verify + user directory.
+      // Declared first because it is the most specific prefix; every rule below
+      // must stay ahead of the '/api' catch-all (Vite matches in order).
+      '/api/v1/auth': {
+        target: 'http://127.0.0.1:8085',
+        changeOrigin: true,
+      },
       // PatientIntakeService (Spring Boot @ :8082).
-      // These two prefixes MUST stay declared above the catch-all '/api' rule:
-      // Vite matches proxy contexts in declaration order and takes the first hit.
       '/api/v1/intake': {
         target: 'http://127.0.0.1:8082',
         changeOrigin: true,

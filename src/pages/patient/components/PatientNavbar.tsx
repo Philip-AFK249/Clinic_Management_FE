@@ -1,5 +1,17 @@
-import { Link } from "react-router-dom";
-import { Activity, ChevronDown, Clock, MapPin, PhoneCall, QrCode } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import {
+  Activity,
+  ChevronDown,
+  Clock,
+  CreditCard,
+  FileText,
+  LogOut,
+  MapPin,
+  PhoneCall,
+  QrCode,
+} from "lucide-react";
+import { useAuth } from "../../../context/useAuth";
 
 const NAV_LINKS = [
   { label: "Chuyên khoa", href: "#services" },
@@ -9,7 +21,49 @@ const NAV_LINKS = [
   { label: "Hỏi đáp FAQ", href: "#faq" },
 ];
 
+/**
+ * Up to two initials from a full name, for the avatar chip.
+ *
+ * Vietnamese names are space separated with the given name last, so the leading
+ * words are the ones that identify the patient in a list.
+ */
+function initialsOf(fullName: string): string {
+  const parts = fullName.trim().split(/\s+/).filter(Boolean);
+  const letters = parts.slice(0, 2).map((part) => part[0] ?? "");
+  const initials = letters.join("").toUpperCase();
+  return initials.length > 0 ? initials : "BN";
+}
+
 export default function PatientNavbar() {
+  const { user, isAuthenticated, logout } = useAuth();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    function onPointerDown(event: MouseEvent) {
+      if (!menuRef.current?.contains(event.target as Node)) {
+        setMenuOpen(false);
+      }
+    }
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setMenuOpen(false);
+    }
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [menuOpen]);
+
+  function handleLogout() {
+    setMenuOpen(false);
+    logout();
+    navigate("/");
+  }
+
   return (
     <header>
       {/* Top Utility Strip */}
@@ -72,12 +126,85 @@ export default function PatientNavbar() {
               <QrCode className="h-4 w-4 text-clinical-600" aria-hidden="true" />
               Vé của tôi
             </Link>
-            <Link
-              to="/login?role=PATIENT"
-              className="hidden h-10 items-center justify-center rounded-lg border border-slate-200 px-4 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 md:inline-flex"
-            >
-              Cổng Bệnh nhân (Đăng nhập)
-            </Link>
+            {isAuthenticated ? (
+              <div ref={menuRef} className="relative hidden md:block">
+                <button
+                  type="button"
+                  aria-haspopup="menu"
+                  aria-expanded={menuOpen}
+                  onClick={() => setMenuOpen(!menuOpen)}
+                  className="flex h-10 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 shadow-sm transition-colors hover:bg-slate-50"
+                >
+                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-clinical-100 text-xs font-bold text-clinical-700">
+                    {initialsOf(user?.fullName || "BN")}
+                  </span>
+                  <span className="max-w-[130px] truncate font-medium text-slate-800">
+                    {user?.fullName || "Bệnh nhân"}
+                  </span>
+                  <ChevronDown
+                    className={`h-3.5 w-3.5 text-slate-400 transition-transform ${
+                      menuOpen ? "rotate-180" : ""
+                    }`}
+                    aria-hidden="true"
+                  />
+                </button>
+
+                {menuOpen && (
+                  <div
+                    role="menu"
+                    className="absolute right-0 top-11 z-50 w-60 rounded-xl border border-slate-200 bg-white p-1.5 shadow-elevated"
+                  >
+                    <div className="border-b border-slate-100 px-3 py-2">
+                      <p className="truncate text-xs font-bold text-slate-900">
+                        {user?.fullName}
+                      </p>
+                      <p className="truncate text-[11px] text-slate-500">
+                        {user?.email}
+                      </p>
+                    </div>
+
+                    <Link
+                      to="/patient/profile"
+                      role="menuitem"
+                      onClick={() => setMenuOpen(false)}
+                      className="mt-1 flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 hover:text-clinical-600"
+                    >
+                      <CreditCard className="h-4 w-4 text-slate-400" aria-hidden="true" />
+                      Hồ sơ cá nhân &amp; Thẻ BHYT
+                    </Link>
+
+                    <Link
+                      to="/patient/dashboard"
+                      role="menuitem"
+                      onClick={() => setMenuOpen(false)}
+                      className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 hover:text-clinical-600"
+                    >
+                      <FileText className="h-4 w-4 text-slate-400" aria-hidden="true" />
+                      Phiếu khám &amp; Hàng đợi của tôi
+                    </Link>
+
+                    <div className="my-1 border-t border-slate-100" />
+
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={handleLogout}
+                      className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium text-red-600 transition-colors hover:bg-red-50"
+                    >
+                      <LogOut className="h-4 w-4" aria-hidden="true" />
+                      Đăng xuất
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <Link
+                to="/login?role=PATIENT"
+                className="hidden h-10 items-center justify-center rounded-lg border border-slate-200 px-4 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 md:inline-flex"
+              >
+                Cổng Bệnh nhân (Đăng nhập)
+              </Link>
+            )}
             <Link
               to="/patient/booking"
               className="inline-flex h-11 items-center justify-center rounded-lg bg-cta px-5 text-base font-semibold text-white shadow-sm transition-colors hover:bg-cta-hover"
