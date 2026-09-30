@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
-import { PHARMACY_FORMULARY } from "../data/doctorMockData";
+import { useDrugCatalog } from "../../../hooks/useDrugCatalog";
+import { drugToRxLine } from "../data/rxMapper";
 import type { Allergy, RxLine } from "../data/doctorMockData";
 
 interface PrescriptionDraftTableProps {
@@ -14,22 +15,18 @@ export default function PrescriptionDraftTable({
   setRxLines,
   allergies,
 }: PrescriptionDraftTableProps) {
-  const [selected, setSelected] = useState(PHARMACY_FORMULARY[0].name);
+  // The live formulary replaces the seeded PHARMACY_FORMULARY: stock, BHYT
+  // coverage and the penicillin flag of every line come from the kho.
+  const catalog = useDrugCatalog();
+  const [selectedDrugId, setSelectedDrugId] = useState<number | null>(null);
+  const selectedDrug =
+    catalog.drugs.find((drug) => drug.id === selectedDrugId) ??
+    catalog.drugs[0] ??
+    null;
 
   function addMedicine() {
-    const med = PHARMACY_FORMULARY.find((m) => m.name === selected);
-    if (!med) return;
-    const newLine: RxLine = {
-      id: `RX-${Date.now()}`,
-      medication: med.name,
-      dosageForm: med.dosageForm,
-      routeFrequency: med.defaultFrequency,
-      duration: med.defaultDuration,
-      quantity: 1,
-      stockUnits: med.stockUnits,
-      bhytCoverage: med.bhytCoverage,
-      isPenicillinClass: med.isPenicillinClass,
-    };
+    if (!selectedDrug) return;
+    const newLine = drugToRxLine(selectedDrug, `RX-${Date.now()}`);
     setRxLines((prev) => [...prev, newLine]);
   }
 
@@ -44,6 +41,9 @@ export default function PrescriptionDraftTable({
   );
   const hasPenicillinRx = rxLines.some((line) => line.isPenicillinClass);
   const showConflictWarning = hasPenicillinAllergy && hasPenicillinRx;
+  const lowStockLines = rxLines.filter(
+    (line) => line.quantity > line.stockUnits,
+  );
 
   return (
     <div className="rounded-lg border border-slate-200/80 bg-white p-3 shadow-card">
@@ -63,6 +63,13 @@ export default function PrescriptionDraftTable({
         </div>
       )}
 
+      {lowStockLines.length > 0 && (
+        <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">
+          ⚠️ KHO KHÔNG ĐỦ: {lowStockLines.map((line) => line.medication).join(", ")}{" "}
+          - số lượng kê vượt tồn kho hiện tại, hệ thống sẽ từ chối xuất kho.
+        </div>
+      )}
+
       <table className="mt-2 w-full border-collapse text-xs">
         <thead>
           <tr className="border-b border-slate-200 text-left text-[11px] font-semibold text-slate-500">
@@ -77,6 +84,7 @@ export default function PrescriptionDraftTable({
         <tbody>
           {rxLines.map((line) => {
             const lowStock = line.stockUnits < 30;
+            const overStock = line.quantity > line.stockUnits;
             return (
               <tr key={line.id} className="border-b border-slate-100 align-top">
                 <td className="py-2 pr-2">
@@ -85,13 +93,15 @@ export default function PrescriptionDraftTable({
                   </p>
                   <span
                     className={`mt-0.5 inline-block rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
-                      lowStock
-                        ? "border border-amber-200 bg-amber-50 text-amber-700"
-                        : "border border-teal-200 bg-teal-50 text-teal-700"
+                      overStock
+                        ? "border border-red-200 bg-red-50 text-red-700"
+                        : lowStock
+                          ? "border border-amber-200 bg-amber-50 text-amber-700"
+                          : "border border-teal-200 bg-teal-50 text-teal-700"
                     }`}
                   >
-                    ● {lowStock ? "Sắp hết" : "Còn hàng"}: {line.stockUnits} đơn
-                    vị
+                    ● {overStock ? "Không đủ tồn" : lowStock ? "Sắp hết" : "Còn hàng"}:{" "}
+                    {line.stockUnits} đơn vị
                   </span>
                   <span className="mt-0.5 ml-1 inline-block rounded-full border border-teal-200 bg-teal-50 px-1.5 py-0.5 text-[10px] font-semibold text-teal-700">
                     ● {line.bhytCoverage}
@@ -153,25 +163,39 @@ export default function PrescriptionDraftTable({
       {/* Add medicine */}
       <div className="mt-2 flex items-center gap-2">
         <select
-          value={selected}
-          onChange={(e) => setSelected(e.target.value)}
-          className="h-9 flex-1 rounded-lg border border-slate-200 bg-white px-2 text-xs text-slate-700 focus:border-teal-500 focus:outline-none"
+          value={selectedDrug ? String(selectedDrug.id) : ""}
+          onChange={(e) => setSelectedDrugId(Number(e.target.value))}
+          disabled={catalog.drugs.length === 0}
+          aria-label="Chọn thuốc trong danh mục kho"
+          className="h-9 flex-1 rounded-lg border border-slate-200 bg-white px-2 text-xs text-slate-700 focus:border-teal-500 focus:outline-none disabled:bg-slate-50 disabled:text-slate-400"
         >
-          {PHARMACY_FORMULARY.map((med) => (
-            <option key={med.name} value={med.name}>
-              {med.name} ({med.dosageForm}) — Còn {med.stockUnits} đơn vị
+          {catalog.drugs.map((drug) => (
+            <option key={drug.id} value={drug.id}>
+              {drug.name} {drug.concentration} ({drug.dosageForm}) — Còn{" "}
+              {drug.stockQuantity} đơn vị
             </option>
           ))}
         </select>
         <button
           type="button"
           onClick={addMedicine}
-          className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-teal-600 bg-teal-50 px-3 text-xs font-semibold text-teal-700 transition-colors hover:bg-teal-600 hover:text-white"
+          disabled={!selectedDrug}
+          className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-teal-600 bg-teal-50 px-3 text-xs font-semibold text-teal-700 transition-colors hover:bg-teal-600 hover:text-white disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400"
         >
           <Plus className="h-3.5 w-3.5" aria-hidden="true" />
-          Thêm thuốc vào đơn
+          {catalog.isLoading
+            ? "Đang tải danh mục..."
+            : "Thêm thuốc vào đơn"}
         </button>
       </div>
+
+      {catalog.error && (
+        <p className="mt-1 text-[11px] text-red-600">
+          {catalog.isUnavailable
+            ? `Không tải được danh mục thuốc: ${catalog.error}`
+            : "Danh mục thuốc có thể đã cũ, hãy bấm Thêm thuốc để nạp lại."}
+        </p>
+      )}
     </div>
   );
 }

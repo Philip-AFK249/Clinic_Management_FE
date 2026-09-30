@@ -1,6 +1,6 @@
 import { toast } from "sonner";
 import { ClipboardCheck } from "lucide-react";
-import type { PharmacyOrder } from "../data/pharmacyMockData";
+import type { PharmacyOrder } from "../data/pharmacyTypes";
 
 interface MedicationPackingTrayProps {
   order: PharmacyOrder;
@@ -12,6 +12,7 @@ const STATUS_LABELS: Record<PharmacyOrder["status"], string> = {
   PREPARING: "Đang soạn thuốc",
   READY_FOR_PICKUP: "Sẵn sàng phát",
   DISPENSED: "Đã hoàn tất",
+  CANCELLED: "Đơn đã hủy",
 };
 
 const COVERAGE_LABELS: Record<number, string> = {

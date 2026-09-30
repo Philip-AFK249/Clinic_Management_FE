@@ -1,15 +1,25 @@
-import { Bell, Camera, Pill } from "lucide-react";
-import { DISPENSED_TODAY_COUNT } from "../data/pharmacyMockData";
+import { Bell, Camera, Pill, RefreshCw } from "lucide-react";
 
 interface PharmacyHeaderProps {
   pendingCount: number;
   readyCount: number;
+  /** Prescriptions dispensed during this counter shift. */
+  dispensedCount: number;
+  pharmacistName: string;
+  pharmacistInitials: string;
+  isRefreshing: boolean;
+  onRefresh: () => void;
   onOpenScanner: () => void;
 }
 
 export default function PharmacyHeader({
   pendingCount,
   readyCount,
+  dispensedCount,
+  pharmacistName,
+  pharmacistInitials,
+  isRefreshing,
+  onRefresh,
   onOpenScanner,
 }: PharmacyHeaderProps) {
   return (
@@ -41,11 +51,23 @@ export default function PharmacyHeader({
           <span className="font-bold text-sky-600">{readyCount} đơn</span>
         </div>
         <div className="text-xs font-medium text-slate-600">
-          Đã cấp phát hôm nay:{" "}
+          Đã cấp phát ca này:{" "}
           <span className="font-bold text-emerald-700">
-            {DISPENSED_TODAY_COUNT} toa
+            {dispensedCount} toa
           </span>
         </div>
+        <button
+          type="button"
+          onClick={onRefresh}
+          disabled={isRefreshing}
+          className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-[11px] font-semibold text-slate-600 transition-colors hover:bg-slate-50 hover:text-emerald-700 disabled:cursor-not-allowed disabled:text-slate-400"
+        >
+          <RefreshCw
+            className={`h-3.5 w-3.5 ${isRefreshing ? "animate-spin" : ""}`}
+            aria-hidden="true"
+          />
+          {isRefreshing ? "Đang tải" : "Làm mới"}
+        </button>
       </div>
 
       {/* Scanner action + profile */}
@@ -53,7 +75,7 @@ export default function PharmacyHeader({
         <button
           type="button"
           onClick={onOpenScanner}
-          className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-emerald-700"
+          className="flex h-9 items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-emerald-700"
         >
           <Camera className="h-4 w-4" aria-hidden="true" />
           Quét Mã QR Bệnh Nhân
@@ -65,17 +87,17 @@ export default function PharmacyHeader({
         >
           <Bell className="h-4 w-4" />
           <span
-            className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-red-500"
+            className="absolute left-1.5 top-1.5 h-2 w-2 rounded-full bg-red-500"
             aria-hidden="true"
           />
         </button>
         <div className="flex items-center gap-2.5 border-l border-slate-200/80 pl-3">
           <span className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-50 text-sm font-bold text-emerald-700">
-            TT
+            {pharmacistInitials}
           </span>
           <div>
             <p className="text-xs font-semibold text-slate-900">
-              DS. Đặng Thu Thảo
+              {pharmacistName}
             </p>
             <p className="text-[11px] text-slate-500">
               Dược sĩ phụ trách cấp phát

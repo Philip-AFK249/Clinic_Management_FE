@@ -16,6 +16,11 @@ export interface User {
    * auth backend rather than being inferred from the email at render time.
    */
   doctorId?: number;
+  /**
+   * `pharmacists.id` in ClinicalConsultationService. Only set for PHARMACIST
+   * accounts; it is stamped on every prescription the pharmacist dispenses.
+   */
+  pharmacistId?: number;
 }
 
 export interface LoginCredentials {

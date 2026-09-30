@@ -1,5 +1,5 @@
 import { AlertTriangle, BadgeCheck, User, Stethoscope } from "lucide-react";
-import type { PharmacyOrder } from "../data/pharmacyMockData";
+import type { PharmacyOrder } from "../data/pharmacyTypes";
 
 interface PrescriptionDetailCardProps {
   order: PharmacyOrder;
@@ -17,8 +17,10 @@ export default function PrescriptionDetailCard({
             <h2 className="text-base font-bold text-slate-900">
               {order.patientName}
             </h2>
+            {/* The pharmacy API carries no demographics - say so, don't guess. */}
             <span className="text-xs font-medium text-slate-500">
-              {order.age} tuổi, {order.gender}
+              {order.age !== null ? `${order.age} tuổi` : "Chưa rõ tuổi"}
+              {order.gender ? `, ${order.gender}` : ""}
             </span>
             <span className="bg-emerald-50 px-1.5 py-0.5 font-mono text-[11px] font-semibold text-emerald-700">
               {order.ticketCode}
@@ -30,7 +32,7 @@ export default function PrescriptionDetailCard({
             <span className="font-mono font-medium text-slate-700">
               {order.patientId}
             </span>{" "}
-            &middot; Ngày sinh: {order.dob}
+            &middot; Ngày sinh: {order.dob ?? "Chưa rõ"}
           </p>
 
           {/* Doctor + room */}
@@ -40,32 +42,32 @@ export default function PrescriptionDetailCard({
             <span className="font-medium text-slate-700">
               {order.prescribingDoctor}
             </span>{" "}
-            &middot; {order.roomNumber}
+            &middot; {order.roomNumber ?? "Chưa rõ phòng khám"}
           </p>
 
           {/* Clinical diagnosis */}
           <p className="mt-1 text-xs text-slate-500">
             Chẩn đoán lâm sàng:{" "}
             <span className="font-semibold text-teal-700">
-              {order.diagnosis}
+              {order.diagnosis ?? "Xem trên bệnh án điện tử"}
             </span>
           </p>
         </div>
 
-        {/* BHYT OCR verified pill */}
+        {/* BHYT pill */}
         <div className="col-span-4 flex flex-col items-end justify-center gap-2">
           {order.isOcrVerified ? (
             <span className="inline-flex max-w-full items-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
               <BadgeCheck className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-              ✓ Thẻ BHYT Hợp lệ: {order.insuranceCode} (80%)
+              ✓ Thẻ BHYT: {order.insuranceCode}
             </span>
           ) : (
             <span className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-500">
-              Chưa xác thực BHYT
+              Không có mã BHYT trên đơn
             </span>
           )}
           <span className="text-right text-[11px] text-slate-500">
-            {order.initialHospitalCode}
+            {order.initialHospitalCode ?? "Nơi KCB đầu tiên: chưa cập nhật"}
           </span>
         </div>
       </div>

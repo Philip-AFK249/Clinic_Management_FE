@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { Camera, X, QrCode } from "lucide-react";
-import type { PharmacyOrder } from "../data/pharmacyMockData";
+import type { PharmacyOrder } from "../data/pharmacyTypes";
 
 interface QrVerificationModalProps {
   open: boolean;
@@ -76,9 +76,7 @@ export default function QrVerificationModal({
             <div className="relative flex aspect-square w-full items-center justify-center overflow-hidden rounded-xl border border-slate-300 bg-slate-900">
               <span className="flex flex-col items-center gap-3 text-slate-400">
                 <QrCode className="h-24 w-24" />
-                <span className="font-mono text-xs">
-                  #APT-2026-{order.orderId.slice(3)}
-                </span>
+<span className="font-mono text-xs">{order.ticketCode}</span>
               </span>
               {scanning && (
                 <span
@@ -96,11 +94,11 @@ export default function QrVerificationModal({
                 className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-emerald-700 disabled:bg-slate-300 disabled:text-slate-500"
               >
                 <Camera className="h-4 w-4" aria-hidden="true" />
-                {scanning ? "Đang quét..." : "Giả lập quét mã: Bệnh nhân Nguyễn Văn An"}
+                {scanning ? "Đang quét..." : "Quét mã phiếu của bệnh nhân"}
               </button>
             ) : (
               <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-center text-xs font-semibold text-emerald-700">
-                ✓ Đã khớp phiếu của {order.patientName} (#APT-2026-{order.orderId.slice(3)})
+                ✓ Đã khớp phiếu của {order.patientName} ({order.ticketCode})
               </p>
             )}
 

@@ -20,6 +20,12 @@ export interface DoctorProfile {
   email: string;
   roomNumber: string;
   departmentName: string;
+  /**
+   * `departments.id`, required by `POST /clinical/encounters/start` to stamp
+   * the bệnh án. Resolved from the session rather than from the active patient
+   * so an encounter can still be opened for a patient without a department.
+   */
+  departmentId: number;
 }
 
 /** Displayed when nobody is signed in (standalone demo / kiosk deep-link). */
@@ -30,6 +36,9 @@ const DEPARTMENT_NAMES: Record<number, string> = {
   2: "Khoa Hô hấp & Dị ứng - Miễn dịch lâm sàng",
   3: "Khoa Da liễu",
 };
+
+/** Department used when the session is anonymous and no roster row matches. */
+const FALLBACK_DEPARTMENT_ID = 1;
 
 interface SeededDoctor extends Omit<DoctorProfile, "departmentName"> {
   departmentId: number;
@@ -176,6 +185,7 @@ export function resolveDoctorProfile(
     email: user?.email ?? "",
     roomNumber: seeded?.roomNumber ?? "Chưa phân phòng",
     departmentName: seeded?.departmentName ?? "Chuyên khoa",
+    departmentId: seeded?.departmentId ?? FALLBACK_DEPARTMENT_ID,
   };
   return { profile: fallback, isSeeded: false };
 }

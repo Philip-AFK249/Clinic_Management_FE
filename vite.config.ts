@@ -17,6 +17,17 @@ export default defineConfig({
         target: 'http://127.0.0.1:8082',
         changeOrigin: true,
       },
+      // ClinicalConsultationService (Spring Boot @ :8083): bệnh án của bác sĩ và
+      // hàng đợi cấp phát của dược sĩ. Same ordering rule as above - these two
+      // prefixes must stay ahead of the '/api' catch-all.
+      '/api/v1/clinical': {
+        target: 'http://127.0.0.1:8083',
+        changeOrigin: true,
+      },
+      '/api/v1/pharmacy': {
+        target: 'http://127.0.0.1:8083',
+        changeOrigin: true,
+      },
       // DoctorScheduleService (Spring Boot @ :8081) and everything else.
       '/api': {
         target: 'http://127.0.0.1:8081',

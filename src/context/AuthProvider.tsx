@@ -5,6 +5,10 @@ import {
   DOCTOR_DIRECTORY,
   FALLBACK_DOCTOR_ID,
 } from "../pages/doctor/data/doctorDirectory";
+import {
+  FALLBACK_PHARMACIST_ID,
+  pharmacistIdFor,
+} from "../pages/pharmacy/data/pharmacyDirectory";
 
 const STORAGE_KEY = "clinic_auth_user";
 
@@ -69,6 +73,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         role,
         // Only doctors are queue-scoped; every other role leaves it undefined.
         doctorId: role === "DOCTOR" ? doctorIdFor(credentials.email) : undefined,
+        pharmacistId:
+          role === "PHARMACIST"
+            ? (pharmacistIdFor(credentials.email) ?? FALLBACK_PHARMACIST_ID)
+            : undefined,
         token: `mock_jwt_${role.toLowerCase()}_${Date.now()}`,
       };
 
@@ -94,6 +102,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         doctorId:
           payload.role === "DOCTOR"
             ? (doctorIdFor(payload.email) ?? FALLBACK_DOCTOR_ID)
+            : undefined,
+        pharmacistId:
+          payload.role === "PHARMACIST"
+            ? (pharmacistIdFor(payload.email) ?? FALLBACK_PHARMACIST_ID)
             : undefined,
         token: `mock_jwt_${payload.role.toLowerCase()}_${Date.now()}`,
       };

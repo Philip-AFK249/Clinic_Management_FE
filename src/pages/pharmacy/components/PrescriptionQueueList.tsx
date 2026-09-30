@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Clock, ChevronRight } from "lucide-react";
-import type { PharmacyOrder, PrescriptionStatus } from "../data/pharmacyMockData";
+import type { PharmacyOrder, PrescriptionStatus } from "../data/pharmacyTypes";
 
 interface PrescriptionQueueListProps {
   orders: PharmacyOrder[];
@@ -16,6 +16,7 @@ const FILTER_TABS: { key: QueueFilter; label: string }[] = [
   { key: "PREPARING", label: "Đang soạn" },
   { key: "READY_FOR_PICKUP", label: "Chờ phát" },
   { key: "DISPENSED", label: "Đã phát" },
+  { key: "CANCELLED", label: "Đã hủy" },
 ];
 
 const STATUS_BADGES: Record<
@@ -38,6 +39,10 @@ const STATUS_BADGES: Record<
     label: "Đã hoàn tất",
     className: "bg-emerald-50 text-emerald-700 border-emerald-200",
   },
+  CANCELLED: {
+    label: "Đơn đã hủy",
+    className: "bg-slate-100 text-slate-600 border-slate-200",
+  },
 };
 
 const PAYMENT_BADGES: Record<
@@ -49,7 +54,7 @@ const PAYMENT_BADGES: Record<
     className: "bg-sky-50 text-sky-700 border-sky-200",
   },
   PENDING_AT_COUNTER: {
-    label: "⏳ Chờ thu: 33.600 đ",
+    label: "⏳ Chờ thu tại quầy",
     className: "bg-amber-50 text-amber-700 border-amber-200",
   },
   SETTLED_AT_COUNTER: {
@@ -135,7 +140,7 @@ export default function PrescriptionQueueList({
                 </span>
                 <span className="flex items-center gap-0.5 text-[11px] text-slate-400">
                   <Clock className="h-3 w-3" aria-hidden="true" />
-                  5 phút trước
+                  {order.createdAt}
                 </span>
               </div>
               <span
@@ -144,10 +149,17 @@ export default function PrescriptionQueueList({
                 {statusBadge.label}
               </span>
               <p className="mt-1.5 text-sm font-semibold text-slate-900">
-                {order.patientName} ({order.age}T, {order.gender})
+                {order.patientName}
+                {order.age !== null && (
+                  <span className="font-normal text-slate-500">
+                    {" "}
+                    ({order.age}T, {order.gender ?? "—"})
+                  </span>
+                )}
               </p>
               <p className="text-xs text-slate-500">
-                Bác sĩ: {order.prescribingDoctor} ({order.roomNumber})
+                Bác sĩ: {order.prescribingDoctor}
+                {order.roomNumber ? ` (${order.roomNumber})` : ""}
               </p>
               <div className="mt-1.5 flex flex-wrap items-center gap-1">
                 <span className="inline-block rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">

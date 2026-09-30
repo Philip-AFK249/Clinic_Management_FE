@@ -462,62 +462,15 @@ export const ICD10_FORMULARY: IcdCode[] = [
   { code: "R50.9", label: "Sốt, không đặc hiệu", confidence: 0 },
 ];
 
-export interface FormularyMed {
-  name: string;
-  dosageForm: string;
-  defaultFrequency: string;
-  defaultDuration: string;
-  stockUnits: number;
-  bhytCoverage: BhyCoverage;
-  isPenicillinClass?: boolean;
-}
-
-export const PHARMACY_FORMULARY: FormularyMed[] = [
-  {
-    name: "Amoxicillin 500mg",
-    dosageForm: "Viên nang",
-    defaultFrequency: "1 viên x 2 lần/ngày sau ăn",
-    defaultDuration: "7 ngày",
-    stockUnits: 140,
-    bhytCoverage: "BHYT 80%",
-    isPenicillinClass: true,
-  },
-  {
-    name: "Paracetamol 500mg",
-    dosageForm: "Viên nén",
-    defaultFrequency: "1 viên mỗi 6 giờ khi sốt > 38.5°C",
-    defaultDuration: "3 ngày",
-    stockUnits: 250,
-    bhytCoverage: "BHYT 100%",
-  },
-  {
-    name: "Cefuroxime 500mg",
-    dosageForm: "Viên nén",
-    defaultFrequency: "1 viên x 2 lần/ngày",
-    defaultDuration: "7 ngày",
-    stockUnits: 60,
-    bhytCoverage: "BHYT 80%",
-  },
-  {
-    name: "Loratadine 10mg",
-    dosageForm: "Viên nén",
-    defaultFrequency: "1 viên/ngày",
-    defaultDuration: "30 ngày",
-    stockUnits: 24,
-    bhytCoverage: "BHYT 80%",
-  },
-  {
-    name: "Budesonide 200mcg",
-    dosageForm: "Bình xịt định liều",
-    defaultFrequency: "2 nhịp xịt x 2 lần/ngày",
-    defaultDuration: "30 ngày",
-    stockUnits: 18,
-    bhytCoverage: "Tự túc",
-  },
-];
-
+/**
+ * One prescribed line. `drugId` is the `drugs.id` that
+ * `POST /clinical/encounters/{id}/complete` needs, so it is carried all the way
+ * from the live formulary (`GET /pharmacy/drugs`) instead of being re-derived
+ * from the display name at submit time.
+ */
 export interface RxLine {
   id: string;
+  drugId: number;
   medication: string;
   dosageForm: string;
   routeFrequency: string;
@@ -528,28 +481,31 @@ export interface RxLine {
   isPenicillinClass?: boolean;
 }
 
-export const AI_RX_DRAFT: RxLine[] = [
+/**
+ * What the AI proposes when the ambient transcript finishes. Stock, coverage
+ * and the penicillin flag are deliberately absent: they belong to the live
+ * catalog and are filled in by `resolveRxSeeds`, so a stale mock can never
+ * prescribe an unknown `drugId` or quote a coverage rate the drug no longer has.
+ */
+export interface RxSeed {
+  /** `Drug.name` as seeded in ClinicalConsultationService. */
+  drugName: string;
+  routeFrequency: string;
+  duration: string;
+  quantity: number;
+}
+
+export const AI_RX_SEEDS: RxSeed[] = [
   {
-    id: "RX-1",
-    medication: "Amoxicillin 500mg",
-    dosageForm: "Viên nang",
+    drugName: "Amoxicillin",
     routeFrequency: "1 viên x 2 lần/ngày sau ăn",
     duration: "7 ngày",
     quantity: 14,
-    stockUnits: 140,
-    bhytCoverage: "BHYT 80%",
-    isPenicillinClass: true,
   },
   {
-    id: "RX-2",
-    medication: "Paracetamol 500mg",
-    dosageForm: "Viên nén",
+    drugName: "Paracetamol",
     routeFrequency: "1 viên mỗi 6 giờ khi sốt > 38.5°C",
     duration: "3 ngày",
     quantity: 10,
-    stockUnits: 250,
-    bhytCoverage: "BHYT 100%",
   },
 ];
-
-export const ENCOUNTER_ID = "FHIR-ENC-8821";

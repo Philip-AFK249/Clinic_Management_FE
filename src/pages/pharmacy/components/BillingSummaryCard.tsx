@@ -1,5 +1,5 @@
 import { CreditCard, Landmark } from "lucide-react";
-import type { PharmacyOrder } from "../data/pharmacyMockData";
+import type { PharmacyOrder } from "../data/pharmacyTypes";
 
 interface BillingSummaryCardProps {
   order: PharmacyOrder;
@@ -16,16 +16,22 @@ export default function BillingSummaryCard({
   onGenerateVietQr,
   onMarkCashSettled,
 }: BillingSummaryCardProps) {
-  const totalGross = order.items.reduce(
+  // ClinicalConsultationService already applied the per-drug BHYT split server
+  // side, so its totals win; the browser figures are only a fallback for orders
+  // that predate the live API.
+  const computedTotal = order.items.reduce(
     (sum, item) => sum + item.quantity * item.unitPrice,
     0,
   );
-  const bhytCovered = order.items.reduce(
+  const computedInsurance = order.items.reduce(
     (sum, item) =>
       sum + item.quantity * item.unitPrice * (item.bhytCoveragePercent / 100),
     0,
   );
-  const coPay = totalGross - bhytCovered;
+
+  const totalGross = order.totalAmount ?? computedTotal;
+  const bhytCovered = order.insurancePaidAmount ?? computedInsurance;
+  const coPay = order.patientCopayAmount ?? totalGross - bhytCovered;
 
   const settled =
     order.paymentStatus === "PAID_ONLINE" ||

@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useDrugCatalog } from "../../../hooks/useDrugCatalog";
+import { resolveRxSeeds } from "../data/rxMapper";
 import {
   AI_ICD_SUGGESTIONS,
-  AI_RX_DRAFT,
+  AI_RX_SEEDS,
   AI_SOAP_DRAFT,
   TRANSCRIPT_LINES,
 } from "../data/doctorMockData";
@@ -37,6 +39,11 @@ export function useAmbientConsultation() {
   const [icdAccepted, setIcdAccepted] = useState<IcdCode[]>([]);
   const [icdSuggestions] = useState<IcdCode[]>(AI_ICD_SUGGESTIONS);
   const [rxLines, setRxLines] = useState<RxLine[]>([]);
+
+  // The AI only proposes drug *names*; the prescription that reaches
+  // ClinicalConsultationService needs the real `drugs.id`, so the draft is
+  // resolved against the live formulary as soon as the transcript is analysed.
+  const catalog = useDrugCatalog();
 
   const timerRef = useRef<number | null>(null);
   const waveRef = useRef<number | null>(null);
@@ -129,11 +136,11 @@ export function useAmbientConsultation() {
     analyzeRef.current = window.setTimeout(() => {
       setSoapDraft(AI_SOAP_DRAFT);
       setIcdAccepted([]);
-      setRxLines(AI_RX_DRAFT);
+      setRxLines(resolveRxSeeds(AI_RX_SEEDS, catalog.drugs));
       setStatus("DRAFT_READY");
       analyzeRef.current = null;
     }, 2000);
-  }, [clearIntervals]);
+  }, [catalog.drugs, clearIntervals]);
 
   const approve = useCallback(() => {
     clearIntervals();
