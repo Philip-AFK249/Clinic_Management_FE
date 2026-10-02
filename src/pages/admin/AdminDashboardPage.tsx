@@ -1,15 +1,11 @@
 import { useState } from "react";
-import { toast } from "sonner";
-import type {
-  StaffAccount,
-  KnowledgeDocument,
-  AdminTab,
-} from "./data/adminMockData";
+import type { KnowledgeDocument, AdminTab } from "./data/adminMockData";
 import AdminSidebar from "./components/AdminSidebar";
 import AdminHeader from "./components/AdminHeader";
 import OverviewTab from "./components/OverviewTab";
 import DoctorRosterTab from "./components/DoctorRosterTab";
 import UserManagementTab from "./components/UserManagementTab";
+import PatientManagementTab from "./components/PatientManagementTab";
 import MedicalCatalogTab from "./components/MedicalCatalogTab";
 import AiGatewayTab from "./components/AiGatewayTab";
 import { useAdminMetrics } from "./hooks/useAdminMetrics";
@@ -20,20 +16,6 @@ export default function AdminDashboardPage() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const metrics = useAdminMetrics();
   const kb = useKnowledgeBase();
-
-  function handleAddStaff(staff: StaffAccount) {
-    metrics.addStaff(staff);
-  }
-
-  function handleToggleStaffStatus(staffId: string) {
-    metrics.toggleStaffStatus(staffId);
-  }
-
-  function handleResetPassword(staffId: string) {
-    const staff = metrics.staffList.find((s) => s.id === staffId);
-    const name = staff?.fullName ?? "người dùng";
-    toast.success(`Đã đặt lại mật khẩu cho ${name}. Email hướng dẫn đã được gửi.`);
-  }
 
   function handleAddKnowledgeDoc(doc: KnowledgeDocument) {
     kb.addDocument(doc);
@@ -59,14 +41,8 @@ export default function AdminDashboardPage() {
           <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-5">
             {activeTab === "OVERVIEW" && <OverviewTab metrics={metrics.metrics} />}
             {activeTab === "ROSTER" && <DoctorRosterTab />}
-            {activeTab === "USERS" && (
-              <UserManagementTab
-                staffList={metrics.staffList}
-                onToggleStatus={handleToggleStaffStatus}
-                onResetPassword={handleResetPassword}
-                onAddStaff={handleAddStaff}
-              />
-            )}
+            {activeTab === "USERS" && <UserManagementTab />}
+            {activeTab === "PATIENTS" && <PatientManagementTab />}
             {activeTab === "CATALOGS" && <MedicalCatalogTab />}
             {activeTab === "AI_GATEWAY" && (
               <AiGatewayTab

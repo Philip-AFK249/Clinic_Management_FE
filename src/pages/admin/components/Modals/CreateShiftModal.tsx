@@ -1,12 +1,14 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { toast } from "sonner";
-import { X, CalendarPlus, Loader2 } from "lucide-react";
+import { X, AlertTriangle, CalendarPlus, Loader2 } from "lucide-react";
 import { toISODate } from "../../data/adminMockData";
 import {
   createShift,
   getDepartments,
   getDoctors,
+  getShifts,
+  ScheduleApiError,
 } from "../../services/scheduleApi";
 import type {
   CreateShiftPayload,
@@ -23,12 +25,18 @@ interface CreateShiftModalProps {
   initialDepartmentId?: number;
   initialDate?: string;
   initialSession?: ShiftSession;
+  existingShifts?: DoctorShift[];
 }
 
 const SESSION_OPTIONS: { value: ShiftSession; label: string }[] = [
   { value: "MORNING", label: "Sáng (07:30 - 11:30)" },
   { value: "AFTERNOON", label: "Chiều (13:00 - 17:00)" },
 ];
+
+const SESSION_LABELS: Record<ShiftSession, string> = {
+  MORNING: "Ca Sáng",
+  AFTERNOON: "Ca Chiều",
+};
 
 const DUTY_TYPE_OPTIONS: { value: DutyType; label: string }[] = [
   { value: "OUTPATIENT", label: "Ngoại trú (Trực phòng khám)" },
@@ -41,6 +49,7 @@ export default function CreateShiftModal({
   initialDepartmentId,
   initialDate,
   initialSession,
+  existingShifts,
 }: CreateShiftModalProps) {
   const [departments, setDepartments] = useState<Department[]>([]);
   const [departmentsLoading, setDepartmentsLoading] = useState(true);
@@ -54,8 +63,13 @@ export default function CreateShiftModal({
   const [session, setSession] = useState<ShiftSession>(initialSession ?? "MORNING");
   const [dutyType, setDutyType] = useState<DutyType>("OUTPATIENT");
   const [submitting, setSubmitting] = useState(false);
+  const [dayShifts, setDayShifts] = useState<{
+    key: string;
+    list: DoctorShift[];
+  }>({ key: "", list: [] });
 
   const requestSeq = useRef(0);
+  const dayShiftsSeq = useRef(0);
   const confirmedDepartmentId = useRef<number | "">(initialDepartmentId ?? "");
 
   const selectedDepartment = departments.find(
@@ -63,6 +77,58 @@ export default function CreateShiftModal({
   );
   const activeDoctors = doctors.filter((d) => d.active);
   const selectedDoctor = activeDoctors.find((d) => d.id === selectedDoctorId);
+
+  const loadDayShifts = useCallback((departmentId: number, date: string) => {
+    const seq = ++dayShiftsSeq.current;
+    Promise.resolve()
+      .then(() => getShifts(departmentId, date))
+      .then((list) => {
+        if (seq !== dayShiftsSeq.current) return;
+        setDayShifts({ key: `${departmentId}|${date}`, list });
+      })
+      .catch((error: unknown) => {
+        if (seq !== dayShiftsSeq.current) return;
+        setDayShifts({ key: `${departmentId}|${date}`, list: [] });
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "Không tải được ca trực của ngày đã chọn.",
+        );
+      });
+  }, []);
+
+  useEffect(() => {
+    if (selectedDepartmentId === "" || shiftDate === "") return;
+    void loadDayShifts(selectedDepartmentId, shiftDate);
+  }, [selectedDepartmentId, shiftDate, loadDayShifts]);
+
+  const knownShifts = useMemo(() => {
+    if (
+      selectedDepartmentId !== "" &&
+      dayShifts.key === `${selectedDepartmentId}|${shiftDate}`
+    ) {
+      return dayShifts.list;
+    }
+    return (existingShifts ?? []).filter(
+      (s) =>
+        s.shiftDate === shiftDate && s.departmentId === selectedDepartmentId,
+    );
+  }, [dayShifts, selectedDepartmentId, shiftDate, existingShifts]);
+
+  const sessionShifts = useMemo(
+    () => knownShifts.filter((s) => s.session === session),
+    [knownShifts, session],
+  );
+
+  const bookedDoctorIds = useMemo(
+    () => new Set(sessionShifts.map((s) => s.doctor.id)),
+    [sessionShifts],
+  );
+
+  const conflictShift =
+    selectedDoctorId === ""
+      ? null
+      : sessionShifts.find((s) => s.doctor.id === selectedDoctorId) ?? null;
 
   useEffect(() => {
     let cancelled = false;
@@ -141,6 +207,12 @@ export default function CreateShiftModal({
       toast.error("Vui lòng chọn ngày trực.");
       return;
     }
+    if (conflictShift) {
+      toast.warning(
+        `Bác sĩ ${conflictShift.doctor.fullName} đã được phân công trực ${SESSION_LABELS[session]} ngày ${shiftDate}. Vui lòng chọn Bác sĩ khác hoặc đổi khung giờ.`,
+      );
+      return;
+    }
 
     const payload: CreateShiftPayload = {
       doctorId: selectedDoctor.id,
@@ -162,6 +234,16 @@ export default function CreateShiftModal({
       onCreated(created);
       onClose();
     } catch (error) {
+      if (error instanceof ScheduleApiError && error.status === 409) {
+        toast.error(
+          "Bác sĩ này đã có lịch trực trong ca này. Hệ thống không cho phép phân công trùng lặp.",
+          { duration: 4500 },
+        );
+        if (selectedDepartmentId !== "") {
+          void loadDayShifts(selectedDepartmentId, shiftDate);
+        }
+        return;
+      }
       toast.error(
         error instanceof Error
           ? error.message
@@ -239,9 +321,29 @@ export default function CreateShiftModal({
                 {activeDoctors.map((doctor) => (
                   <option key={doctor.id} value={doctor.id}>
                     {doctor.fullName} · {doctor.roomNumber}
+                    {bookedDoctorIds.has(doctor.id)
+                      ? " (Đã có ca trực buổi này)"
+                      : ""}
                   </option>
                 ))}
               </select>
+              {conflictShift && (
+                <p
+                  role="alert"
+                  className="mt-1.5 flex items-start gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[11px] font-semibold text-amber-800"
+                >
+                  <AlertTriangle
+                    size={13}
+                    className="mt-0.5 shrink-0"
+                    aria-hidden="true"
+                  />
+                  <span>
+                    Bác sĩ {conflictShift.doctor.fullName} đã được phân công trực{" "}
+                    {SESSION_LABELS[session]} vào ngày này. Vui lòng chọn Bác sĩ
+                    khác hoặc đổi khung giờ.
+                  </span>
+                </p>
+              )}
             </div>
           </div>
 
@@ -323,7 +425,7 @@ export default function CreateShiftModal({
             </button>
             <button
               type="submit"
-              disabled={submitting}
+              disabled={submitting || conflictShift !== null}
               className="inline-flex items-center gap-1.5 rounded-lg bg-slate-800 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {submitting ? (

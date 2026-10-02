@@ -10,6 +10,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ClipboardList,
+  Copy,
   Hourglass,
   LayoutGrid,
   Loader2,
@@ -19,13 +20,16 @@ import {
 } from "lucide-react";
 import { toISODate } from "../data/adminMockData";
 import {
+  createShift,
   getAvailableSlots,
   getDepartments,
   getShifts,
   getWeeklyShifts,
+  ScheduleApiError,
   validateRoster,
 } from "../services/scheduleApi";
 import type {
+  CreateShiftPayload,
   Department,
   DoctorReference,
   DoctorShift,
@@ -102,6 +106,15 @@ function addDays(date: Date, days: number): Date {
   const next = new Date(date.getFullYear(), date.getMonth(), date.getDate());
   next.setDate(next.getDate() + days);
   return next;
+}
+
+function parseISODate(value: string): Date {
+  const [year, month, day] = value.split("-");
+  return new Date(
+    Number.parseInt(year, 10),
+    Number.parseInt(month, 10) - 1,
+    Number.parseInt(day, 10),
+  );
 }
 
 function formatShortVN(date: Date): string {
@@ -436,6 +449,7 @@ export default function DoctorRosterTab() {
   );
   const [shiftsLoading, setShiftsLoading] = useState(true);
   const [weeklyLoading, setWeeklyLoading] = useState(true);
+  const [isCopying, setIsCopying] = useState(false);
 
   const departmentsSeq = useRef(0);
   const rosterSeq = useRef(0);
@@ -575,7 +589,7 @@ export default function DoctorRosterTab() {
   useEffect(() => {
     if (selectedDepartmentId === "") return;
     void loadRoster(selectedDepartmentId, selectedDate);
-  }, [selectedDepartmentId, selectedDate, loadRoster]);
+  }, [selectedDepartmentId, selectedDate, view, loadRoster]);
 
   useEffect(() => {
     if (selectedDepartmentId === "") return;
@@ -668,13 +682,94 @@ export default function DoctorRosterTab() {
     setWeekStart(getWeekStartDate(new Date()));
   }
 
-  function handleCreatedShift() {
-    if (selectedDepartmentId === "") return;
-    if (view === "TIMETABLE") {
-      void loadWeeklyRoster(selectedDepartmentId, weekStart);
-    } else {
-      void loadRoster(selectedDepartmentId, selectedDate);
+  async function handleCopyToNextWeek() {
+    if (selectedDepartmentId === "" || isCopying || weeklyLoading) return;
+
+    if (weeklyShifts.length === 0) {
+      toast.warning("Tuần hiện tại chưa có ca trực nào để sao chép.");
+      return;
     }
+
+    const departmentId = selectedDepartmentId;
+    const targetWeekStart = addDays(weekStart, 7);
+    const shiftsToCreate: CreateShiftPayload[] = weeklyShifts.map((shift) => ({
+      doctorId: shift.doctor.id,
+      departmentId,
+      shiftDate: toISODate(addDays(parseISODate(shift.shiftDate), 7)),
+      session: shift.session,
+      dutyType: shift.dutyType,
+    }));
+
+    setIsCopying(true);
+    try {
+      const results = await Promise.allSettled(
+        shiftsToCreate.map((payload) => createShift(payload)),
+      );
+
+      let createdCount = 0;
+      let duplicateCount = 0;
+      let failedCount = 0;
+      let failureMessage: string | null = null;
+
+      for (const result of results) {
+        if (result.status === "fulfilled") {
+          createdCount += 1;
+          continue;
+        }
+        const reason: unknown = result.reason;
+        if (reason instanceof ScheduleApiError && reason.status === 409) {
+          duplicateCount += 1;
+          continue;
+        }
+        failedCount += 1;
+        failureMessage ??=
+          reason instanceof Error
+            ? reason.message
+            : "Không tạo được ca trực từ DoctorScheduleService.";
+      }
+
+      if (failedCount > 0 && createdCount === 0) {
+        toast.error(
+          failureMessage ?? "Không sao chép được ca trực sang tuần sau.",
+          { duration: 4500 },
+        );
+      } else if (failedCount > 0) {
+        toast.warning(
+          `Đã sao chép ${createdCount} ca trực sang tuần tiếp theo, ${failedCount} ca không tạo được.`,
+          { duration: 4500 },
+        );
+      } else if (createdCount > 0) {
+        toast.success(
+          `Đã sao chép thành công ${createdCount} ca trực sang tuần tiếp theo!${
+            duplicateCount > 0
+              ? ` (${duplicateCount} ca đã tồn tại được giữ nguyên)`
+              : ""
+          }`,
+          { duration: 4000 },
+        );
+      } else {
+        toast.info(
+          "Lịch trực tuần sau đã có đầy đủ, không có ca mới nào cần thêm.",
+        );
+      }
+
+      setWeekStart(targetWeekStart);
+      void loadWeeklyRoster(departmentId, targetWeekStart);
+    } finally {
+      setIsCopying(false);
+    }
+  }
+
+  function handleCreatedShift(createdShift?: DoctorShift) {
+    if (selectedDepartmentId === "") return;
+    const departmentId = selectedDepartmentId;
+    const createdDate = createdShift?.shiftDate;
+    const rosterDate = createdDate ?? selectedDate;
+    if (createdDate) setSelectedDate(createdDate);
+    void Promise.all([
+      loadWeeklyRoster(departmentId, weekStart),
+      loadRoster(departmentId, rosterDate),
+    ]);
   }
 
   return (
@@ -746,6 +841,21 @@ export default function DoctorRosterTab() {
                 className="h-9 w-44 rounded-lg border border-slate-200 bg-white pl-8 pr-3 text-xs text-slate-700 focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-300"
               />
             </div>
+          )}
+          {view === "TIMETABLE" && selectedDepartmentId !== "" && (
+            <button
+              type="button"
+              onClick={() => void handleCopyToNextWeek()}
+              disabled={weeklyLoading || isCopying}
+              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 shadow-card transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isCopying ? (
+                <Loader2 size={14} className="animate-spin" aria-hidden="true" />
+              ) : (
+                <Copy size={14} aria-hidden="true" />
+              )}
+              {isCopying ? "Đang sao chép..." : "Sao chép sang tuần sau"}
+            </button>
           )}
           <select
             value={selectedDepartmentId}
@@ -839,13 +949,20 @@ export default function DoctorRosterTab() {
                         Ca trực
                       </div>
                       {weekDates.map((day, index) => {
-                        const isToday = weekISO[index] === todayISO;
+                        const iso = weekISO[index];
+                        const isToday = iso === todayISO;
+                        const isSelected = iso === selectedDate;
                         return (
-                          <div
-                            key={weekISO[index]}
-                            className={`border-l border-slate-100 px-3 py-2 text-center ${
+                          <button
+                            key={iso}
+                            type="button"
+                            onClick={() => setSelectedDate(iso)}
+                            title={`Chọn ngày ${formatShortVN(day)} để xem Phân ca ngày`}
+                            aria-label={`Chọn ngày ${formatVNDate(day)}`}
+                            aria-pressed={isSelected}
+                            className={`border-l border-slate-100 px-3 py-2 text-center transition-colors hover:bg-sky-50 ${
                               isToday ? "bg-sky-100/70" : ""
-                            }`}
+                            } ${isSelected ? "ring-2 ring-inset ring-slate-800" : ""}`}
                           >
                             <p className="text-xs font-bold text-slate-800">
                               {DAY_LABELS[index]}
@@ -853,7 +970,7 @@ export default function DoctorRosterTab() {
                             <p className="text-[10px] text-slate-400">
                               {formatShortVN(day)}
                             </p>
-                          </div>
+                          </button>
                         );
                       })}
                     </div>
@@ -885,9 +1002,10 @@ export default function DoctorRosterTab() {
                               isToday={iso === todayISO}
                               session={session}
                               shifts={weeklyByCell[session][iso] ?? []}
-                              onQuickAdd={() =>
-                                setCreateTarget({ date: iso, session })
-                              }
+                              onQuickAdd={() => {
+                                setSelectedDate(iso);
+                                setCreateTarget({ date: iso, session });
+                              }}
                             />
                           );
                         })}
@@ -1149,6 +1267,7 @@ export default function DoctorRosterTab() {
           initialDepartmentId={selectedDepartmentId === "" ? undefined : selectedDepartmentId}
           initialDate={createTarget.date}
           initialSession={createTarget.session}
+          existingShifts={weeklyShifts}
         />
       )}
     </div>

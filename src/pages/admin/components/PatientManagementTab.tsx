@@ -1,59 +1,61 @@
 import { useMemo, useState } from "react";
 import {
   Search,
-  Plus,
-  ShieldCheck,
+  RefreshCw,
+  Edit,
   Lock,
   Unlock,
   KeyRound,
-  Edit,
-  RefreshCw,
   ChevronLeft,
   ChevronRight,
+  CreditCard,
+  FileText,
+  ShieldCheck,
   AlertTriangle,
   Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
+  getAllPatientsApi,
   resetUserPasswordApi,
   toggleUserStatusApi,
 } from "../../../services/authApi";
 import type { AuthResponseDto } from "../../../services/authApi";
 import { useAuth } from "../../../context/useAuth";
-import { useAdminStaff } from "../hooks/useAdminStaff";
+import { useAdminPatients } from "../hooks/useAdminPatients";
 import {
-  filterStaff,
-  isStaffLocked,
-  staffCreatedAt,
-  staffInitials,
-  staffRoleCounts,
-  staffRoleLabel,
-  STAFF_ROLE_BADGE_COLORS,
-  STAFF_ROLE_FILTERS,
-} from "../data/staffFilters";
-import type { StaffRoleFilter } from "../data/staffFilters";
-import CreateUserModal from "./Modals/CreateUserModal";
-import EditUserModal from "./Modals/EditUserModal";
+  ageFrom,
+  filterPatients,
+  genderLabel,
+  isLocked,
+  patientFilterCounts,
+  patientInitials,
+  PATIENT_FILTERS,
+} from "../data/patientFilters";
+import type { PatientFilter } from "../data/patientFilters";
+import EditPatientModal from "./Modals/EditPatientModal";
+import PatientMedicalRecordModal from "./Modals/PatientMedicalRecordModal";
 
 const PAGE_SIZE = 10;
 
-export default function UserManagementTab() {
+export default function PatientManagementTab() {
   const { user } = useAuth();
-  const token = user?.token;
-  const { staff, isLoading, error, isUnavailable, refresh, applyStaff, addStaff } =
-    useAdminStaff();
+  const { patients, isLoading, error, isUnavailable, refresh, applyPatient } =
+    useAdminPatients();
   const [searchQuery, setSearchQuery] = useState("");
-  const [roleFilter, setRoleFilter] = useState<StaffRoleFilter>("ALL");
+  const [filter, setFilter] = useState<PatientFilter>("ALL");
   const [page, setPage] = useState(1);
-  const [busyUserId, setBusyUserId] = useState<number | null>(null);
-  const [showCreateModal, setShowCreateModal] = useState(false);
   const [editing, setEditing] = useState<AuthResponseDto | null>(null);
+  const [viewingRecord, setViewingRecord] = useState<AuthResponseDto | null>(null);
+  const [busyUserId, setBusyUserId] = useState<number | null>(null);
 
-  const counts = useMemo(() => staffRoleCounts(staff), [staff]);
+  const token = user?.token;
+
+  const counts = useMemo(() => patientFilterCounts(patients), [patients]);
 
   const filtered = useMemo(
-    () => filterStaff(staff, searchQuery, roleFilter),
-    [staff, searchQuery, roleFilter],
+    () => filterPatients(patients, searchQuery, filter),
+    [patients, searchQuery, filter],
   );
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
@@ -68,50 +70,60 @@ export default function UserManagementTab() {
     setPage(1);
   }
 
-  function handleRoleFilterChange(value: StaffRoleFilter) {
-    setRoleFilter(value);
+  function handleFilterChange(value: PatientFilter) {
+    setFilter(value);
     setPage(1);
   }
 
-  async function handleToggleStatus(target: AuthResponseDto) {
-    if (busyUserId !== null) return;
-    setBusyUserId(target.userId);
+  async function handleToggleStatus(patient: AuthResponseDto) {
+    if (!token) return;
+    const name = patient.fullName;
+    setBusyUserId(patient.userId);
     try {
-      const updated = await toggleUserStatusApi(target.userId, token);
-      applyStaff(updated);
-      // `active` is absent on a pre-`active` payload: fall back to the flip we
-      // asked for rather than reporting the opposite of what happened.
-      const unlocked = updated.active ?? !isStaffLocked(target);
+      const updated = await toggleUserStatusApi(patient.userId, token);
+      applyPatient(updated);
       toast.success(
-        unlocked
-          ? "Đã mở khóa tài khoản thành công."
-          : "Đã khóa tài khoản thành công.",
+        updated.active === false
+          ? `Đã khóa tài khoản của ${name}.`
+          : `Đã mở khóa tài khoản của ${name}.`,
       );
     } catch (cause) {
       toast.error(
         cause instanceof Error
           ? cause.message
-          : "Không thể thay đổi trạng thái tài khoản.",
+          : "Không thể đổi trạng thái tài khoản.",
       );
     } finally {
       setBusyUserId(null);
     }
   }
 
-  async function handleResetPassword(target: AuthResponseDto) {
-    if (busyUserId !== null) return;
-    const name = target.fullName;
-    setBusyUserId(target.userId);
+  async function handleResetPassword(patient: AuthResponseDto) {
+    if (!token) return;
+    const name = patient.fullName;
+    setBusyUserId(patient.userId);
     try {
-      await resetUserPasswordApi(target.userId, token);
-      toast.success(
-        `Đã đặt lại mật khẩu cho ${name} về mặc định 'password123'.`,
-        { duration: 4500 },
+      const result = await resetUserPasswordApi(patient.userId, token);
+      toast.success(result?.message || `Đã đặt lại mật khẩu cho ${name} (password123).`);
+    } catch (cause) {
+      toast.error(
+        cause instanceof Error
+          ? cause.message
+          : "Không thể đặt lại mật khẩu.",
       );
-    } catch {
-      toast.error("Không thể đặt lại mật khẩu. Vui lòng thử lại.");
     } finally {
       setBusyUserId(null);
+    }
+  }
+
+  async function handleRefresh() {
+    refresh();
+    try {
+      // Surfaces a stale/expired admin session immediately instead of only
+      // leaving an empty table behind.
+      if (token) await getAllPatientsApi(token);
+    } catch {
+      // The hook already records the failure; nothing to add here.
     }
   }
 
@@ -120,36 +132,26 @@ export default function UserManagementTab() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-base font-bold text-slate-900">
-            Danh Sách Nhân Sự &amp; Tài Khoản Phân Quyền (RBAC)
+            Quản Lý Bệnh Nhân &amp; Thẻ BHYT
           </h2>
           <p className="mt-0.5 text-xs text-slate-500">
-            Dữ liệu trực tiếp từ AuthService (:8085) - tài khoản, vai trò và quyền
-            truy cập hệ thống
+            Dữ liệu trực tiếp từ AuthService (:8085) - định danh CCCD, thẻ BHYT và
+            trạng thái tài khoản
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={refresh}
-            disabled={isLoading}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <RefreshCw
-              size={14}
-              className={isLoading ? "animate-spin" : ""}
-              aria-hidden="true"
-            />
-            Làm mới
-          </button>
-          <button
-            type="button"
-            onClick={() => setShowCreateModal(true)}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-slate-800 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-slate-900"
-          >
-            <Plus size={16} aria-hidden="true" />
-            Cấp Tài Khoản Mới
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={handleRefresh}
+          disabled={isLoading}
+          className="inline-flex items-center gap-1.5 self-start rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 sm:self-auto"
+        >
+          <RefreshCw
+            size={14}
+            className={isLoading ? "animate-spin" : ""}
+            aria-hidden="true"
+          />
+          Làm mới
+        </button>
       </div>
 
       {isUnavailable && (
@@ -161,12 +163,12 @@ export default function UserManagementTab() {
           />
           <div>
             <p className="text-xs font-bold text-amber-800">
-              Không tải được danh sách nhân sự
+              Không tải được danh sách bệnh nhân
             </p>
             <p className="mt-0.5 text-xs text-amber-700">{error}</p>
             <p className="mt-1 text-[11px] text-amber-600">
-              Endpoint <code>/api/v1/auth/admin/users</code> cần được triển khai và
-              khởi động trên AuthService (:8085).
+              Endpoint <code>/api/v1/auth/admin/patients</code> cần được triển khai
+              và khởi động lại trên AuthService.
             </p>
           </div>
         </div>
@@ -175,13 +177,13 @@ export default function UserManagementTab() {
       {isLoading && (
         <div className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-10 text-sm text-slate-500">
           <Loader2 size={16} className="animate-spin" aria-hidden="true" />
-          Đang tải danh sách nhân sự...
+          Đang tải danh sách bệnh nhân...
         </div>
       )}
 
       {!isLoading && (
         <>
-          {/* Filters */}
+          {/* Search & filters */}
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <div className="relative flex-1">
               <Search
@@ -193,31 +195,31 @@ export default function UserManagementTab() {
                 type="text"
                 value={searchQuery}
                 onChange={(e) => handleSearchChange(e.target.value)}
-                placeholder="Tìm theo tên, email, SĐT hoặc khoa..."
+                placeholder="Tìm theo tên, email, SĐT, CCCD hoặc mã thẻ BHYT..."
                 className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-sm text-slate-800 placeholder-slate-400 focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-300"
               />
             </div>
             <div className="flex flex-wrap items-center gap-1.5">
-              {STAFF_ROLE_FILTERS.map((opt) => (
+              {PATIENT_FILTERS.map((option) => (
                 <button
-                  key={opt.value}
+                  key={option.value}
                   type="button"
-                  onClick={() => handleRoleFilterChange(opt.value)}
+                  onClick={() => handleFilterChange(option.value)}
                   className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
-                    roleFilter === opt.value
+                    filter === option.value
                       ? "bg-slate-800 text-white"
                       : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                   }`}
                 >
-                  {opt.label}
+                  {option.label}
                   <span
                     className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
-                      roleFilter === opt.value
+                      filter === option.value
                         ? "bg-white/20 text-white"
                         : "bg-white text-slate-500"
                     }`}
                   >
-                    {counts[opt.value]}
+                    {counts[option.value]}
                   </span>
                 </button>
               ))}
@@ -231,19 +233,19 @@ export default function UserManagementTab() {
                 <thead>
                   <tr className="border-b border-slate-100 bg-slate-50">
                     <th className="px-4 py-3 font-semibold text-slate-600">
-                      Nhân viên
+                      Bệnh nhân
                     </th>
                     <th className="px-4 py-3 font-semibold text-slate-600">
-                      Vai trò
+                      Liên hệ
                     </th>
                     <th className="px-4 py-3 font-semibold text-slate-600">
-                      Khoa / Phòng
+                      Thẻ BHYT &amp; Tuyến KCB
                     </th>
                     <th className="px-4 py-3 font-semibold text-slate-600">
-                      Email &amp; SĐT
+                      Định danh CCCD
                     </th>
                     <th className="px-4 py-3 font-semibold text-slate-600">
-                      Tạo tài khoản
+                      Xác thực OCR
                     </th>
                     <th className="px-4 py-3 font-semibold text-slate-600">
                       Trạng thái
@@ -254,55 +256,87 @@ export default function UserManagementTab() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {paginated.map((account) => {
-                    const locked = isStaffLocked(account);
-                    const busy = busyUserId === account.userId;
-                    const createdAt = staffCreatedAt(account.createdAt);
+                  {paginated.map((patient) => {
+                    const locked = isLocked(patient);
+                    const busy = busyUserId === patient.userId;
+                    const age = ageFrom(patient.dateOfBirth);
+                    const gender = genderLabel(patient.gender);
 
                     return (
                       <tr
-                        key={account.userId}
+                        key={patient.userId}
                         className="transition-colors hover:bg-slate-50/50"
                       >
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-2.5">
-                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-200 text-xs font-bold text-slate-600">
-                              {staffInitials(account.fullName)}
+                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-clinical-100 text-xs font-bold text-clinical-700">
+                              {patientInitials(patient.fullName)}
                             </div>
                             <div className="min-w-0">
                               <p className="truncate font-semibold text-slate-800">
-                                {account.fullName}
+                                {patient.fullName}
                               </p>
                               <p className="truncate text-[11px] text-slate-400">
-                                users.id = {account.userId}
+                                {patient.email}
                               </p>
+                              {(age !== null || gender) && (
+                                <p className="text-[11px] text-slate-400">
+                                  {age !== null ? `${age} tuổi` : "—"}
+                                  {age !== null && gender ? " · " : ""}
+                                  {gender ?? ""}
+                                </p>
+                              )}
                             </div>
                           </div>
                         </td>
-                        <td className="px-4 py-3">
-                          <span
-                            className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${STAFF_ROLE_BADGE_COLORS[account.role]}`}
-                          >
-                            <ShieldCheck size={10} aria-hidden="true" />
-                            {staffRoleLabel(account.role)}
-                          </span>
-                        </td>
                         <td className="px-4 py-3 text-slate-600">
-                          <p>{account.departmentName || "—"}</p>
-                          {typeof account.doctorId === "number" && (
-                            <p className="text-[11px] text-slate-400">
-                              doctors.id = {account.doctorId}
+                          <p>{patient.phone || "—"}</p>
+                          {patient.address && (
+                            <p
+                              className="max-w-[180px] truncate text-[11px] text-slate-400"
+                              title={patient.address}
+                            >
+                              {patient.address}
                             </p>
                           )}
                         </td>
                         <td className="px-4 py-3">
-                          <p className="text-slate-600">{account.email}</p>
-                          <p className="text-[11px] text-slate-400">
-                            {account.phone || "—"}
-                          </p>
+                          {patient.insuranceCode?.trim() ? (
+                            <>
+                              <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 font-mono text-[11px] font-semibold text-emerald-800">
+                                <CreditCard size={10} aria-hidden="true" />
+                                {patient.insuranceCode}
+                              </span>
+                              {patient.initialHospitalCode && (
+                                <p className="mt-1 text-[11px] text-slate-400">
+                                  {patient.initialHospitalCode}
+                                </p>
+                              )}
+                            </>
+                          ) : (
+                            <span className="text-slate-300">Chưa đăng ký</span>
+                          )}
                         </td>
-                        <td className="px-4 py-3 text-slate-500">
-                          {createdAt ?? "—"}
+                        <td className="px-4 py-3 font-mono text-[11px] text-slate-600">
+                          {patient.identityCardNumber || "—"}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span
+                            className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                              patient.isOcrVerified
+                                ? "bg-emerald-50 text-emerald-700"
+                                : "bg-amber-50 text-amber-700"
+                            }`}
+                          >
+                            {patient.isOcrVerified ? (
+                              <>
+                                <ShieldCheck size={10} aria-hidden="true" />
+                                Đã xác thực
+                              </>
+                            ) : (
+                              "Chưa xác thực"
+                            )}
+                          </span>
                         </td>
                         <td className="px-4 py-3">
                           <span
@@ -324,45 +358,39 @@ export default function UserManagementTab() {
                           <div className="flex items-center gap-1">
                             <button
                               type="button"
-                              onClick={() => setEditing(account)}
+                              onClick={() => setViewingRecord(patient)}
+                              className="flex h-7 w-7 items-center justify-center rounded-md text-clinical-600 transition-colors hover:bg-clinical-50"
+                              title="Xem hồ sơ bệnh án điện tử"
+                              aria-label={`Xem hồ sơ bệnh án điện tử của ${patient.fullName}`}
+                            >
+                              <FileText size={14} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setEditing(patient)}
                               disabled={busy}
-                              className="flex h-7 w-7 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
-                              title="Chỉnh sửa thông tin & phân quyền"
-                              aria-label={`Chỉnh sửa tài khoản ${account.fullName}`}
+                              className="flex h-7 w-7 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 disabled:opacity-40"
+                              title="Sửa hồ sơ & BHYT"
                             >
                               <Edit size={14} />
                             </button>
                             <button
                               type="button"
-                              onClick={() => void handleToggleStatus(account)}
+                              onClick={() => void handleToggleStatus(patient)}
                               disabled={busy}
-                              className="flex h-7 w-7 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
+                              className="flex h-7 w-7 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 disabled:opacity-40"
                               title={locked ? "Mở khóa tài khoản" : "Khóa tài khoản"}
-                              aria-label={
-                                locked
-                                  ? `Mở khóa tài khoản ${account.fullName}`
-                                  : `Khóa tài khoản ${account.fullName}`
-                              }
                             >
-                              {locked ? (
-                                <Unlock size={14} />
-                              ) : (
-                                <Lock size={14} />
-                              )}
+                              {locked ? <Unlock size={14} /> : <Lock size={14} />}
                             </button>
                             <button
                               type="button"
-                              onClick={() => void handleResetPassword(account)}
+                              onClick={() => void handleResetPassword(patient)}
                               disabled={busy}
-                              className="flex h-7 w-7 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
-                              title="Đặt lại mật khẩu về 'password123'"
-                              aria-label={`Đặt lại mật khẩu ${account.fullName}`}
+                              className="flex h-7 w-7 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 disabled:opacity-40"
+                              title="Đặt lại mật khẩu"
                             >
-                              {busy ? (
-                                <Loader2 size={14} className="animate-spin" />
-                              ) : (
-                                <KeyRound size={14} />
-                              )}
+                              <KeyRound size={14} />
                             </button>
                           </div>
                         </td>
@@ -375,9 +403,9 @@ export default function UserManagementTab() {
                         colSpan={7}
                         className="px-4 py-10 text-center text-sm text-slate-400"
                       >
-                        {staff.length === 0
-                          ? "Chưa có tài khoản nhân sự nào trong hệ thống."
-                          : "Không tìm thấy nhân sự phù hợp với bộ lọc."}
+                        {patients.length === 0
+                          ? "Chưa có tài khoản bệnh nhân nào trong hệ thống."
+                          : "Không tìm thấy bệnh nhân phù hợp với bộ lọc."}
                       </td>
                     </tr>
                   )}
@@ -396,11 +424,8 @@ export default function UserManagementTab() {
                   : (effectivePage - 1) * PAGE_SIZE + 1}
                 -{Math.min(effectivePage * PAGE_SIZE, filtered.length)}
               </span>{" "}
-              trong{" "}
-              <span className="font-semibold text-slate-700">
-                {filtered.length}
-              </span>{" "}
-              nhân sự
+              trong <span className="font-semibold text-slate-700">{filtered.length}</span>{" "}
+              bệnh nhân
             </p>
             <div className="flex items-center gap-1.5">
               <button
@@ -429,27 +454,24 @@ export default function UserManagementTab() {
         </>
       )}
 
-      {showCreateModal && (
-        <CreateUserModal
-          onClose={() => setShowCreateModal(false)}
-          onCreated={(created) => {
-            addStaff(created);
-            setShowCreateModal(false);
-            toast.success("Đã cấp tài khoản thành công.", { duration: 4000 });
-          }}
+      {viewingRecord && (
+        <PatientMedicalRecordModal
+          open
+          patient={viewingRecord}
+          onClose={() => setViewingRecord(null)}
         />
       )}
 
       {editing && (
-        <EditUserModal
-          staff={editing}
+        <EditPatientModal
+          patient={editing}
           token={token}
           onClose={() => setEditing(null)}
           onSaved={(updated) => {
-            applyStaff(updated);
+            applyPatient(updated);
             setEditing(null);
             toast.success(
-              `Đã cập nhật tài khoản của ${updated.fullName}.`,
+              `Đã cập nhật hồ sơ & BHYT của ${updated.fullName}.`,
             );
           }}
         />

@@ -2,6 +2,7 @@ export type AdminTab =
   | "OVERVIEW"
   | "ROSTER"
   | "USERS"
+  | "PATIENTS"
   | "CATALOGS"
   | "AI_GATEWAY";
 

@@ -38,6 +38,11 @@ attachBearerInterceptor(authApi);
  *
  * `token` is null for `POST /admin/users`: the account is created but has never
  * signed in, so there is nothing to hand back.
+ *
+ * Everything below the first block was added with the patient-management
+ * upgrade (patient demographics, CCCD, BHYT). They are optional because the
+ * jar currently deployed on :8085 predates that change and omits them from the
+ * response entirely - see the note on `getAllPatientsApi`.
  */
 export interface AuthResponseDto {
   token: string | null;
@@ -49,6 +54,18 @@ export interface AuthResponseDto {
   departmentName: string | null;
   doctorId: number | null;
   pharmacistId: number | null;
+  phone?: string | null;
+  /** False = the account is locked out of sign-in. */
+  active?: boolean | null;
+  identityCardNumber?: string | null;
+  insuranceCode?: string | null;
+  initialHospitalCode?: string | null;
+  /** `LocalDate`, serialised as `YYYY-MM-DD`. */
+  dateOfBirth?: string | null;
+  gender?: string | null;
+  address?: string | null;
+  isOcrVerified?: boolean | null;
+  createdAt?: string | null;
 }
 
 export interface LoginRequestDto {
@@ -76,6 +93,43 @@ export interface CreateStaffRequestDto {
   pharmacistId?: number;
 }
 
+/**
+ * `AuthService.dto.UpdateStaffRequest` - admin edit of a staff account.
+ *
+ * `email` is deliberately absent: it is the account identity and AuthService has
+ * no endpoint to change it, so the admin console renders it disabled.
+ */
+export interface UpdateStaffRequestDto {
+  fullName: string;
+  phone?: string | null;
+  role: UserRole;
+  departmentId?: number | null;
+  departmentName?: string | null;
+  doctorId?: number | null;
+  pharmacistId?: number | null;
+}
+
+/**
+ * `AuthService.dto.UpdatePatientRequest` - demographics, CCCD and BHYT.
+ *
+ * `fullName` is `@NotBlank` server-side, so it is the only required field. The
+ * rest are nullable columns: send `null` to clear one, omit it to leave it as-is
+ * is NOT possible here because the service overwrites whatever it receives.
+ */
+export interface UpdatePatientRequestDto {
+  fullName: string;
+  phone?: string | null;
+  identityCardNumber?: string | null;
+  insuranceCode?: string | null;
+  initialHospitalCode?: string | null;
+  /** `LocalDate`, serialised as `YYYY-MM-DD`. */
+  dateOfBirth?: string | null;
+  /** MALE / FEMALE / OTHER - the column is a free-form varchar. */
+  gender?: string | null;
+  address?: string | null;
+  isOcrVerified?: boolean | null;
+}
+
 // ---------------------------------------------------------------------------
 // Errors
 // ---------------------------------------------------------------------------
@@ -91,6 +145,7 @@ export type AuthFailureKind =
   | "invalid"
   | "unauthorized"
   | "forbidden"
+  | "missing"
   | "conflict"
   | "offline"
   | "server";
@@ -111,6 +166,7 @@ const FAILURE_KIND_BY_STATUS: Record<number, AuthFailureKind> = {
   400: "invalid",
   401: "unauthorized",
   403: "forbidden",
+  404: "missing",
   409: "conflict",
 };
 
@@ -118,6 +174,7 @@ const FALLBACK_MESSAGE: Record<AuthFailureKind, string> = {
   invalid: "Thông tin không hợp lệ. Vui lòng kiểm tra lại.",
   unauthorized: "Phiên đăng nhập không hợp lệ hoặc đã hết hạn. Vui lòng đăng nhập lại.",
   forbidden: "Bạn không có quyền thực hiện thao tác này trên AuthService.",
+  missing: "AuthService chưa triển khai thao tác này (HTTP 404).",
   conflict: "Email này đã được sử dụng. Vui lòng đăng nhập hoặc dùng email khác.",
   offline: "Không kết nối được AuthService. Vui lòng kiểm tra backend (Spring Boot @ :8085) đã khởi động.",
   server: "AuthService đã gặp lỗi. Vui lòng thử lại sau.",
@@ -260,7 +317,7 @@ export async function getMyProfileApi(
  */
 export async function createStaffApi(
   payload: CreateStaffRequestDto,
-  token: string,
+  token?: string,
   signal?: AbortSignal,
 ): Promise<AuthResponseDto> {
   try {
@@ -268,7 +325,168 @@ export async function createStaffApi(
       "/auth/admin/users",
       payload,
       {
-        headers: { Authorization: `Bearer ${token}` },
+        ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}),
+        signal,
+      },
+    );
+    return data;
+  } catch (error) {
+    if (axios.isCancel(error)) throw error;
+    throw toApiError(error);
+  }
+}
+
+/**
+ * `GET /auth/admin/users` - the staff directory.
+ *
+ * `token` is optional because the bearer interceptor already stamps the current
+ * session on every request; passing one explicitly is only needed to pin a
+ * different session.
+ *
+ * The service returns *every* account, patients included, so callers must filter
+ * by role - the admin console splits the same table into a staff roster and a
+ * patient roster.
+ */
+export async function getAllStaffApi(
+  token?: string,
+  signal?: AbortSignal,
+): Promise<AuthResponseDto[]> {
+  try {
+    const { data } = await authApi.get<AuthResponseDto[]>("/auth/admin/users", {
+      ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}),
+      signal,
+    });
+    return Array.isArray(data) ? data : [];
+  } catch (error) {
+    if (axios.isCancel(error)) throw error;
+    throw toApiError(error);
+  }
+}
+
+/**
+ * `GET /auth/admin/patients` - every PATIENT account with its BHYT / CCCD
+ * columns.
+ *
+ * NOTE: this endpoint exists in the AuthService source but the jar deployed on
+ * :8085 was built before it landed, so it currently answers 403. Callers must
+ * therefore handle a thrown `AuthApiError` and show an empty state rather than
+ * assuming the list is always available.
+ */
+export async function getAllPatientsApi(
+  token: string,
+  signal?: AbortSignal,
+): Promise<AuthResponseDto[]> {
+  try {
+    const { data } = await authApi.get<AuthResponseDto[]>("/auth/admin/patients", {
+      headers: { Authorization: `Bearer ${token}` },
+      signal,
+    });
+    return Array.isArray(data) ? data : [];
+  } catch (error) {
+    if (axios.isCancel(error)) throw error;
+    throw toApiError(error);
+  }
+}
+
+/**
+ * `PUT /auth/admin/patients/{id}` - admin edit of demographics, CCCD and BHYT.
+ *
+ * Same deployment caveat as `getAllPatientsApi`.
+ */
+export async function updatePatientByAdminApi(
+  id: number,
+  payload: UpdatePatientRequestDto,
+  token: string,
+  signal?: AbortSignal,
+): Promise<AuthResponseDto> {
+  try {
+    const { data } = await authApi.put<AuthResponseDto>(
+      `/auth/admin/patients/${id}`,
+      payload,
+      { headers: { Authorization: `Bearer ${token}` }, signal },
+    );
+    return data;
+  } catch (error) {
+    if (axios.isCancel(error)) throw error;
+    throw toApiError(error);
+  }
+}
+
+/**
+ * `PATCH /auth/admin/users/{id}/toggle-status` - lock / unlock an account.
+ *
+ * Named for the account, not for a role: the staff roster and the patient roster
+ * both drive it with a `users.id`, and `active` is a single column on the entity.
+ */
+export async function toggleUserStatusApi(
+  id: number,
+  token?: string,
+  signal?: AbortSignal,
+): Promise<AuthResponseDto> {
+  try {
+    const { data } = await authApi.patch<AuthResponseDto>(
+      `/auth/admin/users/${id}/toggle-status`,
+      null,
+      {
+        ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}),
+        signal,
+      },
+    );
+    return data;
+  } catch (error) {
+    if (axios.isCancel(error)) throw error;
+    throw toApiError(error);
+  }
+}
+
+/**
+ * `POST /auth/admin/users/{id}/reset-password` - reset the account password.
+ *
+ * The restored value is the one `DataInitializer` seeds every account with:
+ * `password123`.
+ */
+export async function resetUserPasswordApi(
+  id: number,
+  token?: string,
+  signal?: AbortSignal,
+): Promise<{ message: string }> {
+  try {
+    const { data } = await authApi.post<{ message: string }>(
+      `/auth/admin/users/${id}/reset-password`,
+      null,
+      {
+        ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}),
+        signal,
+      },
+    );
+    return data;
+  } catch (error) {
+    if (axios.isCancel(error)) throw error;
+    throw toApiError(error);
+  }
+}
+
+/**
+ * `PUT /auth/admin/users/{id}` - admin edit of a staff account (name, phone,
+ * role, department).
+ *
+ * NOTE: this is the staff counterpart of `updatePatientByAdminApi` and mirrors
+ * its shape; like that one it is not in the AuthService source shipped so far,
+ * so it answers 404 until the endpoint lands. The UI reports the failure rather
+ * than pretending the save worked.
+ */
+export async function updateStaffByAdminApi(
+  id: number,
+  payload: UpdateStaffRequestDto,
+  token?: string,
+  signal?: AbortSignal,
+): Promise<AuthResponseDto> {
+  try {
+    const { data } = await authApi.put<AuthResponseDto>(
+      `/auth/admin/users/${id}`,
+      payload,
+      {
+        ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}),
         signal,
       },
     );

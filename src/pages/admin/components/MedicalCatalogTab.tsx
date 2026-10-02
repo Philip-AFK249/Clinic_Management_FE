@@ -1,19 +1,75 @@
-import { useState } from "react";
-import { Pill, CreditCard, Building2, Edit } from "lucide-react";
-import type { DrugItem, HospitalCode, ServiceFee } from "../data/adminMockData";
+import { useEffect, useState } from "react";
+import { Pill, CreditCard, Building2, Edit, Plus, PackagePlus, Search, Loader2 } from "lucide-react";
+import { toast } from "sonner";
+import type { DrugDto } from "../../../services/clinicalApi";
+import { getDrugsApi } from "../../../services/clinicalApi";
+import type { HospitalCode, ServiceFee } from "../data/adminMockData";
 import {
-  MOCK_DRUGS,
   MOCK_HOSPITAL_CODES,
   MOCK_SERVICE_FEES,
 } from "../data/adminMockData";
+import CreateDrugModal from "./Modals/CreateDrugModal";
+import EditDrugModal from "./Modals/EditDrugModal";
+import RestockDrugModal from "./Modals/RestockDrugModal";
 
 type CatalogSubTab = "DRUGS" | "BHYT" | "SERVICES";
 
+const BHYT_COVERAGE_LABELS: Record<string, string> = {
+  BHYT_80: "BHYT 80%",
+  "BHYT 80%": "BHYT 80%",
+  BHYT_100: "BHYT 100%",
+  "BHYT 100%": "BHYT 100%",
+  SELF_PAY: "Tự túc",
+  "Tự túc": "Tự túc",
+};
+
+const BHYT_COVERAGE_STYLES: Record<string, string> = {
+  BHYT_80: "bg-blue-100 text-blue-800 border-blue-200",
+  "BHYT 80%": "bg-blue-100 text-blue-800 border-blue-200",
+  BHYT_100: "bg-emerald-100 text-emerald-800 border-emerald-200",
+  "BHYT 100%": "bg-emerald-100 text-emerald-800 border-emerald-200",
+  SELF_PAY: "bg-slate-100 text-slate-600 border-slate-200",
+  "Tự túc": "bg-slate-100 text-slate-600 border-slate-200",
+};
+
 export default function MedicalCatalogTab() {
   const [activeSubTab, setActiveSubTab] = useState<CatalogSubTab>("DRUGS");
-  const [drugs] = useState<DrugItem[]>(MOCK_DRUGS);
+  const [drugs, setDrugs] = useState<DrugDto[]>([]);
+  const [isLoadingDrugs, setIsLoadingDrugs] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
   const [hospitals] = useState<HospitalCode[]>(MOCK_HOSPITAL_CODES);
   const [services] = useState<ServiceFee[]>(MOCK_SERVICE_FEES);
+
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isRestockModalOpen, setIsRestockModalOpen] = useState(false);
+  const [selectedDrug, setSelectedDrug] = useState<DrugDto | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const fetchDrugs = async () => {
+    setIsLoadingDrugs(true);
+    try {
+      const data = await getDrugsApi();
+      setDrugs(data);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Không thể tải danh sách thuốc");
+    } finally {
+      setIsLoadingDrugs(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchDrugs();
+  }, []);
+
+  const filteredDrugs = drugs.filter((drug) => {
+    const term = searchTerm.toLowerCase().trim();
+    if (!term) return true;
+    return (
+      drug.name.toLowerCase().includes(term) ||
+      drug.code.toLowerCase().includes(term)
+    );
+  });
 
   const subTabs: { key: CatalogSubTab; label: string; icon: typeof Pill }[] = [
     { key: "DRUGS", label: "Danh mục Thuốc & Tồn kho", icon: Pill },
@@ -21,10 +77,41 @@ export default function MedicalCatalogTab() {
     { key: "SERVICES", label: "Bảng giá Dịch vụ", icon: CreditCard },
   ];
 
-  const bhytCoverageColors: Record<DrugItem["bhytCoverage"], string> = {
-    "BHYT 80%": "bg-blue-100 text-blue-800",
-    "BHYT 100%": "bg-emerald-100 text-emerald-800",
-    "Tự túc": "bg-slate-100 text-slate-600",
+  const handleOpenCreate = () => setIsCreateModalOpen(true);
+  const handleOpenEdit = (drug: DrugDto) => {
+    setSelectedDrug(drug);
+    setIsEditModalOpen(true);
+  };
+  const handleOpenRestock = (drug: DrugDto) => {
+    setSelectedDrug(drug);
+    setIsRestockModalOpen(true);
+  };
+
+  const handleCreated = async () => {
+    setIsSubmitting(true);
+    try {
+      await fetchDrugs();
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleUpdated = async () => {
+    setIsSubmitting(true);
+    try {
+      await fetchDrugs();
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleRestocked = async () => {
+    setIsSubmitting(true);
+    try {
+      await fetchDrugs();
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -59,66 +146,127 @@ export default function MedicalCatalogTab() {
 
       {/* Drug Inventory */}
       {activeSubTab === "DRUGS" && (
-        <div className="overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-card">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead>
-                <tr className="border-b border-slate-100 bg-slate-50">
-                  <th className="px-4 py-3 font-semibold text-slate-600">Thuốc</th>
-                  <th className="px-4 py-3 font-semibold text-slate-600">Hàm lượng</th>
-                  <th className="px-4 py-3 font-semibold text-slate-600">Đơn giá (VNĐ)</th>
-                  <th className="px-4 py-3 font-semibold text-slate-600">Tồn kho (đơn vị)</th>
-                  <th className="px-4 py-3 font-semibold text-slate-600">BHYT Coverage</th>
-                  <th className="px-4 py-3 font-semibold text-slate-600">Thao tác</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {drugs.map((drug) => (
-                  <tr key={drug.id} className="transition-colors hover:bg-slate-50/50">
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-clinical-50">
-                          <Pill size={14} className="text-clinical-600" aria-hidden="true" />
-                        </div>
-                        <span className="font-semibold text-slate-800">{drug.name}</span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-slate-600">{drug.concentration}</td>
-                    <td className="px-4 py-3 font-medium text-slate-800">
-                      {drug.unitPrice.toLocaleString("vi-VN")}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={`font-semibold ${
-                          drug.stockUnits < 500 ? "text-red-600" : "text-slate-800"
-                        }`}
-                      >
-                        {drug.stockUnits.toLocaleString("vi-VN")}
-                      </span>
-                      {drug.stockUnits < 500 && (
-                        <span className="ml-1.5 text-[10px] text-red-500">Sắp hết</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${bhytCoverageColors[drug.bhytCoverage]}`}
-                      >
-                        {drug.bhytCoverage}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <button
-                        type="button"
-                        className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-slate-600 transition-colors hover:bg-slate-100"
-                      >
-                        <Edit size={12} aria-hidden="true" />
-                        Chỉnh sửa
-                      </button>
-                    </td>
+        <div className="space-y-4">
+          <div className="flex flex-col gap-3 rounded-xl border border-slate-200/80 bg-white p-4 shadow-card sm:flex-row sm:items-center sm:justify-between">
+            <div className="relative flex-1">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Tìm kiếm theo tên thuốc hoặc mã thuốc..."
+                className="w-full rounded-lg border border-slate-200 pl-9 pr-3 py-2 text-xs transition-colors focus:border-clinical-500 focus:outline-none focus:ring-2 focus:ring-clinical-500/20"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={handleOpenCreate}
+              className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-slate-800 px-3 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-slate-900"
+            >
+              <Plus size={14} />
+              Thêm Thuốc Mới
+            </button>
+          </div>
+
+          <div className="overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-card">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="border-b border-slate-100 bg-slate-50">
+                    <th className="px-4 py-3 font-semibold text-slate-600">Thuốc</th>
+                    <th className="px-4 py-3 font-semibold text-slate-600">Hàm lượng</th>
+                    <th className="px-4 py-3 font-semibold text-slate-600">Đơn giá (VNĐ)</th>
+                    <th className="px-4 py-3 font-semibold text-slate-600">Tồn kho (đơn vị)</th>
+                    <th className="px-4 py-3 font-semibold text-slate-600">BHYT Coverage</th>
+                    <th className="px-4 py-3 font-semibold text-slate-600">Thao tác</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {isLoadingDrugs ? (
+                    <tr>
+                      <td colSpan={6} className="px-4 py-8">
+                        <div className="flex flex-col items-center justify-center gap-2 text-slate-500">
+                          <Loader2 size={18} className="animate-spin" />
+                          <p className="text-xs">Đang tải danh sách thuốc...</p>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : filteredDrugs.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="px-4 py-8 text-center text-xs text-slate-500">
+                        {searchTerm ? "Không tìm thấy thuốc phù hợp với từ khóa tìm kiếm" : "Chưa có thuốc nào trong kho"}
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredDrugs.map((drug) => (
+                      <tr key={drug.id} className="transition-colors hover:bg-slate-50/50">
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-clinical-50">
+                              <Pill size={14} className="text-clinical-600" aria-hidden="true" />
+                            </div>
+                            <div>
+                              <p className="font-semibold text-slate-800">{drug.name}</p>
+                              <p className="text-[11px] text-slate-500">{drug.code}</p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-slate-600">{drug.concentration}</td>
+                        <td className="px-4 py-3 font-medium text-slate-800">
+                          {drug.unitPrice.toLocaleString("vi-VN")}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span
+                            className={`font-semibold ${
+                              drug.stockQuantity < 500 ? "text-red-600" : "text-slate-800"
+                            }`}
+                          >
+                            {drug.stockQuantity.toLocaleString("vi-VN")}
+                          </span>
+                          {drug.stockQuantity < 500 && (
+                            <span className="ml-1.5 inline-flex rounded-full border border-red-200 bg-red-50 px-1.5 py-0.5 text-[10px] font-medium text-red-600">
+                              Sắp hết
+                            </span>
+                          )}
+                          {drug.isPenicillinClass && (
+                            <span className="ml-1.5 inline-flex rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">
+                              Penicillin
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span
+                            className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold ${BHYT_COVERAGE_STYLES[drug.bhytCoverage]}`}
+                          >
+                            {BHYT_COVERAGE_LABELS[drug.bhytCoverage] || drug.bhytCoverage}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEdit(drug)}
+                              className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-slate-600 transition-colors hover:bg-slate-100"
+                            >
+                              <Edit size={12} aria-hidden="true" />
+                              Chỉnh sửa
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleOpenRestock(drug)}
+                              className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-emerald-700 transition-colors hover:bg-emerald-50"
+                            >
+                              <PackagePlus size={12} aria-hidden="true" />
+                              Nhập kho
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}
@@ -241,6 +389,33 @@ export default function MedicalCatalogTab() {
           </div>
         </div>
       )}
+
+      <CreateDrugModal
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+        onCreated={handleCreated}
+        isSubmitting={isSubmitting}
+      />
+      <EditDrugModal
+        isOpen={isEditModalOpen}
+        onClose={() => {
+          setIsEditModalOpen(false);
+          setSelectedDrug(null);
+        }}
+        drug={selectedDrug}
+        onUpdated={handleUpdated}
+        isSubmitting={isSubmitting}
+      />
+      <RestockDrugModal
+        isOpen={isRestockModalOpen}
+        onClose={() => {
+          setIsRestockModalOpen(false);
+          setSelectedDrug(null);
+        }}
+        drug={selectedDrug}
+        onRestocked={handleRestocked}
+        isSubmitting={isSubmitting}
+      />
     </div>
   );
 }

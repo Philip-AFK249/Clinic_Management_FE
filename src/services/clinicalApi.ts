@@ -25,6 +25,27 @@ export const clinicalApi = axios.create({
 // encounters and prescriptions, so it receives the AuthService JWT on every call.
 attachBearerInterceptor(clinicalApi);
 
+/**
+ * Resolve a controller-relative path (`encounters/start`, `pharmacy/drugs`) to the
+ * path to request on `clinicalApi`.
+ *
+ * Whether the `/clinical` segment belongs to `baseURL` or to the endpoint depends
+ * on how `VITE_CLINICAL_API_BASE` is configured, and getting it wrong emits a
+ * duplicated segment (`/api/v1/clinical/clinical/encounters/...`). So the segment
+ * is applied here, in one place, and only when the configured base does not
+ * already end with it:
+ *
+ * - base `/api/v1`            -> `/clinical/encounters/start`
+ * - base `/api/v1/clinical`   -> `/clinical/encounters/start`
+ * - base `http://host:8083/api/v1` -> `/clinical/encounters/start`
+ *
+ * Every request therefore resolves to `<base>/clinical/...` exactly once.
+ */
+function clinicalPath(path: string): string {
+  const base = CLINICAL_BASE_URL.replace(/\/+$/, "");
+  return base.endsWith("/clinical") ? path : `/clinical${path}`;
+}
+
 // ---------------------------------------------------------------------------
 // Enums (mirroring the Java enums, all serialized as plain uppercase strings)
 // ---------------------------------------------------------------------------
@@ -103,6 +124,22 @@ export interface EncounterResponse {
   diagnoses: DiagnosisItem[];
   prescriptionId?: number;
   createdAt: string;
+}
+
+/**
+ * Read-side shape of one encounter for the admin audit view.
+ *
+ * The SOAP notes, diagnoses and prescription link are the documented columns of
+ * `EncounterResponse`, so they are inherited rather than redeclared. The vitals
+ * columns are added as optional: `completeEncounterApi` writes them but the
+ * documented read payload omits them, so the audit view renders a vitals row
+ * only when the service actually returns one.
+ */
+export interface PatientEncounterDto extends EncounterResponse {
+  bloodPressure?: string | null;
+  heartRate?: number | null;
+  temperature?: string | null;
+  spo2?: number | null;
 }
 
 export interface DrugDto {
@@ -305,7 +342,7 @@ export async function startEncounterApi(
 ): Promise<EncounterResponse> {
   try {
     const { data } = await clinicalApi.post<EncounterResponse>(
-      "/clinical/encounters/start",
+      clinicalPath("/encounters/start"),
       payload,
       { signal },
     );
@@ -330,11 +367,39 @@ export async function completeEncounterApi(
 ): Promise<EncounterResponse> {
   try {
     const { data } = await clinicalApi.post<EncounterResponse>(
-      `/clinical/encounters/${encounterId}/complete`,
+      clinicalPath(`/encounters/${encounterId}/complete`),
       payload,
       { signal },
     );
     return data;
+  } catch (error) {
+    if (axios.isCancel(error)) throw error;
+    throw toApiError(error);
+  }
+}
+
+/**
+ * `GET <base>/clinical/encounters/patient/{patientId}` - every bệnh án recorded
+ * for one patient, for the admin console's read-only audit view.
+ *
+ * `patientId` is a `users.id`, the same identity AuthService hands the admin
+ * roster, so no cross-service mapping is needed. ClinicalConsultationService owns
+ * these rows: nothing in this module writes to them on the admin's behalf, and the
+ * caller must not offer an edit affordance.
+ *
+ * The service is not documented to guarantee an order, so the modal sorts
+ * newest-first to build the timeline.
+ */
+export async function getPatientEncountersApi(
+  patientId: number,
+  signal?: AbortSignal,
+): Promise<PatientEncounterDto[]> {
+  try {
+    const { data } = await clinicalApi.get<PatientEncounterDto[]>(
+      clinicalPath(`/encounters/patient/${patientId}`),
+      { signal },
+    );
+    return Array.isArray(data) ? data : [];
   } catch (error) {
     if (axios.isCancel(error)) throw error;
     throw toApiError(error);
@@ -352,7 +417,7 @@ export async function getPharmacyQueueApi(
 ): Promise<PrescriptionDetailResponse[]> {
   try {
     const { data } = await clinicalApi.get<PrescriptionDetailResponse[]>(
-      "/pharmacy/prescriptions",
+      clinicalPath("/pharmacy/prescriptions"),
       { params: { status }, signal },
     );
     return data;
@@ -369,7 +434,7 @@ export async function getPrescriptionDetailsApi(
 ): Promise<PrescriptionDetailResponse> {
   try {
     const { data } = await clinicalApi.get<PrescriptionDetailResponse>(
-      `/pharmacy/prescriptions/${prescriptionId}`,
+      clinicalPath(`/pharmacy/prescriptions/${prescriptionId}`),
       { signal },
     );
     return data;
@@ -395,7 +460,7 @@ export async function dispensePrescriptionApi(
 ): Promise<PrescriptionDetailResponse> {
   try {
     const { data } = await clinicalApi.post<PrescriptionDetailResponse>(
-      `/pharmacy/prescriptions/${prescriptionId}/dispense`,
+      clinicalPath(`/pharmacy/prescriptions/${prescriptionId}/dispense`),
       undefined,
       { params: { pharmacistId, pharmacistName }, signal },
     );
@@ -406,13 +471,81 @@ export async function dispensePrescriptionApi(
   }
 }
 
-/** Active formulary used by the doctor's prescribing table. */
-export async function getActiveDrugsApi(signal?: AbortSignal): Promise<DrugDto[]> {
+export type BhytCoverageType = BhytCoverage;
+
+export interface CreateDrugPayload {
+  code: string;
+  name: string;
+  concentration: string;
+  dosageForm: string;
+  stockQuantity: number;
+  unitPrice: number;
+  bhytCoverage: BhytCoverageType;
+  isPenicillinClass?: boolean;
+}
+
+export interface UpdateDrugPayload {
+  name: string;
+  concentration: string;
+  dosageForm: string;
+  unitPrice: number;
+  stockQuantity: number;
+  bhytCoverage: BhytCoverageType;
+  isPenicillinClass?: boolean;
+  active?: boolean;
+}
+
+export interface AdjustStockPayload {
+  quantityChange: number;
+}
+
+export async function getDrugsApi(signal?: AbortSignal): Promise<DrugDto[]> {
   try {
-    const { data } = await clinicalApi.get<RawDrugResponse[]>("/pharmacy/drugs", {
+    const { data } = await clinicalApi.get<RawDrugResponse[]>(clinicalPath("/pharmacy/drugs"), {
       signal,
     });
     return data.map(normalizeDrug);
+  } catch (error) {
+    if (axios.isCancel(error)) throw error;
+    throw toApiError(error);
+  }
+}
+
+/** Active formulary used by the doctor's prescribing table. */
+export async function getActiveDrugsApi(signal?: AbortSignal): Promise<DrugDto[]> {
+  return getDrugsApi(signal);
+}
+
+export async function createDrugApi(payload: CreateDrugPayload, signal?: AbortSignal): Promise<DrugDto> {
+  try {
+    const { data } = await clinicalApi.post<RawDrugResponse>(clinicalPath("/pharmacy/drugs"), payload, {
+      signal,
+    });
+    return normalizeDrug(data);
+  } catch (error) {
+    if (axios.isCancel(error)) throw error;
+    throw toApiError(error);
+  }
+}
+
+export async function updateDrugApi(id: number, payload: UpdateDrugPayload, signal?: AbortSignal): Promise<DrugDto> {
+  try {
+    const { data } = await clinicalApi.put<RawDrugResponse>(clinicalPath(`/pharmacy/drugs/${id}`), payload, {
+      signal,
+    });
+    return normalizeDrug(data);
+  } catch (error) {
+    if (axios.isCancel(error)) throw error;
+    throw toApiError(error);
+  }
+}
+
+export async function adjustDrugStockApi(id: number, payload: AdjustStockPayload, signal?: AbortSignal): Promise<DrugDto> {
+  try {
+    const { data } = await clinicalApi.patch<RawDrugResponse>(clinicalPath(`/pharmacy/drugs/${id}/stock`), payload, {
+      signal,
+    });
+    return normalizeDrug(data);
   } catch (error) {
     if (axios.isCancel(error)) throw error;
     throw toApiError(error);
