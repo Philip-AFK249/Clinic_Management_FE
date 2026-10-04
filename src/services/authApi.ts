@@ -496,3 +496,28 @@ export async function updateStaffByAdminApi(
     throw toApiError(error);
   }
 }
+
+/**
+ * `PUT /auth/me/profile` - patient self-update of demographics, CCCD and BHYT.
+ *
+ * This mirrors the request shape of `UpdatePatientRequestDto` used by the admin
+ * endpoint but targets the authenticated user's own profile. The bearer
+ * interceptor already attaches the current token, so callers do not need to
+ * pass it explicitly.
+ */
+export async function updateMyProfileApi(
+  payload: UpdatePatientRequestDto,
+  signal?: AbortSignal,
+): Promise<AuthResponseDto> {
+  try {
+    const { data } = await authApi.put<AuthResponseDto>(
+      "/auth/me/profile",
+      payload,
+      { signal },
+    );
+    return data;
+  } catch (error) {
+    if (axios.isCancel(error)) throw error;
+    throw toApiError(error);
+  }
+}

@@ -11,6 +11,7 @@ import {
   resolveDoctorForService,
 } from "./data/clinicContent";
 import { triageSymptoms } from "./data/patientMockRecords";
+import { writeActiveBooking } from "./data/activeBooking";
 import type { Service } from "./data/clinicContent";
 import type { ActiveAppointment, BhyTelemetry } from "./data/patientMockRecords";
 
@@ -94,7 +95,7 @@ export default function BookingPage() {
       const service: Service =
         deptIdx !== null ? CLINIC_SERVICES[deptIdx] : CLINIC_SERVICES[0];
       const doctor = resolveDoctorForService(service.title);
-      setTicket({
+      const confirmed: ActiveAppointment = {
         ticketCode: "#APT-2026-8821",
         patientName: fullName.trim().toUpperCase(),
         department: doctor.department,
@@ -102,7 +103,11 @@ export default function BookingPage() {
         room: doctor.roomNumber,
         date: "Hôm nay",
         timeSlot: timeSlot ?? "08:30",
-      });
+      };
+      // The dashboard reads this back: without it the patient would land on
+      // "Bạn chưa có lịch hẹn khám nào" right after booking.
+      writeActiveBooking(confirmed);
+      setTicket(confirmed);
       return;
     }
     setStep((s) => s + 1);
