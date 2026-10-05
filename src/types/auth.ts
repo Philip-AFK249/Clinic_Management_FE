@@ -9,17 +9,18 @@ export type UserRole =
 export type Gender = "MALE" | "FEMALE" | "OTHER";
 
 export interface User {
-  /**
-   * `users.id` from AuthService. That service uses a numeric identity PK, so a
-   * real session always carries a number; `string` stays in the type for
-   * payloads persisted before the AuthService migration.
-   */
-  id: string | number;
+  /** `users.id` from AuthService, a numeric identity PK. */
+  id: number;
   email: string;
   fullName: string;
   role: UserRole;
   /** The signed JWT. Always present for a live session. */
   token: string;
+  /**
+   * `users.phone` - the contact number given at registration and editable on
+   * /patient/profile. A `null` column is mapped to `undefined` by `toUser`, so
+   * "unset" reads the same here as everywhere else in the app.
+   */
   phone?: string;
   avatarUrl?: string;
   /**
@@ -43,43 +44,51 @@ export interface User {
   departmentName?: string;
 
   /* ---------------------------------------------------------------------
-   * Patient self-service fields, edited on /patient/profile.
+   * Patient demographics, CCCD and BHYT - edited on /patient/profile.
    *
-   * These are NOT columns on AuthService's `users` table: that entity carries
-   * only id/email/password/full_name/phone/role/department/doctor/pharmacist,
-   * and AuthService exposes no endpoint to write them. They are therefore
-   * client-only - persisted in `clinic_auth_user` and carried across a re-login
-   * by `readStoredProfileFields()` - so they survive a reload but are not yet
-   * shared with the backend. Do not treat them as authoritative.
+   * These ARE columns on AuthService's `users` table and are written by
+   * `PUT /auth/me/profile`, so `AuthProvider.toUser` maps them straight off the
+   * login / `/me` response and they are authoritative.
+   *
+   * `readStoredProfileFields()` still replays the copy in `clinic_auth_user`,
+   * but only as a fallback: `toUser` applies it *before* these, so a value the
+   * backend actually holds always wins over the cached one.
    * ------------------------------------------------------------------- */
   /** ISO `YYYY-MM-DD`, matching `<input type="date">`. */
   dateOfBirth?: string;
-  gender?: Gender;
+  /**
+   * Free-form varchar, as AuthService stores it: `MALE` / `FEMALE` / `OTHER`
+   * from this app, but whatever a card or another writer put there. Folds to the
+   * `Gender` enum at the UI boundary - see `genderFrom`.
+   */
+  gender?: string;
   address?: string;
-  /** CCCD / mã định danh: 12 digits. */
-  nationalId?: string;
+  /** CCCD / mã định danh: 12 digits. Named as the backend column. */
+  identityCardNumber?: string;
   /** Mã số thẻ BHYT, 15 characters, e.g. `DN 4 79 79 12345678`. */
   insuranceCode?: string;
   /** Mã cơ sở khám chữa bệnh ban đầu, e.g. `79-014`. */
   initialHospitalCode?: string;
   /** True once the BHYT card has been read back through the OCR scanner. */
-  insuranceVerified?: boolean;
+  isOcrVerified?: boolean;
 }
 
 /**
- * The subset of `User` that only ever exists on the client. Used to carry a
- * patient's saved profile and BHYT card across a fresh sign-in, because the
- * login response cannot know about them.
+ * The subset of `User` that predates `PUT /auth/me/profile`.
+ *
+ * Carried across a fresh sign-in from `clinic_auth_user` so a session restored
+ * against an AuthService that does not return these columns yet still shows the
+ * patient's saved card instead of an empty profile.
  */
 export type PatientProfileFields = Pick<
   User,
   | "dateOfBirth"
   | "gender"
   | "address"
-  | "nationalId"
+  | "identityCardNumber"
   | "insuranceCode"
   | "initialHospitalCode"
-  | "insuranceVerified"
+  | "isOcrVerified"
 >;
 
 /**
@@ -92,11 +101,25 @@ export const PATIENT_PROFILE_FIELDS: (keyof PatientProfileFields)[] = [
   "dateOfBirth",
   "gender",
   "address",
-  "nationalId",
+  "identityCardNumber",
   "insuranceCode",
   "initialHospitalCode",
-  "insuranceVerified",
+  "isOcrVerified",
 ];
+
+/**
+ * Pre-rename keys still sitting in `clinic_auth_user` from the build that
+ * called these `nationalId` and `insuranceVerified`.
+ *
+ * Read as fallbacks so a patient who saved a card before the rename keeps it
+ * instead of silently losing the verified flag on their next sign-in. Nothing
+ * writes these any more.
+ */
+export const LEGACY_PATIENT_PROFILE_FIELDS: Record<string, keyof PatientProfileFields> =
+  {
+    nationalId: "identityCardNumber",
+    insuranceVerified: "isOcrVerified",
+  };
 
 /**
  * Department context chosen on the login screen before the account is known,

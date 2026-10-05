@@ -2,10 +2,15 @@ export type TriagePriority = "P1" | "P2" | "P3";
 
 export interface BhyTelemetry {
   fullName: string;
+  /**
+   * Demo preset only. A BHYT card carries no phone number, so a real scan never
+   * sets this - autofill has to leave whatever the patient typed alone.
+   */
+  phone?: string;
   insuranceCode: string;
   /** `YYYY-MM-DD`, ready for `<input type="date">`. */
   dateOfBirth: string;
-  /** The date as printed on the card, e.g. `14/08/1984`. */
+  /** The date as printed on the card, e.g. `01/01/1995`. */
   dateOfBirthLabel?: string;
   /** As printed on the card: `Nam` / `Nữ`. */
   gender?: string;
@@ -18,31 +23,37 @@ export interface BhyTelemetry {
   /** `YYYY-MM-DD` bounds of the card's own validity window, when read. */
   validFrom?: string;
   validUntil?: string;
-  /** The validity window as printed, e.g. `Từ 01/01/2019`. */
+  /** The validity window as printed, e.g. `Từ 01/01/2024 đến 31/12/2028`. */
   validityDisplay?: string;
   /** True once the card has actually been read back through the OCR service. */
   isOcrVerified?: boolean;
 }
 
 /**
- * The preset behind "Xem ảnh thẻ mẫu": the payload
- * `POST /api/v1/ocr/bhyt` returns for the sample card in the demo walkthrough,
- * already folded into the form-facing shape by `toBhyTelemetry`.
+ * The preset behind "Xem ảnh thẻ mẫu".
  *
- * Kept in sync with the gateway's `BhytData` contract, which is why the sample
- * carries the address and the validity line as well.
+ * Wholly fictional on purpose: every value is an obvious placeholder (a one-letter
+ * family name, an `ABC` street, a `GD` insurance prefix that no province issues,
+ * the all-zeros service number), so the demo can never leak or imply a real
+ * patient's identity. Keep it that way when editing - this ships to every visitor
+ * of `/patient/booking`.
+ *
+ * Shaped like `toBhyTelemetry`'s output, which is what a real
+ * `POST /api/v1/ocr/bhyt` scan produces, so the autofill path is identical.
  */
 export const DEMO_BHYT_CARD: BhyTelemetry = {
-  fullName: "NGÔ THỊ KIỀU NGÂN",
-  insuranceCode: "HC 4 91 53 61000392",
-  dateOfBirth: "1980-01-18",
-  dateOfBirthLabel: "18/01/1980",
-  gender: "Nữ",
-  address: "Lâm Quang Ky, Rạch Giá, Kiên Giang",
+  fullName: "NGUYỄN VĂN A",
+  phone: "0900 000 000",
+  insuranceCode: "GD 4 79 79 12345678",
+  dateOfBirth: "1995-01-01",
+  dateOfBirthLabel: "01/01/1995",
+  gender: "Nam",
+  address: "123 Đường ABC, Phường X, Quận Y, TP. Hồ Chí Minh",
   initialHospitalCode: "79-014 (BV Đa Khoa Sài Gòn)",
   hospital: "79-014 (BV Đa Khoa Sài Gòn)",
-  validFrom: "2019-01-01",
-  validityDisplay: "Từ 01/01/2019",
+  validFrom: "2024-01-01",
+  validUntil: "2028-12-31",
+  validityDisplay: "Từ 01/01/2024 đến 31/12/2028",
   isOcrVerified: true,
 };
 

@@ -8,8 +8,15 @@ import { sanitizeInsuranceCode } from "../data/patientProfile";
  */
 export interface BookingIdentityFieldsValue {
   fullName: string;
+  /**
+   * The patient's contact number, carried but never rendered here.
+   *
+   * It is bound from the signed-in account (`useAuth().user.phone`) rather than
+   * typed, because registration already collected it. `BookingPage` owns that
+   * binding so the number still rides along on the check-in payload.
+   */
   phone: string;
-  /** The grouped form, e.g. `HC 4 91 53 61000392`. */
+  /** The grouped form, e.g. `GD 4 79 79 12345678`. */
   insuranceCode: string;
   /** `YYYY-MM-DD`, ready for `<input type="date">`. */
   dateOfBirth: string;
@@ -41,9 +48,11 @@ const labelBase = "mb-1.5 block text-base font-medium text-slate-900";
 /**
  * The patient's identity, editable.
  *
- * Everything here is autofillable from a scanned BHYT card, and everything here
- * is also typable by hand: the scan is a shortcut, not a gate, so each field
- * stays a plain controlled input bound to the booking form's state.
+ * Everything rendered here is autofillable from a scanned BHYT card, and
+ * everything rendered here is also typable by hand: the scan is a shortcut, not
+ * a gate, so each field stays a plain controlled input bound to the booking
+ * form's state. `phone` is the one exception and is not rendered at all - it
+ * travels in `value` for the payload and is bound from the session.
  */
 export default function BookingIdentityFields({
   value,
@@ -67,26 +76,6 @@ export default function BookingIdentityFields({
           onChange={(e) => onChange("fullName", e.target.value)}
           className={inputBase}
         />
-      </div>
-
-      <div>
-        <label htmlFor={id("phone")} className={labelBase}>
-          Số điện thoại
-        </label>
-        <input
-          id={id("phone")}
-          type="tel"
-          autoComplete="tel"
-          placeholder="Ví dụ: 09xx xxx xxx"
-          value={value.phone}
-          onChange={(e) => onChange("phone", e.target.value)}
-          className={inputBase}
-        />
-        {/* A card carries no phone number, so this one is never autofilled. */}
-        <p className="mt-1.5 text-xs text-slate-500">
-          Thẻ BHYT không có số điện thoại - bạn cần nhập để chúng tôi gửi tin
-          nhắn xác nhận.
-        </p>
       </div>
 
       <div>
@@ -125,14 +114,18 @@ export default function BookingIdentityFields({
         </datalist>
       </div>
 
-      <div>
+      {/* `Ngày sinh` + `Giới tính` are the only two-column pair; every row below
+          spans the grid so a half-empty cell can never open up. */}
+      <div className="sm:col-span-2">
         <label htmlFor={id("insuranceCode")} className={labelBase}>
           Mã số thẻ BHYT
         </label>
+        {/* Fictional sample code, matching the "Xem ảnh thẻ mẫu" preset - never a
+            real card number. */}
         <input
           id={id("insuranceCode")}
           type="text"
-          placeholder="HC 4 91 53 61000392"
+          placeholder="GD 4 79 79 12345678"
           value={value.insuranceCode}
           onChange={(e) =>
             onChange("insuranceCode", sanitizeInsuranceCode(e.target.value))

@@ -1,12 +1,14 @@
 import { useState } from "react";
-import { ArrowRight, Sparkles, UserRound } from "lucide-react";
+import { ArrowRight, RefreshCw, ShieldCheck, Sparkles, UserRound } from "lucide-react";
 import VoiceInputCard from "./VoiceInputCard";
 import QuickSymptomChips from "./QuickSymptomChips";
 import BhyTOcrUpload from "./BhyTOcrUpload";
+import BhyCardPreview from "./BhyCardPreview";
 import BookingIdentityFields from "./BookingIdentityFields";
 import type { BookingIdentityFieldsValue } from "./BookingIdentityFields";
 import TriageResultCard from "./TriageResultCard";
 import { triageSymptoms } from "../data/patientMockRecords";
+import { dobLabelFrom, GENDER_OPTIONS, genderFrom, hospitalLabelFrom } from "../data/patientProfile";
 import type { BhyTelemetry } from "../data/patientMockRecords";
 
 interface SymptomsStepProps {
@@ -20,6 +22,19 @@ interface SymptomsStepProps {
     field: K,
     next: BookingIdentityFieldsValue[K],
   ) => void;
+  /**
+   * The card number already on this patient's profile, or `null` to ask for a
+   * scan. A non-empty value means the scanner is replaced by the saved card and
+   * its rescan action - the same photo should not be asked for twice.
+   */
+  cardOnFile?: string | null;
+  /**
+   * Whether that card came from an actual scan. False for a number the patient
+   * typed in, which must not be badged as verified.
+   */
+  cardVerified?: boolean;
+  /** Offer the scanner again, for a card that has changed or been misread. */
+  onRequestRescan?: () => void;
 }
 
 export default function SymptomsStep({
@@ -29,6 +44,9 @@ export default function SymptomsStep({
   onOcrExtracted,
   identity,
   onIdentityChange,
+  cardOnFile = null,
+  cardVerified = false,
+  onRequestRescan,
 }: SymptomsStepProps) {
   const [triageAck, setTriageAck] = useState(false);
 
@@ -40,9 +58,56 @@ export default function SymptomsStep({
     onChange(symptoms.trim() ? `${symptoms.trimEnd()}, ${value}` : value);
   }
 
+  // The card prints `Nam` / `Nữ`; the form stores the enum behind a select, so
+  // fold it to the label rather than shipping a third gender-name table.
+  const cardGender = identity.gender
+    ? (GENDER_OPTIONS.find((o) => o.value === genderFrom(identity.gender))?.label ??
+      "")
+    : "";
+
   return (
     <div className="space-y-5">
-      <BhyTOcrUpload onExtracted={onOcrExtracted} />
+      {cardOnFile ? (
+        <section className="space-y-4 rounded-xl border border-emerald-200 bg-emerald-50/50 p-5">
+          <div className="flex items-start gap-3">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700">
+              <ShieldCheck className="h-5 w-5" aria-hidden="true" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <h2 className="text-base font-semibold text-slate-900">
+                Thẻ BHYT đã lưu trong hồ sơ
+              </h2>
+              <p className="mt-0.5 text-xs text-slate-600">
+                Thông tin bên dưới đã được điền sẵn từ lần quét trước. Kiểm tra
+                lại, hoặc quét lại nếu bạn đã đổi thẻ.
+              </p>
+            </div>
+          </div>
+
+          <BhyCardPreview
+            fullName={identity.fullName}
+            insuranceCode={cardOnFile}
+            dateOfBirthLabel={dobLabelFrom(identity.dateOfBirth)}
+            gender={cardGender}
+            address={identity.address}
+            hospital={hospitalLabelFrom(identity.initialHospitalCode)}
+            verified={cardVerified}
+          />
+
+          {onRequestRescan && (
+            <button
+              type="button"
+              onClick={onRequestRescan}
+              className="inline-flex h-10 items-center gap-2 rounded-lg border border-emerald-300 bg-white px-4 text-sm font-semibold text-emerald-700 transition-colors hover:bg-emerald-100"
+            >
+              <RefreshCw className="h-4 w-4" aria-hidden="true" />
+              Quét lại thẻ BHYT
+            </button>
+          )}
+        </section>
+      ) : (
+        <BhyTOcrUpload onExtracted={onOcrExtracted} />
+      )}
 
       {/* Directly under the scanner so the patient watches the fields land as the
           card is read, and can correct anything the model got wrong before

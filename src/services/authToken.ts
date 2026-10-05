@@ -1,5 +1,5 @@
 import type { AxiosInstance, InternalAxiosRequestConfig } from "axios";
-import { PATIENT_PROFILE_FIELDS } from "../types/auth";
+import { LEGACY_PATIENT_PROFILE_FIELDS, PATIENT_PROFILE_FIELDS } from "../types/auth";
 import type { PatientProfileFields } from "../types/auth";
 
 /**
@@ -56,8 +56,12 @@ export function readStoredSession(): unknown {
 /**
  * The patient profile / BHYT fields saved on the previous visit.
  *
- * AuthService has no columns for these, so a fresh `login` or `/me` response
- * cannot carry them and would otherwise wipe a card the patient just saved.
+ * AuthService now carries these as real columns, so this is a *fallback* rather
+ * than the only source: `toUser` applies this first and then maps the login /
+ * `/me` response over the top, so a value the backend holds always wins. What
+ * this buys is the case where it holds none yet - an AuthService that predates
+ * those columns - without the patient's saved card being wiped on sign-in.
+ *
  * Only the whitelisted keys are copied - see `PATIENT_PROFILE_FIELDS` - and a
  * stored entry without a usable session yields `{}` rather than resurrecting a
  * signed-out patient's data.
@@ -67,13 +71,23 @@ export function readStoredProfileFields(): Partial<PatientProfileFields> {
   if (!isUsableStoredSession(stored)) return {};
   const source = stored as Record<string, unknown>;
   const fields: Partial<PatientProfileFields> = {};
-  for (const key of PATIENT_PROFILE_FIELDS) {
-    const value = source[key];
+  const assign = (key: keyof PatientProfileFields, value: unknown) => {
     if (typeof value === "string" && value.length > 0) {
       (fields as Record<string, unknown>)[key] = value;
     } else if (typeof value === "boolean") {
       (fields as Record<string, unknown>)[key] = value;
     }
+  };
+
+  for (const key of PATIENT_PROFILE_FIELDS) {
+    assign(key, source[key]);
+  }
+  // Old sessions wrote the pre-rename keys, so read those too - after the
+  // current ones, which is what the ordering above gives for free.
+  for (const [legacyKey, key] of Object.entries(
+    LEGACY_PATIENT_PROFILE_FIELDS,
+  )) {
+    if (source[key] === undefined) assign(key, source[legacyKey]);
   }
   return fields;
 }

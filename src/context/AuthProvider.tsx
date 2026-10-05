@@ -73,6 +73,12 @@ function toUser(dto: AuthResponseDto, extraContext?: LoginExtraContext): User {
   const isDepartmentScoped = dto.role === "DOCTOR" || dto.role === "NURSE";
 
   return {
+    // The stored session goes FIRST so the backend overwrites it. It is only a
+    // fallback for an AuthService that does not return these columns yet; with
+    // it spread last it would win over a real backend value, and a patient who
+    // updated their card on another device would sign in here and see the old
+    // one - which is exactly what `PUT /auth/me/profile` was added to prevent.
+    ...readStoredProfileFields(),
     id: dto.userId,
     email: dto.email,
     fullName: dto.fullName,
@@ -80,6 +86,9 @@ function toUser(dto: AuthResponseDto, extraContext?: LoginExtraContext): User {
     // Only `POST /admin/users` answers with a null token, and that response is
     // never turned into a session.
     token: dto.token ?? "",
+    // `null` means the column is unset, and every consumer reads "absent" as
+    // `undefined`, so normalise here rather than at each call site.
+    phone: dto.phone ?? undefined,
     departmentId: isDepartmentScoped ? departmentId : undefined,
     departmentName: isDepartmentScoped
       ? (dto.departmentName ?? departmentNameOf(departmentId))
@@ -90,9 +99,16 @@ function toUser(dto: AuthResponseDto, extraContext?: LoginExtraContext): User {
     pharmacistId:
       dto.pharmacistId ??
       (dto.role === "PHARMACIST" ? findPharmacist(dto.email)?.id : undefined),
-    // Spliced rather than listed explicitly: these live in the stored session
-    // only, and a new sign-in must not discard the BHYT card the patient saved.
-    ...readStoredProfileFields(),
+    // Demographics, CCCD and BHYT. These were being dropped on the floor, so a
+    // freshly registered patient saw only a name and an email on /patient/profile
+    // - the phone number they signed up with included.
+    identityCardNumber: dto.identityCardNumber ?? undefined,
+    insuranceCode: dto.insuranceCode ?? undefined,
+    initialHospitalCode: dto.initialHospitalCode ?? undefined,
+    dateOfBirth: dto.dateOfBirth ?? undefined,
+    gender: dto.gender ?? undefined,
+    address: dto.address ?? undefined,
+    isOcrVerified: dto.isOcrVerified ?? false,
   };
 }
 
