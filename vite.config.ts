@@ -33,6 +33,13 @@ export default defineConfig({
         target: 'http://127.0.0.1:8083',
         changeOrigin: true,
       },
+      // AiGatewayService (FastAPI @ :8000): BHYT card OCR + the RAG chat.
+      // Must stay ahead of the '/api' catch-all below, otherwise the scan would
+      // be forwarded to DoctorScheduleService and 404.
+      '/api/v1/ocr': {
+        target: 'http://127.0.0.1:8000',
+        changeOrigin: true,
+      },
       // DoctorScheduleService (Spring Boot @ :8081) and everything else.
       '/api': {
         target: 'http://127.0.0.1:8081',

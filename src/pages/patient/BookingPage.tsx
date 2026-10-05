@@ -35,7 +35,10 @@ export default function BookingPage() {
   const [timeSlot, setTimeSlot] = useState<string | null>(null);
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
-  const [ocrData, setOcrData] = useState<BhyTelemetry | null>(null);
+  const [insuranceCode, setInsuranceCode] = useState("");
+  const [dateOfBirth, setDateOfBirth] = useState("");
+  const [initialHospitalCode, setInitialHospitalCode] = useState("");
+  const [isOcrVerified, setIsOcrVerified] = useState(false);
   const [ticket, setTicket] = useState<ActiveAppointment | null>(null);
 
   const suggestion = triageSymptoms(symptoms);
@@ -43,10 +46,21 @@ export default function BookingPage() {
     ? CLINIC_SERVICES.findIndex((s) => s.title === suggestion.department)
     : null;
 
+  /**
+   * Bind a scanned card into the booking form.
+   *
+   * Each field falls back to `current.trim()` so a rescan never overwrites
+   * something the patient typed by hand. `phone` is deliberately absent: a BHYT
+   * card carries no phone number, so the scan must leave it alone.
+   */
   const handleOcrExtracted = useCallback((info: BhyTelemetry) => {
-    setOcrData(info);
     setFullName((current) => current.trim() || info.fullName);
-    setPhone((current) => current.trim() || info.phone);
+    setInsuranceCode((current) => current.trim() || info.insuranceCode);
+    setDateOfBirth((current) => current.trim() || info.dateOfBirth);
+    setInitialHospitalCode(
+      (current) => current.trim() || info.initialHospitalCode || info.hospital || "",
+    );
+    setIsOcrVerified(true);
   }, []);
 
   function resetBooking() {
@@ -56,7 +70,10 @@ export default function BookingPage() {
     setTimeSlot(null);
     setFullName("");
     setPhone("");
-    setOcrData(null);
+    setInsuranceCode("");
+    setDateOfBirth("");
+    setInitialHospitalCode("");
+    setIsOcrVerified(false);
     setTicket(null);
   }
 
@@ -250,7 +267,7 @@ export default function BookingPage() {
 
               {step === 2 && (
                 <div className="space-y-5">
-                  {ocrData && (
+                  {isOcrVerified && (
                     <div className="rounded-lg border border-teal-200 bg-teal-50 p-4">
                       <p className="text-sm font-semibold text-teal-800">
                         BHYT Đã xác thực - thông tin đã được tự động điền từ thẻ
@@ -260,19 +277,19 @@ export default function BookingPage() {
                         <div className="flex justify-between gap-3">
                           <dt className="text-slate-500">Mã thẻ BHYT</dt>
                           <dd className="font-mono font-medium text-slate-800">
-                            {ocrData.insuranceCode}
+                            {insuranceCode}
                           </dd>
                         </div>
                         <div className="flex justify-between gap-3">
                           <dt className="text-slate-500">Ngày sinh</dt>
                           <dd className="font-medium text-slate-800">
-                            {ocrData.dateOfBirth}
+                            {dateOfBirth}
                           </dd>
                         </div>
                         <div className="flex justify-between gap-3">
                           <dt className="text-slate-500">Nơi KCB ban đầu</dt>
                           <dd className="font-medium text-slate-800">
-                            {ocrData.initialHospitalCode}
+                            {initialHospitalCode}
                           </dd>
                         </div>
                       </dl>

@@ -2,22 +2,41 @@ export type TriagePriority = "P1" | "P2" | "P3";
 
 export interface BhyTelemetry {
   fullName: string;
+  /**
+   * Always empty for a real scan - a BHYT card carries no phone number, so
+   * autofill must leave whatever the patient typed untouched. Only the demo
+   * preset fills it in.
+   */
   phone: string;
   insuranceCode: string;
+  /** `YYYY-MM-DD`, ready for `<input type="date">`. */
   dateOfBirth: string;
+  /** The date as printed on the card, e.g. `14/08/1984`. */
+  dateOfBirthLabel?: string;
   initialHospitalCode: string;
+  /** Alias of `initialHospitalCode`. */
+  hospital?: string;
+  gender?: string;
+  /** The card's own validity window, when the scan read it. */
+  validFrom?: string;
+  validUntil?: string;
+  /** True once the card has actually been read back through the OCR service. */
+  isOcrVerified?: boolean;
 }
 
+/** The exact payload `POST /api/v1/ocr/bhyt` returns for the demo card. */
 export const EXTRACTED_BHYT: BhyTelemetry = {
   fullName: "NGUYỄN VĂN AN",
   phone: "0912 345 678",
   insuranceCode: "DN 4 79 79 12345678",
   dateOfBirth: "1984-08-14",
+  dateOfBirthLabel: "14/08/1984",
   initialHospitalCode: "79-014 (BV Đa Khoa Sài Gòn)",
+  gender: "Nam",
+  validFrom: "2026-01-01",
+  validUntil: "2026-12-31",
+  isOcrVerified: true,
 };
-
-export const BHYT_OCR_PILL_TEXT =
-  "PaddleOCR đang nhận diện: Mã thẻ BHYT 15 ký tự, Họ tên, Nơi KCB...";
 
 export interface TriageSuggestion {
   department: string;
