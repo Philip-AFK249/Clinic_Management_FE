@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Camera, CheckCircle2, Loader2, Sparkles } from "lucide-react";
+import { CheckCircle2, Loader2, Sparkles } from "lucide-react";
 import { toast } from "sonner";
-import { scanBhytCard } from "../../../services/ocrApi";
-import { EXTRACTED_BHYT } from "../data/patientMockRecords";
+import { BhytOcrError, scanBhytCard } from "../../../services/ocrApi";
+import { DEMO_BHYT_CARD } from "../data/patientMockRecords";
 import type { BhyTelemetry } from "../data/patientMockRecords";
 
 type ScanStatus = "IDLE" | "SCANNING" | "DONE";
@@ -12,9 +12,10 @@ interface BhyTOcrUploadProps {
 }
 
 const SCANNING_TEXT = "Đang bóc tách thông tin thẻ qua AI...";
-const SUCCESS_TEXT = "✓ Thẻ BHYT hợp lệ. Đã tự động điền thông tin bệnh nhân.";
+const SUCCESS_TEXT =
+  "✓ Thẻ BHYT hợp lệ. Đã tự động điền thông tin bệnh nhân.";
 const ERROR_TEXT =
-  "Không thể nhận diện thẻ BHYT. Vui lòng thử lại với ảnh rõ nét hơn hoặc nhập tay!";
+  "Không nhận diện được thẻ BHYT. Vui lòng chụp rõ nét hơn hoặc nhập tay!";
 
 /**
  * BHYT card scanner: uploads a card photo to the AI gateway
@@ -58,7 +59,7 @@ export default function BhyTOcrUpload({ onExtracted }: BhyTOcrUploadProps) {
   /**
    * Run a scan and publish the result.
    *
-   * `file === null` opens the demo preset instead of hitting the network, so
+   * `file === null` replays `DEMO_BHYT_CARD` instead of hitting the network, so
    * the autofill path can be exercised without an upload. Any failure is
    * reported as a toast and drops back to idle, which re-enables the picker.
    */
@@ -66,7 +67,7 @@ export default function BhyTOcrUpload({ onExtracted }: BhyTOcrUploadProps) {
     async (file: File | null) => {
       setStatus("SCANNING");
       try {
-        const telemetry = file ? await scanBhytCard(file) : EXTRACTED_BHYT;
+        const telemetry = file ? await scanBhytCard(file) : DEMO_BHYT_CARD;
         if (!mountedRef.current) return;
         setCard(telemetry);
         setStatus("DONE");
@@ -78,11 +79,17 @@ export default function BhyTOcrUpload({ onExtracted }: BhyTOcrUploadProps) {
         setPreview(null);
         setCard(null);
         setStatus("IDLE");
-        // One actionable message covers every failure mode (rejected upload,
-        // unreadable card, gateway down): the patient needs manual entry, and
-        // the raw reason would not tell them anything more useful.
         console.error("BHYT OCR scan failed:", error);
-        toast.error(ERROR_TEXT);
+        // One actionable headline covers every failure mode (rejected upload,
+        // unreadable card, gateway down); the gateway's own message rides along
+        // as the description when it sent a more specific one (timeout, HTTP
+        // status, blurry photo).
+        toast.error(ERROR_TEXT, {
+          description:
+            error instanceof BhytOcrError && error.message
+              ? error.message
+              : undefined,
+        });
       }
     },
     [onExtracted, setPreview],
@@ -91,6 +98,11 @@ export default function BhyTOcrUpload({ onExtracted }: BhyTOcrUploadProps) {
   function handleFile(file: File) {
     setPreview(URL.createObjectURL(file));
     void scan(file);
+  }
+
+  /** "Xem ảnh thẻ mẫu": the demo preset, bound exactly like a real scan. */
+  function handleDemoSample() {
+    void scan(null);
   }
 
   function handleRescan() {
@@ -135,10 +147,18 @@ export default function BhyTOcrUpload({ onExtracted }: BhyTOcrUploadProps) {
               />
             </div>
           )}
-          <p className="mt-3 inline-flex items-center gap-2 text-sm font-medium text-clinical-700">
-            <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+          {/* Disabled rather than swapped out: the button the patient pressed
+              stays put with its spinner, so the progress reads as "working" on
+              the control they are watching instead of appearing elsewhere. */}
+          <button
+            type="button"
+            disabled
+            aria-busy="true"
+            className="mt-4 inline-flex h-12 w-full cursor-not-allowed items-center justify-center gap-2 rounded-lg bg-clinical-600 px-6 text-base font-semibold text-white opacity-70"
+          >
+            <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />
             {SCANNING_TEXT}
-          </p>
+          </button>
         </div>
       ) : status === "DONE" && card ? (
         <div className="mx-auto mt-4 max-w-sm space-y-3">
@@ -154,8 +174,8 @@ export default function BhyTOcrUpload({ onExtracted }: BhyTOcrUploadProps) {
 
           <ScannedBhyCard card={card} />
 
-          <p className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-sm font-medium text-emerald-800">
-            <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+          <p className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-4 py-1.5 text-xs font-medium text-emerald-800">
+            <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
             {SUCCESS_TEXT}
           </p>
 
@@ -169,19 +189,17 @@ export default function BhyTOcrUpload({ onExtracted }: BhyTOcrUploadProps) {
         </div>
       ) : (
         <div className="mt-3 space-y-3">
-          {/* Replaced by the scanning UI while a scan is in flight, so neither
-              button can be double-fired. */}
           <button
             type="button"
             onClick={() => inputRef.current?.click()}
             className="inline-flex h-12 items-center gap-2 rounded-lg bg-clinical-600 px-6 text-base font-semibold text-white shadow-sm transition-all hover:bg-clinical-700"
           >
-            <Camera className="h-5 w-5" aria-hidden="true" />
-            📷 🪪 Chụp / Tải ảnh thẻ BHYT
+            <span aria-hidden="true">📷 🪪</span>
+            Chụp / Tải ảnh thẻ BHYT
           </button>
           <button
             type="button"
-            onClick={() => void scan(null)}
+            onClick={handleDemoSample}
             className="inline-flex h-11 items-center gap-2 rounded-lg border border-slate-200 bg-white px-5 text-base font-semibold text-slate-700 shadow-sm transition-colors hover:border-clinical-400 hover:text-clinical-700"
           >
             <Sparkles className="h-4 w-4 text-clinical-600" aria-hidden="true" />
@@ -201,37 +219,90 @@ export default function BhyTOcrUpload({ onExtracted }: BhyTOcrUploadProps) {
  * The scanned card, rendered as the green BHYT card it was.
  *
  * A reconstruction rather than the photo, because the point is to confirm the
- * *data* that was read back. Fields the model could not read fall back to a dash
- * so an empty box is never mistaken for a printed blank.
+ * *data* that was read back. Fields the model could not read are dropped
+ * entirely (their label would be meaningless without a value) and the ones that
+ * did read fall back to a dash so an empty box is never mistaken for a printed
+ * blank.
  */
 function ScannedBhyCard({ card }: { card: BhyTelemetry }) {
+  const address = card.address?.trim();
+  const initialClinic = card.initialHospitalCode?.trim() || card.hospital?.trim();
+  const validity = card.validityDisplay?.trim();
+
   return (
-    <div className="overflow-hidden rounded-xl bg-gradient-to-br from-emerald-700 to-teal-800 text-white shadow-elevated">
-      <div className="flex items-center justify-between gap-3 border-b border-white/20 px-4 py-2.5">
-        <p className="text-xs font-bold uppercase tracking-wide">
-          Bảo hiểm xã hội Việt Nam
-        </p>
-        <p className="shrink-0 text-xs font-semibold">BHYT</p>
+    <div className="w-full max-w-md rounded-2xl border border-emerald-600/30 bg-gradient-to-br from-emerald-800 via-teal-800 to-emerald-950 p-5 text-left font-sans text-white shadow-lg">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-200">
+            Bảo hiểm xã hội Việt Nam
+          </p>
+          <p className="text-xs font-bold text-white">THẺ BẢO HIỂM Y TẾ</p>
+        </div>
+        <span className="rounded bg-white/20 px-2 py-0.5 text-[11px] font-bold">
+          BHYT
+        </span>
       </div>
 
-      <div className="px-4 py-3.5 text-left">
-        <p className="font-mono text-xl font-bold tracking-[0.15em]">
+      <div className="mt-4 border-t border-white/10 pt-2">
+        <p className="text-[10px] font-medium uppercase text-emerald-200">
+          Mã số thẻ:
+        </p>
+        <p className="font-mono text-xl font-bold tracking-widest text-amber-300">
           {card.insuranceCode || "-"}
         </p>
-
-        <div className="mt-3 grid grid-cols-2 gap-3 text-xs">
-          <div>
-            <p className="font-medium uppercase text-white/70">Họ và tên:</p>
-            <p className="mt-0.5 font-bold uppercase">{card.fullName || "-"}</p>
-          </div>
-          <div>
-            <p className="font-medium uppercase text-white/70">Ngày sinh:</p>
-            <p className="mt-0.5 font-bold">
-              {card.dateOfBirthLabel || card.dateOfBirth || "-"}
-            </p>
-          </div>
-        </div>
       </div>
+
+      <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+        <div className="col-span-2">
+          <dt className="text-[10px] font-medium uppercase text-emerald-200">
+            Họ và tên:
+          </dt>
+          <dd className="font-bold uppercase text-white">{card.fullName || "-"}</dd>
+        </div>
+
+        <div>
+          <dt className="text-[10px] font-medium uppercase text-emerald-200">
+            Ngày sinh:
+          </dt>
+          <dd className="font-medium text-white">
+            {card.dateOfBirthLabel || card.dateOfBirth || "-"}
+          </dd>
+        </div>
+
+        <div>
+          <dt className="text-[10px] font-medium uppercase text-emerald-200">
+            Giới tính:
+          </dt>
+          <dd className="font-medium text-white">{card.gender || "-"}</dd>
+        </div>
+
+        {address && (
+          <div className="col-span-2">
+            <dt className="text-[10px] font-medium uppercase text-emerald-200">
+              Địa chỉ:
+            </dt>
+            <dd className="line-clamp-2 text-[11px] text-white/90">{address}</dd>
+          </div>
+        )}
+
+        {initialClinic && (
+          <div className="col-span-2">
+            <dt className="text-[10px] font-medium uppercase text-emerald-200">
+              Nơi ĐKKCB ban đầu:
+            </dt>
+            <dd className="text-[11px] font-medium text-white/90">
+              {initialClinic}
+            </dd>
+          </div>
+        )}
+
+        {validity && (
+          <div className="col-span-2 flex justify-between gap-3 border-t border-white/10 pt-1 text-[10px] text-emerald-200">
+            <dt className="font-medium uppercase">Giá trị sử dụng:</dt>
+            <dd className="text-right">{validity}</dd>
+          </div>
+        )}
+      </dl>
     </div>
   );
 }

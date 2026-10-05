@@ -2,39 +2,47 @@ export type TriagePriority = "P1" | "P2" | "P3";
 
 export interface BhyTelemetry {
   fullName: string;
-  /**
-   * Always empty for a real scan - a BHYT card carries no phone number, so
-   * autofill must leave whatever the patient typed untouched. Only the demo
-   * preset fills it in.
-   */
-  phone: string;
   insuranceCode: string;
   /** `YYYY-MM-DD`, ready for `<input type="date">`. */
   dateOfBirth: string;
   /** The date as printed on the card, e.g. `14/08/1984`. */
   dateOfBirthLabel?: string;
+  /** As printed on the card: `Nam` / `Nữ`. */
+  gender?: string;
+  /** Địa chỉ in nhỏ dưới tên chủ thẻ. */
+  address?: string;
+  /** `code (facility)`, e.g. `79-014 (BV Đa Khoa Sài Gòn)`. */
   initialHospitalCode: string;
   /** Alias of `initialHospitalCode`. */
   hospital?: string;
-  gender?: string;
-  /** The card's own validity window, when the scan read it. */
+  /** `YYYY-MM-DD` bounds of the card's own validity window, when read. */
   validFrom?: string;
   validUntil?: string;
+  /** The validity window as printed, e.g. `Từ 01/01/2019`. */
+  validityDisplay?: string;
   /** True once the card has actually been read back through the OCR service. */
   isOcrVerified?: boolean;
 }
 
-/** The exact payload `POST /api/v1/ocr/bhyt` returns for the demo card. */
-export const EXTRACTED_BHYT: BhyTelemetry = {
-  fullName: "NGUYỄN VĂN AN",
-  phone: "0912 345 678",
-  insuranceCode: "DN 4 79 79 12345678",
-  dateOfBirth: "1984-08-14",
-  dateOfBirthLabel: "14/08/1984",
+/**
+ * The preset behind "Xem ảnh thẻ mẫu": the payload
+ * `POST /api/v1/ocr/bhyt` returns for the sample card in the demo walkthrough,
+ * already folded into the form-facing shape by `toBhyTelemetry`.
+ *
+ * Kept in sync with the gateway's `BhytData` contract, which is why the sample
+ * carries the address and the validity line as well.
+ */
+export const DEMO_BHYT_CARD: BhyTelemetry = {
+  fullName: "NGÔ THỊ KIỀU NGÂN",
+  insuranceCode: "HC 4 91 53 61000392",
+  dateOfBirth: "1980-01-18",
+  dateOfBirthLabel: "18/01/1980",
+  gender: "Nữ",
+  address: "Lâm Quang Ky, Rạch Giá, Kiên Giang",
   initialHospitalCode: "79-014 (BV Đa Khoa Sài Gòn)",
-  gender: "Nam",
-  validFrom: "2026-01-01",
-  validUntil: "2026-12-31",
+  hospital: "79-014 (BV Đa Khoa Sài Gòn)",
+  validFrom: "2019-01-01",
+  validityDisplay: "Từ 01/01/2019",
   isOcrVerified: true,
 };
 

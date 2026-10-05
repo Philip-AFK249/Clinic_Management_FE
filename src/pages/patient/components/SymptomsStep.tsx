@@ -1,8 +1,10 @@
 import { useState } from "react";
-import { ArrowRight, Sparkles } from "lucide-react";
+import { ArrowRight, Sparkles, UserRound } from "lucide-react";
 import VoiceInputCard from "./VoiceInputCard";
 import QuickSymptomChips from "./QuickSymptomChips";
 import BhyTOcrUpload from "./BhyTOcrUpload";
+import BookingIdentityFields from "./BookingIdentityFields";
+import type { BookingIdentityFieldsValue } from "./BookingIdentityFields";
 import TriageResultCard from "./TriageResultCard";
 import { triageSymptoms } from "../data/patientMockRecords";
 import type { BhyTelemetry } from "../data/patientMockRecords";
@@ -12,6 +14,12 @@ interface SymptomsStepProps {
   onChange: (value: string) => void;
   onContinue: () => void;
   onOcrExtracted: (info: BhyTelemetry) => void;
+  /** The identity slice of the booking form, autofilled from the card. */
+  identity: BookingIdentityFieldsValue;
+  onIdentityChange: <K extends keyof BookingIdentityFieldsValue>(
+    field: K,
+    next: BookingIdentityFieldsValue[K],
+  ) => void;
 }
 
 export default function SymptomsStep({
@@ -19,6 +27,8 @@ export default function SymptomsStep({
   onChange,
   onContinue,
   onOcrExtracted,
+  identity,
+  onIdentityChange,
 }: SymptomsStepProps) {
   const [triageAck, setTriageAck] = useState(false);
 
@@ -33,6 +43,31 @@ export default function SymptomsStep({
   return (
     <div className="space-y-5">
       <BhyTOcrUpload onExtracted={onOcrExtracted} />
+
+      {/* Directly under the scanner so the patient watches the fields land as the
+          card is read, and can correct anything the model got wrong before
+          moving on. */}
+      <section className="rounded-xl border border-slate-200/80 bg-white p-5">
+        <div className="mb-4 flex items-center gap-2.5">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-clinical-50 text-clinical-600">
+            <UserRound className="h-5 w-5" aria-hidden="true" />
+          </span>
+          <div>
+            <h2 className="text-base font-semibold text-slate-900">
+              Thông tin bệnh nhân
+            </h2>
+            <p className="text-xs text-slate-500">
+              Quét thẻ BHYT ở trên để tự động điền, hoặc nhập tay nếu bạn không có
+              thẻ.
+            </p>
+          </div>
+        </div>
+        <BookingIdentityFields
+          value={identity}
+          onChange={onIdentityChange}
+          idPrefix="booking-step1"
+        />
+      </section>
 
       <VoiceInputCard value={symptoms} onChange={onChange} />
 

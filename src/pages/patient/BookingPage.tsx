@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import PatientNavbar from "./components/PatientNavbar";
 import PatientFooter from "./components/PatientFooter";
 import SymptomsStep from "./components/SymptomsStep";
+import BookingIdentityFields from "./components/BookingIdentityFields";
 import BookingTicketModal from "./components/BookingTicketModal";
 import FloatingRagChatbot from "./components/FloatingRagChatbot";
 import {
@@ -12,6 +13,7 @@ import {
 } from "./data/clinicContent";
 import { triageSymptoms } from "./data/patientMockRecords";
 import { writeActiveBooking } from "./data/activeBooking";
+import type { BookingIdentityFieldsValue } from "./components/BookingIdentityFields";
 import type { Service } from "./data/clinicContent";
 import type { ActiveAppointment, BhyTelemetry } from "./data/patientMockRecords";
 
@@ -28,17 +30,29 @@ const TIME_SLOTS = [
 
 const STEP_LABELS = ["Triệu chứng", "Chuyên khoa", "Xác nhận"];
 
+/** The booking form, patient identity included. */
+interface BookingFormData extends BookingIdentityFieldsValue {
+  /** True once a card has been read back through the OCR service. */
+  isOcrVerified: boolean;
+}
+
+const EMPTY_FORM: BookingFormData = {
+  fullName: "",
+  phone: "",
+  insuranceCode: "",
+  dateOfBirth: "",
+  gender: "",
+  address: "",
+  initialHospitalCode: "",
+  isOcrVerified: false,
+};
+
 export default function BookingPage() {
   const [step, setStep] = useState(0);
   const [symptoms, setSymptoms] = useState("");
   const [deptIdx, setDeptIdx] = useState<number | null>(null);
   const [timeSlot, setTimeSlot] = useState<string | null>(null);
-  const [fullName, setFullName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [insuranceCode, setInsuranceCode] = useState("");
-  const [dateOfBirth, setDateOfBirth] = useState("");
-  const [initialHospitalCode, setInitialHospitalCode] = useState("");
-  const [isOcrVerified, setIsOcrVerified] = useState(false);
+  const [formData, setFormData] = useState<BookingFormData>(EMPTY_FORM);
   const [ticket, setTicket] = useState<ActiveAppointment | null>(null);
 
   const suggestion = triageSymptoms(symptoms);
@@ -46,21 +60,40 @@ export default function BookingPage() {
     ? CLINIC_SERVICES.findIndex((s) => s.title === suggestion.department)
     : null;
 
+  /** Type-safe single-field write, so the identity inputs and the scan share one setter. */
+  function setFormField<K extends keyof BookingFormData>(
+    field: K,
+    next: BookingFormData[K],
+  ) {
+    setFormData((prev) => ({ ...prev, [field]: next }));
+  }
+
   /**
    * Bind a scanned card into the booking form.
    *
-   * Each field falls back to `current.trim()` so a rescan never overwrites
-   * something the patient typed by hand. `phone` is deliberately absent: a BHYT
-   * card carries no phone number, so the scan must leave it alone.
+   * Every extracted field falls back to the value already in the form, so a
+   * rescan never wipes something the patient typed or corrected by hand - an
+   * unreadable field simply leaves the previous value standing. `phone` is
+   * deliberately not mapped: a BHYT card carries no phone number, so a scan
+   * must not disturb the one the patient entered.
    */
   const handleOcrExtracted = useCallback((info: BhyTelemetry) => {
-    setFullName((current) => current.trim() || info.fullName);
-    setInsuranceCode((current) => current.trim() || info.insuranceCode);
-    setDateOfBirth((current) => current.trim() || info.dateOfBirth);
-    setInitialHospitalCode(
-      (current) => current.trim() || info.initialHospitalCode || info.hospital || "",
-    );
-    setIsOcrVerified(true);
+    setFormData((prev) => ({
+      ...prev,
+      fullName: info.fullName?.trim() || prev.fullName,
+      insuranceCode: info.insuranceCode?.trim() || prev.insuranceCode,
+      // `ngay_sinh_iso` is already `YYYY-MM-DD`, which is what the date input needs.
+      dateOfBirth: info.dateOfBirth || prev.dateOfBirth,
+      gender: info.gender?.trim() || prev.gender,
+      address: info.address?.trim() || prev.address,
+      initialHospitalCode:
+        info.initialHospitalCode?.trim() ||
+        info.hospital?.trim() ||
+        prev.initialHospitalCode,
+      // `phone` is intentionally absent from this spread-and-overwrite: the card
+      // carries none, so the number the patient typed has to survive untouched.
+      isOcrVerified: true,
+    }));
   }, []);
 
   function resetBooking() {
@@ -68,12 +101,7 @@ export default function BookingPage() {
     setSymptoms("");
     setDeptIdx(null);
     setTimeSlot(null);
-    setFullName("");
-    setPhone("");
-    setInsuranceCode("");
-    setDateOfBirth("");
-    setInitialHospitalCode("");
-    setIsOcrVerified(false);
+    setFormData(EMPTY_FORM);
     setTicket(null);
   }
 
@@ -93,11 +121,11 @@ export default function BookingPage() {
       }
     }
     if (step === 2) {
-      if (!fullName.trim()) {
+      if (!formData.fullName.trim()) {
         toast.error("Vui lòng cung cấp họ và tên đầy đủ.");
         return false;
       }
-      if (!phone.trim() || phone.trim().length < 8) {
+      if (!formData.phone.trim() || formData.phone.trim().length < 8) {
         toast.error("Vui lòng cung cấp số điện thoại hợp lệ.");
         return false;
       }
@@ -114,7 +142,7 @@ export default function BookingPage() {
       const doctor = resolveDoctorForService(service.title);
       const confirmed: ActiveAppointment = {
         ticketCode: "#APT-2026-8821",
-        patientName: fullName.trim().toUpperCase(),
+        patientName: formData.fullName.trim().toUpperCase(),
         department: doctor.department,
         doctor: doctor.name,
         room: doctor.roomNumber,
@@ -134,9 +162,6 @@ export default function BookingPage() {
     e.preventDefault();
     handleNext();
   }
-
-  const inputBase =
-    "h-11 w-full rounded-lg border border-slate-200 bg-white py-2.5 px-4 text-base text-slate-900 placeholder-slate-400 transition-colors focus:border-clinical-600 focus:outline-none focus:ring-2 focus:ring-clinical-500/20";
 
   return (
     <div className="min-h-screen bg-surface-light">
@@ -207,6 +232,8 @@ export default function BookingPage() {
                   onChange={setSymptoms}
                   onContinue={handleNext}
                   onOcrExtracted={handleOcrExtracted}
+                  identity={formData}
+                  onIdentityChange={setFormField}
                 />
               )}
 
@@ -267,7 +294,7 @@ export default function BookingPage() {
 
               {step === 2 && (
                 <div className="space-y-5">
-                  {isOcrVerified && (
+                  {formData.isOcrVerified && (
                     <div className="rounded-lg border border-teal-200 bg-teal-50 p-4">
                       <p className="text-sm font-semibold text-teal-800">
                         BHYT Đã xác thực - thông tin đã được tự động điền từ thẻ
@@ -277,60 +304,49 @@ export default function BookingPage() {
                         <div className="flex justify-between gap-3">
                           <dt className="text-slate-500">Mã thẻ BHYT</dt>
                           <dd className="font-mono font-medium text-slate-800">
-                            {insuranceCode}
+                            {formData.insuranceCode}
                           </dd>
                         </div>
                         <div className="flex justify-between gap-3">
                           <dt className="text-slate-500">Ngày sinh</dt>
                           <dd className="font-medium text-slate-800">
-                            {dateOfBirth}
+                            {formData.dateOfBirth}
                           </dd>
                         </div>
+                        {formData.gender && (
+                          <div className="flex justify-between gap-3">
+                            <dt className="text-slate-500">Giới tính</dt>
+                            <dd className="font-medium text-slate-800">
+                              {formData.gender}
+                            </dd>
+                          </div>
+                        )}
+                        {formData.address && (
+                          <div className="flex justify-between gap-3">
+                            <dt className="shrink-0 text-slate-500">Địa chỉ</dt>
+                            <dd className="text-right font-medium text-slate-800">
+                              {formData.address}
+                            </dd>
+                          </div>
+                        )}
                         <div className="flex justify-between gap-3">
                           <dt className="text-slate-500">Nơi KCB ban đầu</dt>
-                          <dd className="font-medium text-slate-800">
-                            {initialHospitalCode}
+                          <dd className="text-right font-medium text-slate-800">
+                            {formData.initialHospitalCode}
                           </dd>
                         </div>
                       </dl>
                     </div>
                   )}
 
-                  <div>
-                    <label
-                      htmlFor="booking-name"
-                      className="mb-1.5 block text-base font-medium text-slate-900"
-                    >
-                      Họ và Tên
-                    </label>
-                    <input
-                      id="booking-name"
-                      type="text"
-                      autoComplete="name"
-                      placeholder="Họ và tên của bạn"
-                      value={fullName}
-                      onChange={(e) => setFullName(e.target.value)}
-                      className={inputBase}
-                    />
-                  </div>
-
-                  <div>
-                    <label
-                      htmlFor="booking-phone"
-                      className="mb-1.5 block text-base font-medium text-slate-900"
-                    >
-                      Số điện thoại
-                    </label>
-                    <input
-                      id="booking-phone"
-                      type="tel"
-                      autoComplete="tel"
-                      placeholder="Ví dụ: 09xx xxx xxx"
-                      value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
-                      className={inputBase}
-                    />
-                  </div>
+                  {/* Same fields as step 1, on the same state: the scan landed
+                      them up there, and this is where the patient checks them
+                      before the appointment is written down. */}
+                  <BookingIdentityFields
+                    value={formData}
+                    onChange={setFormField}
+                    idPrefix="booking-step3"
+                  />
 
                   <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
                     <p className="text-sm font-semibold text-slate-900">

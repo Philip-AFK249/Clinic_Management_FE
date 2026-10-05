@@ -136,6 +136,7 @@ export default function PatientProfilePage() {
       fullName: info.fullName ? toNameCase(info.fullName) : prev.fullName,
       // A BHYT card carries no phone number, so a scan never touches it.
       dateOfBirth: info.dateOfBirth || prev.dateOfBirth,
+      address: info.address?.trim() || prev.address,
       insuranceCode: sanitizeInsuranceCode(info.insuranceCode),
       // `initialHospitalCode` is the `noi_kcb_ban_dau_full` string
       // (`79-014 (BV Đa Khoa Sài Gòn)`); the picker stores just the code.
