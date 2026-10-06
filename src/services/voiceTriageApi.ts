@@ -11,19 +11,14 @@ import axios from "axios";
  * (`allow_origins=["*"]`), so a cross-origin upload needs no proxy at all.
  */
 export const RAG_BASE_URL: string = (
-  import.meta.env.VITE_RAG_API_URL || "http://localhost:8086"
+  import.meta.env.VITE_RAG_API_URL || "http://localhost:8008"
 ).replace(/\/+$/, "");
 
 /**
- * Second place to try, if the first cannot be reached.
- *
- * The gateway runs on 8086 by default; 8008 is kept as a stand-by for the
- * earlier deployment. This is a *connection* fallback, not a retry of a bad
- * request: it is only consulted when nothing answered at all (or a load
- * balancer did), never when the backend itself rejected the clip.
+ * Cổng dự phòng (nếu cần thiết đổi ngược lại 8086)
  */
 export const RAG_FALLBACK_URL: string = (
-  import.meta.env.VITE_RAG_FALLBACK_URL || "http://localhost:8008"
+  import.meta.env.VITE_RAG_FALLBACK_URL || "http://localhost:8088"
 ).replace(/\/+$/, "");
 
 /** Endpoint path, relative to whichever base is in use. */
@@ -31,18 +26,16 @@ const TRIAGE_PATH = "/api/v1/triage/voice-schedule";
 
 export const ragApi = axios.create({
   baseURL: RAG_BASE_URL,
-  // Two model round-trips plus a schedule lookup. A 20-second answer is normal;
-  // a shorter timeout would abort a slow-but-working consultation halfway and
-  // lose the transcription with it.
+  // 120s timeout để đảm bảo Whisper STT và LLM phân khoa xử lý xong
   timeout: 120000,
 });
 
 /** The port the primary base listens on, for a message that names it. */
 function primaryPort(): string {
   try {
-    return new URL(RAG_BASE_URL).port || "8086";
+    return new URL(RAG_BASE_URL).port || "8008";
   } catch {
-    return "8086";
+    return "8008";
   }
 }
 
