@@ -382,6 +382,48 @@ export interface Faq {
   answer: string;
 }
 
+/**
+ * How the voice triage gateway's `department_id` maps onto this booking form.
+ *
+ * The gateway triages into three buckets, while `CLINIC_SERVICES` is a list of six
+ * bookable services, so the mapping is a projection, not a lookup: `serviceIndex`
+ * is the service the dispatcher pre-selects, and `ticketPrefix` is the queue
+ * letter the reception desk stamps on the printed ticket.
+ *
+ * `department_id` is the key rather than `department_name` because the name is
+ * free text the LLM writes ("Khoa Hô hấp và Dị ứng", "Phòng Da liễu"), and will
+ * not match a fixed string.
+ *
+ * The one genuinely lossy row is `2`, which merges two bookable services. It
+ * points at the allergy service, because the complaints that reach it are
+ * overwhelmingly allergic rhinitis and urticaria rather than asthma - but it is a
+ * guess, and the patient can still change the service on the next step.
+ */
+export const VOICE_TRIAGE_DEPARTMENTS: Record<
+  number,
+  { serviceIndex: number; ticketPrefix: string; label: string }
+> = {
+  1: { serviceIndex: 3, ticketPrefix: "#A", label: "Nội tổng quát" },
+  2: { serviceIndex: 0, ticketPrefix: "#B", label: "Hô hấp & Dị ứng" },
+  3: { serviceIndex: 4, ticketPrefix: "#C", label: "Da liễu" },
+};
+
+/** The queue letter for a triage department, or a neutral one when unknown. */
+export function ticketPrefixFor(departmentId: number): string {
+  return VOICE_TRIAGE_DEPARTMENTS[departmentId]?.ticketPrefix ?? "#N";
+}
+
+/**
+ * The bookable service a triage department should pre-select.
+ *
+ * Falls back to general medicine rather than to index 0 (the allergy panel): an
+ * unrecognised department is most often a general complaint the LLM labelled
+ * unconventionally, and a specific test panel is the wrong default.
+ */
+export function serviceIndexForDepartment(departmentId: number): number {
+  return VOICE_TRIAGE_DEPARTMENTS[departmentId]?.serviceIndex ?? 3;
+}
+
 export function resolveDoctorForService(serviceTitle: string): StaffMember {
   const title = serviceTitle.toLowerCase();
   const match = MEDICAL_STAFF.find((staff) => {

@@ -40,6 +40,12 @@ export default defineConfig({
         target: 'http://127.0.0.1:8000',
         changeOrigin: true,
       },
+      // Same gateway, second controller: voice triage (Whisper + clinical LLM
+      // + schedule lookup). Same ordering rule - ahead of the '/api' catch-all.
+      '/api/v1/triage': {
+        target: 'http://127.0.0.1:8000',
+        changeOrigin: true,
+      },
       // DoctorScheduleService (Spring Boot @ :8081) and everything else.
       '/api': {
         target: 'http://127.0.0.1:8081',

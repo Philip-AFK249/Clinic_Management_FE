@@ -7,9 +7,14 @@ import BhyCardPreview from "./BhyCardPreview";
 import BookingIdentityFields from "./BookingIdentityFields";
 import type { BookingIdentityFieldsValue } from "./BookingIdentityFields";
 import TriageResultCard from "./TriageResultCard";
+import ShiftDispatcherCard from "./ShiftDispatcherCard";
 import { triageSymptoms } from "../data/patientMockRecords";
 import { dobLabelFrom, GENDER_OPTIONS, genderFrom, hospitalLabelFrom } from "../data/patientProfile";
 import type { BhyTelemetry } from "../data/patientMockRecords";
+import type {
+  SessionName,
+  VoiceScheduleTriageResponse,
+} from "../../../services/voiceTriageApi";
 
 interface SymptomsStepProps {
   symptoms: string;
@@ -35,6 +40,20 @@ interface SymptomsStepProps {
   cardVerified?: boolean;
   /** Offer the scanner again, for a card that has changed or been misread. */
   onRequestRescan?: () => void;
+  /** The voice triage verdict, or `null` until a recording has been analysed. */
+  voiceTriage?: VoiceScheduleTriageResponse | null;
+  isAnalysingVoice?: boolean;
+  /** The recorded clip, which the parent re-uploads to re-query another date. */
+  onVoiceClip?: (clip: Blob) => void;
+  onVoiceCancel?: () => void;
+  /** Shift + doctor picked in the dispatcher, echoed back for the pressed state. */
+  shiftSelection?: { session: SessionName; doctorId: number | null } | null;
+  onSelectShift?: (session: SessionName, doctorId: number | null) => void;
+  scheduleUnavailable?: boolean;
+  triageDate?: string;
+  onTriageDateChange?: (date: string) => void;
+  isRefreshingSchedule?: boolean;
+  onRefreshSchedule?: () => void;
 }
 
 export default function SymptomsStep({
@@ -47,12 +66,34 @@ export default function SymptomsStep({
   cardOnFile = null,
   cardVerified = false,
   onRequestRescan,
+  voiceTriage = null,
+  isAnalysingVoice = false,
+  onVoiceClip,
+  onVoiceCancel,
+  shiftSelection = null,
+  onSelectShift,
+  scheduleUnavailable = false,
+  triageDate = "",
+  onTriageDateChange,
+  isRefreshingSchedule = false,
+  onRefreshSchedule,
 }: SymptomsStepProps) {
   const [triageAck, setTriageAck] = useState(false);
 
-  const suggestion = triageSymptoms(symptoms);
+  /**
+   * Only one department recommendation may be on screen.
+   *
+   * The keyword matcher and the clinical LLM both answer "where should you go",
+   * and they disagree often enough that showing both makes the form look broken.
+   * A real transcription beats keyword matching on the same text, so the voice
+   * verdict replaces it - but only replaces the *card*; the typed symptoms and
+   * the acknowledgement gate below are shared by both.
+   */
+  const suggestion = voiceTriage ? null : triageSymptoms(symptoms);
   const hasSymtoms = symptoms.trim().length > 0;
-  const canContinue = hasSymtoms && (!suggestion || triageAck);
+  /** Whichever disclaimer is actually rendered has to be acknowledged. */
+  const needsAck = Boolean(suggestion ?? voiceTriage);
+  const canContinue = hasSymtoms && (!needsAck || triageAck);
 
   function handleChipSelect(value: string) {
     onChange(symptoms.trim() ? `${symptoms.trimEnd()}, ${value}` : value);
@@ -134,7 +175,13 @@ export default function SymptomsStep({
         />
       </section>
 
-      <VoiceInputCard value={symptoms} onChange={onChange} />
+      <VoiceInputCard
+        value={symptoms}
+        onChange={onChange}
+        onRecorded={onVoiceClip}
+        onCancelled={onVoiceCancel}
+        isAnalysing={isAnalysingVoice}
+      />
 
       <div>
         <p className="mb-2 text-base font-medium text-slate-900">
@@ -143,11 +190,27 @@ export default function SymptomsStep({
         <QuickSymptomChips onSelect={handleChipSelect} />
       </div>
 
-      <TriageResultCard
-        suggestion={suggestion}
-        acknowledged={triageAck}
-        onAcknowledge={setTriageAck}
-      />
+      {/* Exactly one of these two renders; see `suggestion` above. */}
+      {voiceTriage ? (
+        <ShiftDispatcherCard
+          triage={voiceTriage}
+          selected={shiftSelection}
+          onSelect={(session, doctorId) => onSelectShift?.(session, doctorId)}
+          scheduleUnavailable={scheduleUnavailable}
+          targetDate={triageDate}
+          onTargetDateChange={(date) => onTriageDateChange?.(date)}
+          isRefreshing={isRefreshingSchedule}
+          onRefresh={() => onRefreshSchedule?.()}
+          acknowledged={triageAck}
+          onAcknowledge={setTriageAck}
+        />
+      ) : (
+        <TriageResultCard
+          suggestion={suggestion}
+          acknowledged={triageAck}
+          onAcknowledge={setTriageAck}
+        />
+      )}
 
       {/* Deferred AI indicator */}
       <div className="flex items-start gap-3 rounded-xl border border-clinical-100 bg-clinical-50 p-4">
@@ -159,8 +222,9 @@ export default function SymptomsStep({
             Chưa chắc nên chọn chuyên khoa nào?
           </p>
           <p className="mt-1 text-base leading-relaxed text-slate-600">
-            Ngay khi bạn gửi triệu chứng, Trợ lý Ảo Y khoa AI sẽ tự động gợi ý
-            chuyên khoa phù hợp nhất cùng mức độ ưu tiên khám.
+            Chạm micro ở trên để nói triệu chứng, hoặc gõ tay như bình thường - Trợ
+            lý Ảo Y khoa AI sẽ tự động gợi ý chuyên khoa phù hợp nhất cùng mức độ
+            ưu tiên khám và lịch khám còn trống.
           </p>
         </div>
       </div>

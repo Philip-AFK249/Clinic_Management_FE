@@ -13,13 +13,22 @@ import FloatingRagChatbot from "./components/FloatingRagChatbot";
 import {
   CLINIC_SERVICES,
   resolveDoctorForService,
+  serviceIndexForDepartment,
 } from "./data/clinicContent";
 import { triageSymptoms } from "./data/patientMockRecords";
 import { hospitalCodeFrom } from "./data/patientProfile";
 import { writeActiveBooking } from "./data/activeBooking";
+import {
+  sendVoiceScheduleTriage,
+  VoiceTriageError,
+} from "../../services/voiceTriageApi";
 import type { BookingIdentityFieldsValue } from "./components/BookingIdentityFields";
 import type { Service } from "./data/clinicContent";
 import type { User } from "../../types/auth";
+import type {
+  SessionName,
+  VoiceScheduleTriageResponse,
+} from "../../services/voiceTriageApi";
 import type { ActiveAppointment, BhyTelemetry } from "./data/patientMockRecords";
 
 /**
@@ -105,6 +114,33 @@ const TIME_SLOTS = [
 
 const STEP_LABELS = ["Triệu chứng", "Chuyên khoa", "Xác nhận"];
 
+/**
+ * Booking times that fall inside each half of the clinic day, as the schedule
+ * service defines them (`07:30 - 11:30` / `13:00 - 17:00`).
+ *
+ * Used to turn a session picked in the dispatcher into an actual slot: the two
+ * lists do not overlap, so the first entry is always a valid choice rather than a
+ * guess at which of these eight is "morning".
+ */
+const SESSION_TIME_SLOTS: Record<SessionName, string[]> = {
+  MORNING: ["08:30", "09:30", "10:30", "11:30"],
+  AFTERNOON: ["14:00", "15:30", "16:30", "17:30"],
+};
+
+/** Today in the local offset, as the `target_date` query param wants it. */
+function todayIso(): string {
+  const now = new Date();
+  return new Date(now.getTime() - now.getTimezoneOffset() * 60_000)
+    .toISOString()
+    .slice(0, 10);
+}
+
+/** `YYYY-MM-DD` as the `dd/MM/yyyy` the ticket prints. */
+function dateLabelFrom(iso: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : iso;
+}
+
 /** The booking form, patient identity included. */
 interface BookingFormData extends BookingIdentityFieldsValue {
   /** True once a card has been read back through the OCR service. */
@@ -164,6 +200,39 @@ export default function BookingPage() {
   /** Set once a scan lands here, so this page stops re-offering to skip it. */
   const [scannedThisSession, setScannedThisSession] = useState(false);
 
+  // --- Voice triage state -----------------------------------------------------
+  // Held here rather than inside SymptomsStep because the results outlive the
+  // step: picking a shift advances to the confirmation screen, and the dispatcher
+  // has to be there to answer "why this doctor?" if the patient steps back.
+  const [voiceTriage, setVoiceTriage] =
+    useState<VoiceScheduleTriageResponse | null>(null);
+  /**
+   * The recorded clip.
+   *
+   * Kept because re-querying another date means re-uploading: the gateway
+   * transcribes on every call and caches nothing, so "what about tomorrow?" has to
+   * send the audio again rather than re-use a stored transcription.
+   */
+  const [voiceClip, setVoiceClip] = useState<Blob | null>(null);
+  const [isAnalysing, setIsAnalysing] = useState(false);
+  const [isRefreshingSchedule, setIsRefreshingSchedule] = useState(false);
+  const [scheduleUnavailable, setScheduleUnavailable] = useState(false);
+  const [triageDate, setTriageDate] = useState(todayIso);
+  const [shiftSelection, setShiftSelection] = useState<{
+    session: SessionName;
+    doctorId: number | null;
+  } | null>(null);
+  /**
+   * The transcription the current verdict was derived from.
+   *
+   * A verdict is only true of the words it read. Once the patient edits those
+   * words the department, priority and rota no longer describe what is on
+   * screen, so the comparison against this string is what invalidates them.
+   * Empty when the gateway returned no transcription (the schedule-down path), in
+   * which case there is nothing to compare and the verdict simply stands.
+   */
+  const [triageSourceText, setTriageSourceText] = useState("");
+
   /**
    * Adopt the session's card the first time it shows up.
    *
@@ -194,10 +263,19 @@ export default function BookingPage() {
   const savedCardCode = user?.insuranceCode?.trim() ?? "";
   const canSkipScan = savedCardCode.length > 0 && !rescanRequested;
 
-  const suggestion = triageSymptoms(symptoms);
-  const suggestedIdx = suggestion
-    ? CLINIC_SERVICES.findIndex((s) => s.title === suggestion.department)
-    : null;
+  /**
+   * Which department the "Đề xuất" chip marks on step 2.
+   *
+   * The voice verdict wins over keyword matching whenever both exist: it was
+   * produced by a clinical model reading an actual transcript, whereas the
+   * keyword matcher only sees the words and matches substrings.
+   */
+  const keywordSuggestion = triageSymptoms(symptoms);
+  const suggestedIdx = voiceTriage
+    ? serviceIndexForDepartment(voiceTriage.department_id)
+    : keywordSuggestion
+      ? CLINIC_SERVICES.findIndex((s) => s.title === keywordSuggestion.department)
+      : null;
 
   /** Type-safe single-field write, so the identity inputs and the scan share one setter. */
   function setFormField<K extends keyof BookingFormData>(
@@ -249,6 +327,191 @@ export default function BookingPage() {
     [user, updateUser],
   );
 
+  /**
+   * Send a freshly recorded clip for triage, then adopt whatever comes back.
+   *
+   * On success the transcription is written into the textarea rather than shown
+   * beside it: the patient dictated this text, so it is their own description, and
+   * they can still edit it before continuing.
+   */
+  async function analyseVoiceClip(clip: Blob) {
+    setVoiceClip(clip);
+    setIsAnalysing(true);
+    setScheduleUnavailable(false);
+    try {
+      const result = await sendVoiceScheduleTriage(clip, triageDate);
+      applyVoiceTriage(result);
+    } catch (error) {
+      handleVoiceTriageFailure(error);
+    } finally {
+      setIsAnalysing(false);
+    }
+  }
+
+  /**
+   * Adopt a verdict.
+   *
+   * The department is pre-selected from the triage mapping and the time slot from
+   * the recommended shift, but the patient is *not* advanced: an LLM picking a
+   * consultant for them is a suggestion, and the whole point of the dispatcher
+   * being visible first is that they get to look at it.
+   */
+  function applyVoiceTriage(result: VoiceScheduleTriageResponse) {
+    setVoiceTriage(result);
+    const transcript = result.transcription.trim();
+    if (transcript) {
+      setSymptoms(transcript);
+      setTriageSourceText(transcript);
+    }
+    setDeptIdx(serviceIndexForDepartment(result.department_id));
+    const session = result.recommended_shift;
+    if (session === "MORNING" || session === "AFTERNOON") {
+      setTimeSlot(SESSION_TIME_SLOTS[session][0]);
+    }
+  }
+
+  /**
+   * Symptoms edited by hand after a verdict was produced.
+   *
+   * Drops the verdict rather than leaving a stale one on screen: an AI that
+   * recommended dermatology for "ngứa tay" must keep saying that only while those
+   * words are still there. `deptIdx` and `timeSlot` are deliberately left alone -
+   * they are shown and confirmed on the next step, so clearing them here would
+   * discard a choice the patient made themselves for no visible reason.
+   */
+  function handleSymptomsChange(next: string) {
+    if (voiceTriage && triageSourceText && next.trim() !== triageSourceText) {
+      setVoiceTriage(null);
+      setShiftSelection(null);
+      setTriageSourceText("");
+      setVoiceClip(null);
+    }
+    setSymptoms(next);
+  }
+
+  /**
+   * A triage call that failed.
+   *
+   * The 503 case is the interesting one. The schedule database being down does not
+   * invalidate the clinical half, so if the gateway returned it the dispatcher is
+   * still shown with the shift picker replaced by a notice. If it did not, falling
+   * back to `null` hands the screen back to the keyword triage card, which runs
+   * entirely locally and therefore cannot be down - the patient keeps a
+   * recommendation either way.
+   */
+  function handleVoiceTriageFailure(error: unknown) {
+    if (error instanceof VoiceTriageError) {
+      if (error.kind === "no_schedule") {
+        if (error.partial) {
+          setVoiceTriage(error.partial);
+          setScheduleUnavailable(true);
+          setDeptIdx(
+            serviceIndexForDepartment(error.partial.department_id),
+          );
+          toast.warning(error.message);
+          return;
+        }
+        toast.warning(error.message);
+        toast.info(
+          "Bạn vẫn có thể tiếp tục - hãy chọn khung giờ khám thủ công ở bước tiếp theo.",
+        );
+        setVoiceTriage(null);
+        setShiftSelection(null);
+        setTriageSourceText("");
+        return;
+      }
+      if (error.kind === "silent") {
+        // The microphone worked; there was simply no speech in the clip. Wording
+        // says so, so the patient speaks again instead of granting more
+        // permissions or suspecting the hardware.
+        toast.error(
+          "Không nhận diện được giọng nói. Vui lòng nói lại to và rõ ràng hơn.",
+        );
+        return;
+      }
+      toast.error(error.message);
+      return;
+    }
+    toast.error("Không phân tích được đoạn ghi âm. Vui lòng thử lại.");
+  }
+
+  /**
+   * Re-run the same clip against another date.
+   *
+   * The transcription and every field the patient has since typed are left alone:
+   * only the rota changes, and it is replaced wholesale by the new answer so a
+   * slot that has since filled cannot linger as "available".
+   */
+  async function refreshSchedule() {
+    if (!voiceClip) return;
+    setIsRefreshingSchedule(true);
+    try {
+      const result = await sendVoiceScheduleTriage(voiceClip, triageDate);
+      setVoiceTriage(result);
+      setScheduleUnavailable(false);
+      setShiftSelection(null);
+      // The previously selected slot may not exist on the new day.
+      setTimeSlot(null);
+    } catch (error) {
+      if (error instanceof VoiceTriageError && error.kind === "no_schedule") {
+        setScheduleUnavailable(true);
+        setShiftSelection(null);
+      } else {
+        handleVoiceTriageFailure(error);
+      }
+    } finally {
+      setIsRefreshingSchedule(false);
+    }
+  }
+
+  /**
+   * A shift or doctor picked in the dispatcher.
+   *
+   * Selecting a doctor implies their session, so one click sets the department
+   * (the rota is for that department), a slot inside that half of the day, and the
+   * selection itself, then moves on to confirmation. Full sessions and full
+   * doctors are not clickable at all, so nothing here has to re-check them.
+   */
+  function handleSelectShift(session: SessionName, doctorId: number | null) {
+    setShiftSelection({ session, doctorId });
+    setDeptIdx(
+      voiceTriage
+        ? serviceIndexForDepartment(voiceTriage.department_id)
+        : deptIdx,
+    );
+    const slots = SESSION_TIME_SLOTS[session];
+    if (slots.length > 0) setTimeSlot(slots[0]);
+    setStep(2);
+  }
+
+  /**
+   * The doctor the patient actually chose in the dispatcher, if any.
+   *
+   * Without this the confirmation screen would re-derive the consultant from the
+   * chosen service with `resolveDoctorForService` and print someone the patient
+   * never picked - the roster pick would be silently discarded at the last step.
+   */
+  function dispatchedDoctor(): {
+    department: string;
+    name: string;
+    room: string;
+  } | null {
+    if (!voiceTriage || !shiftSelection) return null;
+    const doctor = voiceTriage.schedule[shiftSelection.session]?.doctors.find(
+      (item) => item.doctor_id === shiftSelection.doctorId,
+    );
+    if (!doctor) return null;
+    return {
+      department: voiceTriage.department_name,
+      name: `${doctor.title} ${doctor.doctor_name}`.trim(),
+      room: doctor.room_number,
+    };
+  }
+
+  function handleVoiceCancel() {
+    setIsAnalysing(false);
+  }
+
   function resetBooking() {
     setStep(0);
     setSymptoms("");
@@ -258,6 +521,12 @@ export default function BookingPage() {
     setTicket(null);
     setRescanRequested(false);
     setScannedThisSession(false);
+    setVoiceTriage(null);
+    setVoiceClip(null);
+    setShiftSelection(null);
+    setTriageSourceText("");
+    setScheduleUnavailable(false);
+    setTriageDate(todayIso());
   }
 
   function validateStep(): boolean {
@@ -301,13 +570,15 @@ export default function BookingPage() {
       const service: Service =
         deptIdx !== null ? CLINIC_SERVICES[deptIdx] : CLINIC_SERVICES[0];
       const doctor = resolveDoctorForService(service.title);
+      // A roster pick from the dispatcher outranks the service-derived fallback.
+      const chosen = dispatchedDoctor();
       const confirmed: ActiveAppointment = {
         ticketCode: "#APT-2026-8821",
         patientName: formData.fullName.trim().toUpperCase(),
-        department: doctor.department,
-        doctor: doctor.name,
-        room: doctor.roomNumber,
-        date: "Hôm nay",
+        department: chosen?.department ?? doctor.department,
+        doctor: chosen?.name ?? doctor.name,
+        room: chosen?.room ?? doctor.roomNumber,
+        date: voiceTriage ? dateLabelFrom(triageDate) : "Hôm nay",
         timeSlot: timeSlot ?? "08:30",
       };
       // The dashboard reads this back: without it the patient would land on
@@ -390,7 +661,7 @@ export default function BookingPage() {
               {step === 0 && (
                 <SymptomsStep
                   symptoms={symptoms}
-                  onChange={setSymptoms}
+                  onChange={handleSymptomsChange}
                   onContinue={handleNext}
                   onOcrExtracted={handleOcrExtracted}
                   identity={formData}
@@ -398,6 +669,17 @@ export default function BookingPage() {
                   cardOnFile={canSkipScan ? savedCardCode : null}
                   cardVerified={formData.isOcrVerified}
                   onRequestRescan={() => setRescanRequested(true)}
+                  voiceTriage={voiceTriage}
+                  isAnalysingVoice={isAnalysing}
+                  onVoiceClip={analyseVoiceClip}
+                  onVoiceCancel={handleVoiceCancel}
+                  shiftSelection={shiftSelection}
+                  onSelectShift={handleSelectShift}
+                  scheduleUnavailable={scheduleUnavailable}
+                  triageDate={triageDate}
+                  onTriageDateChange={setTriageDate}
+                  isRefreshingSchedule={isRefreshingSchedule}
+                  onRefreshSchedule={refreshSchedule}
                 />
               )}
 
