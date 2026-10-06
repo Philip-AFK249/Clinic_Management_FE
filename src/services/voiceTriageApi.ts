@@ -6,25 +6,24 @@ import axios from "axios";
  * department, a priority and the live doctor rota.
  *
  * Talks to the backend **directly** rather than through the Vite dev proxy. The
- * proxied path (`/api/v1/triage` -> :8000) answers 502 because the gateway no
- * longer listens on 8000 - it moved when Windows refused the socket - and CORS is
- * open on the server side (`allow_origins=["*"]`), so a cross-origin upload needs
- * no proxy at all.
+ * proxied path (`/api/v1/triage` -> :8000) answers 502 because the gateway does
+ * not listen on 8000, and CORS is open on the server side
+ * (`allow_origins=["*"]`), so a cross-origin upload needs no proxy at all.
  */
 export const RAG_BASE_URL: string = (
-  import.meta.env.VITE_RAG_API_URL || "http://localhost:8008"
+  import.meta.env.VITE_RAG_API_URL || "http://localhost:8086"
 ).replace(/\/+$/, "");
 
 /**
  * Second place to try, if the first cannot be reached.
  *
- * The gateway is verified on 8008 with 8086 standing by. This is a *connection*
- * fallback, not a retry of a bad request: it is only consulted when nothing
- * answered at all (or a load balancer did), never when the backend itself
- * rejected the clip.
+ * The gateway runs on 8086 by default; 8008 is kept as a stand-by for the
+ * earlier deployment. This is a *connection* fallback, not a retry of a bad
+ * request: it is only consulted when nothing answered at all (or a load
+ * balancer did), never when the backend itself rejected the clip.
  */
 export const RAG_FALLBACK_URL: string = (
-  import.meta.env.VITE_RAG_FALLBACK_URL || "http://localhost:8086"
+  import.meta.env.VITE_RAG_FALLBACK_URL || "http://localhost:8008"
 ).replace(/\/+$/, "");
 
 /** Endpoint path, relative to whichever base is in use. */
@@ -41,9 +40,9 @@ export const ragApi = axios.create({
 /** The port the primary base listens on, for a message that names it. */
 function primaryPort(): string {
   try {
-    return new URL(RAG_BASE_URL).port || "8000";
+    return new URL(RAG_BASE_URL).port || "8086";
   } catch {
-    return "8008";
+    return "8086";
   }
 }
 
@@ -219,8 +218,19 @@ function classify(error: unknown): VoiceTriageError {
   // 400: the recogniser rejected the clip - silence, a slam, pure tone.
   if (status === 400) {
     return new VoiceTriageError(
-      "Không phát hiện âm thanh triệu chứng rõ ràng. Vui lòng thử lại và nói to hơn vào micro.",
+      "Không phát hiện âm thanh triệu chứng rõ ràng. Vui lòng nói to hơn vào micro.",
       "silent",
+      status,
+      detail || undefined,
+    );
+  }
+
+  // A timeout ends with no response either - check it before the network branch
+  // so a slow model round-trip is not misreported as a dead server.
+  if (error.code === "ECONNABORTED") {
+    return new VoiceTriageError(
+      "Phân tích giọng nói quá thời gian chờ. Vui lòng thử lại.",
+      "timeout",
       status,
       detail || undefined,
     );
@@ -229,15 +239,6 @@ function classify(error: unknown): VoiceTriageError {
   // 502/504, a refused socket, DNS failure: nothing usable answered.
   if (status === 502 || status === 504 || !error.response) {
     return new VoiceTriageError(CONNECT_FAILED_MESSAGE, "network", status, detail || undefined);
-  }
-
-  if (error.code === "ECONNABORTED") {
-    return new VoiceTriageError(
-      "Phân tích giọng nói quá thời gian chờ. Vui lòng thử lại.",
-      "timeout",
-      status,
-      detail || undefined,
-    );
   }
 
   return new VoiceTriageError(
@@ -268,6 +269,11 @@ function isRetryable(error: unknown): boolean {
  * backend defaults it itself, so omitting it preserves its own default (today in
  * `Asia/Ho_Chi_Minh`) rather than assuming the browser's clock agrees with it.
  *
+ * It rides in the multipart body, not the query string: the endpoint declares it
+ * as `target_date: Optional[str] = Form(None)`, and FastAPI ignores a query
+ * parameter for a `Form` field - so a query-string date was silently discarded
+ * and every request was answered for *today*.
+ *
  * The clip has to be sent again to re-query a different date - the gateway caches
  * nothing by patient, so there is no cheaper way to ask "what about tomorrow?"
  * while keeping the transcription.
@@ -276,8 +282,6 @@ export async function sendVoiceScheduleTriage(
   audioBlob: Blob,
   targetDate?: string,
 ): Promise<VoiceScheduleTriageResponse> {
-  const params = targetDate ? { target_date: targetDate } : undefined;
-
   /**
    * Built per attempt: reusing one `FormData` across two requests is only safe
    * while the underlying blob is untouched, and it costs nothing to be sure.
@@ -297,6 +301,7 @@ export async function sendVoiceScheduleTriage(
             ? "ogg"
             : "webm";
     form.append("file", audioBlob, `voice_record.${extension}`);
+    if (targetDate) form.append("target_date", targetDate);
     return form;
   }
 
@@ -304,7 +309,7 @@ export async function sendVoiceScheduleTriage(
     const response = await axios.post<VoiceScheduleTriageResponse>(
       `${base}${TRIAGE_PATH}`,
       body(),
-      { params, timeout: 120000 },
+      { timeout: 120000 },
     );
     return response.data;
   }
