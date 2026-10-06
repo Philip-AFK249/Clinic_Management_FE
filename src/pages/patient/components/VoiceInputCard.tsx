@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import {
+  AlertCircle,
   Loader2,
   Mic,
   MicOff,
@@ -210,7 +211,7 @@ export default function VoiceInputCard({
               className="inline-flex h-12 items-center gap-1.5 rounded-lg bg-clinical-600 px-4 text-base font-medium text-white transition-colors hover:bg-clinical-700"
             >
               <Square className="h-4 w-4" aria-hidden="true" />
-              Hoàn tất &amp; Phân tích
+              Dừng &amp; Phân tích
             </button>
             <button
               type="button"
@@ -224,21 +225,39 @@ export default function VoiceInputCard({
         </div>
       )}
 
-      {/* Processing: the round trip is two model calls, so say what is happening. */}
+      {/* Processing: the round trip is two model calls, so the action button is
+          what carries the waiting, not a separate notice - the patient is still
+          looking for the thing they clicked. */}
       {busy && (
-        <div
-          role="status"
-          aria-live="polite"
-          className="mt-4 flex items-center gap-3 rounded-xl border border-clinical-100 bg-clinical-50 p-4"
-        >
-          <Loader2
-            className="h-5 w-5 shrink-0 animate-spin text-clinical-600"
-            aria-hidden="true"
-          />
-          <p className="text-sm font-medium text-slate-700">
-            Đang bóc tách giọng nói (Whisper) &amp; Tham vấn phác đồ Y tế...
+        <div className="mt-4 flex items-center gap-3">
+          <button
+            type="button"
+            disabled
+            aria-busy="true"
+            className="inline-flex h-12 items-center gap-2 rounded-xl border border-clinical-200 bg-clinical-50 px-5 text-base font-medium text-clinical-700 opacity-80"
+          >
+            <Loader2
+              className="h-5 w-5 animate-spin text-clinical-600"
+              aria-hidden="true"
+            />
+            Đang bóc tách giọng nói &amp; Phân loại lâm sàng...
+          </button>
+          <p role="status" aria-live="polite" className="text-xs text-slate-500">
+            Vui lòng giữ nguyên trang trong giây lát.
           </p>
         </div>
+      )}
+
+      {/* A denied microphone cannot recover by itself, so the explanation stays
+          on the card rather than living only in a toast that auto-dismisses. */}
+      {error && (
+        <p
+          role="alert"
+          className="mt-3 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
+        >
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+          <span>{error}</span>
+        </p>
       )}
 
       {!isSupported && (

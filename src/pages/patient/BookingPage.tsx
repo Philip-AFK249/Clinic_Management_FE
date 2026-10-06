@@ -20,6 +20,7 @@ import { hospitalCodeFrom } from "./data/patientProfile";
 import { writeActiveBooking } from "./data/activeBooking";
 import {
   sendVoiceScheduleTriage,
+  sessionScheduleFor,
   VoiceTriageError,
 } from "../../services/voiceTriageApi";
 import type { BookingIdentityFieldsValue } from "./components/BookingIdentityFields";
@@ -223,6 +224,17 @@ export default function BookingPage() {
     doctorId: number | null;
   } | null>(null);
   /**
+   * The gateway's `department_id` for the current verdict (1/2/3), kept apart from
+   * `deptIdx`.
+   *
+   * They are different things: this is a stable backend category, `deptIdx` is a
+   * position in `CLINIC_SERVICES`. Holding both keeps "which category did the
+   * model choose?" answerable without reading it back out of the response object,
+   * and keeps the index free to be re-derived if the service list ever changes.
+   */
+  const [selectedDepartmentId, setSelectedDepartmentId] =
+    useState<number | null>(null);
+  /**
    * The transcription the current verdict was derived from.
    *
    * A verdict is only true of the words it read. Once the patient edits those
@@ -272,7 +284,9 @@ export default function BookingPage() {
    */
   const keywordSuggestion = triageSymptoms(symptoms);
   const suggestedIdx = voiceTriage
-    ? serviceIndexForDepartment(voiceTriage.department_id)
+    ? serviceIndexForDepartment(
+        selectedDepartmentId ?? voiceTriage.department_id,
+      )
     : keywordSuggestion
       ? CLINIC_SERVICES.findIndex((s) => s.title === keywordSuggestion.department)
       : null;
@@ -363,7 +377,11 @@ export default function BookingPage() {
       setSymptoms(transcript);
       setTriageSourceText(transcript);
     }
+    setSelectedDepartmentId(result.department_id);
     setDeptIdx(serviceIndexForDepartment(result.department_id));
+    // A 200 can still mean "the rota service did not answer" - the gateway says so
+    // positively rather than erroring, because the clinical half is usable.
+    setScheduleUnavailable(result.schedule_connected === false);
     const session = result.recommended_shift;
     if (session === "MORNING" || session === "AFTERNOON") {
       setTimeSlot(SESSION_TIME_SLOTS[session][0]);
@@ -383,6 +401,7 @@ export default function BookingPage() {
     if (voiceTriage && triageSourceText && next.trim() !== triageSourceText) {
       setVoiceTriage(null);
       setShiftSelection(null);
+      setSelectedDepartmentId(null);
       setTriageSourceText("");
       setVoiceClip(null);
     }
@@ -392,44 +411,24 @@ export default function BookingPage() {
   /**
    * A triage call that failed.
    *
-   * The 503 case is the interesting one. The schedule database being down does not
-   * invalidate the clinical half, so if the gateway returned it the dispatcher is
-   * still shown with the shift picker replaced by a notice. If it did not, falling
-   * back to `null` hands the screen back to the keyword triage card, which runs
-   * entirely locally and therefore cannot be down - the patient keeps a
-   * recommendation either way.
+   * Two very different situations, and saying the same thing for both sends
+   * people down the wrong path: an unrecognised clip needs the patient to speak
+   * again, while an unreachable gateway needs someone to restart a service -
+   * speaking again would change nothing. The messages themselves come from the
+   * service, which is where the HTTP status is known.
+   *
+   * Falling back to `null` hands the screen back to the keyword triage card,
+   * which runs entirely locally and therefore cannot be down.
    */
   function handleVoiceTriageFailure(error: unknown) {
     if (error instanceof VoiceTriageError) {
-      if (error.kind === "no_schedule") {
-        if (error.partial) {
-          setVoiceTriage(error.partial);
-          setScheduleUnavailable(true);
-          setDeptIdx(
-            serviceIndexForDepartment(error.partial.department_id),
-          );
-          toast.warning(error.message);
-          return;
-        }
-        toast.warning(error.message);
-        toast.info(
-          "Bạn vẫn có thể tiếp tục - hãy chọn khung giờ khám thủ công ở bước tiếp theo.",
-        );
-        setVoiceTriage(null);
-        setShiftSelection(null);
-        setTriageSourceText("");
-        return;
-      }
+      // Retryable by the patient - gentle, because nothing is broken.
       if (error.kind === "silent") {
-        // The microphone worked; there was simply no speech in the clip. Wording
-        // says so, so the patient speaks again instead of granting more
-        // permissions or suspecting the hardware.
-        toast.error(
-          "Không nhận diện được giọng nói. Vui lòng nói lại to và rõ ràng hơn.",
-        );
+        toast.warning(error.message);
         return;
       }
       toast.error(error.message);
+      if (error.detail) console.warn("Voice triage:", error.detail);
       return;
     }
     toast.error("Không phân tích được đoạn ghi âm. Vui lòng thử lại.");
@@ -448,17 +447,16 @@ export default function BookingPage() {
     try {
       const result = await sendVoiceScheduleTriage(voiceClip, triageDate);
       setVoiceTriage(result);
-      setScheduleUnavailable(false);
+      setScheduleUnavailable(result.schedule_connected === false);
       setShiftSelection(null);
       // The previously selected slot may not exist on the new day.
       setTimeSlot(null);
     } catch (error) {
-      if (error instanceof VoiceTriageError && error.kind === "no_schedule") {
-        setScheduleUnavailable(true);
-        setShiftSelection(null);
-      } else {
-        handleVoiceTriageFailure(error);
-      }
+      // The rota on screen belongs to the old date now, so it must stop being
+      // presented as though it answers the one the patient just asked for.
+      setScheduleUnavailable(true);
+      setShiftSelection(null);
+      handleVoiceTriageFailure(error);
     } finally {
       setIsRefreshingSchedule(false);
     }
@@ -474,11 +472,11 @@ export default function BookingPage() {
    */
   function handleSelectShift(session: SessionName, doctorId: number | null) {
     setShiftSelection({ session, doctorId });
-    setDeptIdx(
-      voiceTriage
-        ? serviceIndexForDepartment(voiceTriage.department_id)
-        : deptIdx,
-    );
+    // Re-derive the service from the remembered category rather than trusting
+    // `deptIdx`: it may still hold whatever the patient clicked before speaking.
+    if (selectedDepartmentId !== null) {
+      setDeptIdx(serviceIndexForDepartment(selectedDepartmentId));
+    }
     const slots = SESSION_TIME_SLOTS[session];
     if (slots.length > 0) setTimeSlot(slots[0]);
     setStep(2);
@@ -497,9 +495,8 @@ export default function BookingPage() {
     room: string;
   } | null {
     if (!voiceTriage || !shiftSelection) return null;
-    const doctor = voiceTriage.schedule[shiftSelection.session]?.doctors.find(
-      (item) => item.doctor_id === shiftSelection.doctorId,
-    );
+    const doctor = sessionScheduleFor(voiceTriage, shiftSelection.session)
+      ?.doctors.find((item) => item.doctor_id === shiftSelection.doctorId);
     if (!doctor) return null;
     return {
       department: voiceTriage.department_name,
@@ -524,6 +521,7 @@ export default function BookingPage() {
     setVoiceTriage(null);
     setVoiceClip(null);
     setShiftSelection(null);
+    setSelectedDepartmentId(null);
     setTriageSourceText("");
     setScheduleUnavailable(false);
     setTriageDate(todayIso());

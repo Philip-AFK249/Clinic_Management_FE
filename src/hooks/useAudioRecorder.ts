@@ -19,28 +19,21 @@ import { useCallback, useEffect, useRef, useState } from "react";
  * Container formats tried in order, best-first.
  *
  * `audio/webm;codecs=opus` is what the FastAPI/Whisper side decodes best; the
- * Safari-only `audio/mp4` is the reason this cannot be a fixed string.
+ * Safari-only `audio/mp4` and the near-universal `audio/wav` are the reason this
+ * cannot be a fixed string. Every entry is tested against the browser before use,
+ * so an unsupported choice simply never gets picked rather than failing to record.
  */
 const MIME_CANDIDATES = [
   "audio/webm;codecs=opus",
   "audio/webm",
   "audio/mp4",
+  "audio/wav",
   "audio/ogg;codecs=opus",
 ];
 
 function pickMimeType(): string {
   if (typeof MediaRecorder === "undefined") return "";
   return MIME_CANDIDATES.find((type) => MediaRecorder.isTypeSupported(type)) ?? "";
-}
-
-export function extensionForMimeType(mimeType: string): string {
-  // Matched on the subtype prefix, not on an exact string: every browser that
-  // can actually encode also appends `;codecs=opus`, so an exact lookup would
-  // miss the format it just recorded and name the upload `.webm` regardless.
-  const subtype = mimeType.split(";")[0].trim().toLowerCase();
-  if (subtype === "audio/mp4") return "m4a";
-  if (subtype === "audio/ogg") return "ogg";
-  return "webm";
 }
 
 export interface AudioRecorder {

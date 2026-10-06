@@ -13,6 +13,7 @@ import {
   Users,
 } from "lucide-react";
 import { ticketPrefixFor } from "../data/clinicContent";
+import { sessionScheduleFor } from "../../../services/voiceTriageApi";
 import type {
   DoctorShiftInfo,
   SessionName,
@@ -78,13 +79,37 @@ const SESSION_META: Record<
   },
 };
 
-/** Why the dispatcher is not pointing at one of the two sessions. */
+/**
+ * Why the dispatcher is not pointing at one of the two sessions.
+ *
+ * `MANUAL_PICK` is deliberately absent: the gateway is saying it has no
+ * preference, not that nothing is available - so no explanatory notice belongs
+ * there, and a lookup that returns nothing is the correct outcome.
+ */
 const NO_SESSION_REASON: Record<string, string> = {
   NEXT_DAY:
     "Hệ thống đề xuất khám vào ngày hôm sau - lịch hôm nay của khoa này đã kín hoặc hết ca trực.",
   NO_DUTY:
     "Khoa này không có ca trực phù hợp với tình trạng của bạn. Vui lòng liên hệ quầy tiếp đón để được hướng dẫn.",
 };
+
+/**
+ * The rota, one entry per half of the day that actually came back.
+ *
+ * Goes through `sessionScheduleFor` so the payload's casing convention is
+ * handled in one place, and forces `SessionSchedule.session` to the key it came
+ * from: that key is what decides which half of the day it is, so a payload whose
+ * `session` field disagrees with its slot cannot render a 13:00 shift as morning.
+ */
+function sessionsOf(triage: VoiceScheduleTriageResponse): SessionSchedule[] {
+  const keys: SessionName[] = ["MORNING", "AFTERNOON"];
+  return keys
+    .map((key) => {
+      const value = sessionScheduleFor(triage, key);
+      return value ? { ...value, session: key } : null;
+    })
+    .filter((s): s is SessionSchedule => Boolean(s));
+}
 
 /**
  * The clinical verdict and the live rota, side by side.
@@ -107,11 +132,17 @@ export default function ShiftDispatcherCard({
   onAcknowledge,
 }: ShiftDispatcherCardProps) {
   const priority = PRIORITY_META[triage.priority_level];
-  const sessions = [
-    triage.schedule?.MORNING,
-    triage.schedule?.AFTERNOON,
-  ].filter((s): s is SessionSchedule => Boolean(s));
+  const sessions = sessionsOf(triage);
   const noSessionReason = NO_SESSION_REASON[triage.recommended_shift];
+  /**
+   * The rota cannot be shown.
+   *
+   * The backend states this positively as `schedule_connected`, so that is read
+   * first; the prop covers the older path where the schedule call failed outright
+   * instead of coming back marked disconnected.
+   */
+  const scheduleDown =
+    scheduleUnavailable || triage.schedule_connected === false;
 
   return (
     <section className="space-y-4 rounded-xl border border-slate-200/80 bg-white p-5 shadow-card">
@@ -220,13 +251,14 @@ export default function ShiftDispatcherCard({
         </p>
       </div>
 
-      {scheduleUnavailable ? (
+      {scheduleDown ? (
         <p className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
           <CircleSlash className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
           <span>
-            Hệ thống lịch khám đang tạm không truy cập được. Kết quả thẩm định
-            lâm sàng ở trên vẫn dùng được - bạn có thể chọn khung giờ thủ công ở
-            bước tiếp theo.
+            Hệ thống lịch khám đang tạm không truy cập được
+            {triage.schedule_error ? ` (${triage.schedule_error})` : ""}. Kết quả
+            thẩm định lâm sàng ở trên vẫn dùng được - bạn có thể chọn khung giờ
+            thủ công ở bước tiếp theo.
           </span>
         </p>
       ) : sessions.length === 0 ? (
@@ -248,7 +280,7 @@ export default function ShiftDispatcherCard({
         </div>
       )}
 
-      {noSessionReason && !scheduleUnavailable && (
+      {noSessionReason && !scheduleDown && (
         <p className="flex items-start gap-2 rounded-lg border border-clinical-100 bg-clinical-50 p-3 text-sm text-slate-700">
           <CalendarClock className="mt-0.5 h-4 w-4 shrink-0 text-clinical-600" aria-hidden="true" />
           <span>{noSessionReason}</span>
@@ -338,7 +370,7 @@ function SessionPanel({
               : "bg-triage-p3-bg text-triage-p3"
           }`}
         >
-          {full ? "Kín lịch (0 chỗ)" : `Còn ${free} chỗ`}
+          {full ? "Kín lịch" : `Còn ${free} chỗ`}
         </span>
       </div>
 
