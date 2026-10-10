@@ -1,17 +1,21 @@
 import axios from "axios";
 
 /**
- * Typed HTTP client for the AI Gateway (FastAPI at http://localhost:8000),
- * which exposes the BHYT card OCR endpoint the booking form calls to autofill a
+ * Typed HTTP client for the AI Gateway (FastAPI), which exposes the BHYT card
+ * OCR endpoint the reception desk and the booking form call to autofill a
  * patient's identity.
  *
- * Requests go through the Vite dev proxy (`/api/v1/ocr` -> :8000) so the browser
- * never issues a cross-origin multipart request, exactly like `intakeApi`
- * (:8082) and `clinicalApi` (:8083). Set `VITE_OCR_API_BASE` to
- * `http://localhost:8000/api/v1` to talk to the gateway directly instead.
+ * Talks to the gateway **directly** at `VITE_RAG_API_URL` (default
+ * http://localhost:8008) rather than through the Vite dev proxy, exactly like
+ * `voiceTriageApi`: CORS is open on the server side (`allow_origins=["*"]`),
+ * so a cross-origin multipart upload needs no proxy rule.
  */
-export const OCR_BASE_URL: string =
-  import.meta.env.VITE_OCR_API_BASE ?? "/api/v1";
+export const OCR_BASE_URL: string = (
+  import.meta.env.VITE_RAG_API_URL || "http://localhost:8008"
+).replace(/\/+$/, "");
+
+/** BHYT card scan endpoint, relative to the gateway root. */
+const BHYT_OCR_PATH = "/api/v1/ocr/bhyt";
 
 export const ocrApi = axios.create({
   baseURL: OCR_BASE_URL,
@@ -20,19 +24,6 @@ export const ocrApi = axios.create({
   // succeed.
   timeout: 60000,
 });
-
-/**
- * Resolve a controller-relative path (`ocr/bhyt`) to the path to request on
- * `ocrApi`.
- *
- * Mirrors `clinicalPath` in `clinicalApi`: whether the `/ocr` segment belongs to
- * `baseURL` or to the endpoint depends on how `VITE_OCR_API_BASE` is configured,
- * and guessing wrong emits a duplicated segment (`/api/v1/ocr/ocr/bhyt`).
- */
-function ocrPath(path: string): string {
-  const base = OCR_BASE_URL.replace(/\/+$/, "");
-  return base.endsWith("/ocr") ? path : `/ocr${path}`;
-}
 
 // ---------------------------------------------------------------------------
 // DTOs - mirror the gateway's `BhytOcrResponse` / `BhytData` Pydantic models.
@@ -259,13 +250,14 @@ export function toBhyTelemetry(data: BhytOcrData): BhytTelemetryView {
 }
 
 /**
- * Upload a BHYT card / old prescription photo and return the extracted fields.
+ * Upload a BHYT card / old prescription photo and return the raw gateway
+ * payload (extracted fields, warnings, model diagnostics).
  *
  * The gateway is a Groq VLM call, so this takes seconds and can fail on a blurry
  * photo; every failure mode is funnelled into a `BhytOcrError` so callers have
  * a single thing to catch instead of unpacking axios errors.
  */
-export async function scanBhytCard(file: File): Promise<BhytTelemetryView> {
+export async function uploadBhytCardApi(file: File): Promise<BhytOcrResponse> {
   const form = new FormData();
   form.append("file", file);
 
@@ -274,7 +266,7 @@ export async function scanBhytCard(file: File): Promise<BhytTelemetryView> {
     // No explicit Content-Type: axios has to pick the multipart type itself so
     // the `boundary` separator is appended. Setting it by hand - as the JSON
     // services do in their axios defaults - yields an unparseable request body.
-    const response = await ocrApi.post<BhytOcrResponse>(ocrPath("/bhyt"), form);
+    const response = await ocrApi.post<BhytOcrResponse>(BHYT_OCR_PATH, form);
     payload = response.data;
   } catch (error) {
     if (axios.isAxiosError(error)) {
@@ -300,10 +292,19 @@ export async function scanBhytCard(file: File): Promise<BhytTelemetryView> {
     );
   }
 
+  return payload;
+}
+
+/**
+ * Upload a card and fold the payload into the booking form's telemetry view.
+ *
+ * A card the model could not read at all is a failure, not a blank form: the
+ * caller needs to hear about it so it can offer manual entry.
+ */
+export async function scanBhytCard(file: File): Promise<BhytTelemetryView> {
+  const payload = await uploadBhytCardApi(file);
   const telemetry = toBhyTelemetry(payload.data);
 
-  // A card the model could not read at all is a failure, not a blank form: the
-  // caller needs to hear about it so it can offer manual entry.
   if (!telemetry.fullName && !telemetry.insuranceCode) {
     throw new BhytOcrError(
       "Không đọc được thông tin trên thẻ. Vui lòng thử lại với ảnh rõ nét hơn.",

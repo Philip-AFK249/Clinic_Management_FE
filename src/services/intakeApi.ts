@@ -252,6 +252,28 @@ function toApiError(error: unknown): IntakeApiError {
 // ---------------------------------------------------------------------------
 
 /**
+ * Active waiting-room queue for the whole clinic (or one department), as the
+ * reception desk sees it. `departmentId` is optional on the wire: omit it to
+ * get every department, which is what the monitor's "Tất cả khoa" tab binds.
+ */
+export async function getReceptionQueue(
+  departmentId: number | null,
+  date?: string,
+  signal?: AbortSignal,
+): Promise<QueueTicket[]> {
+  try {
+    const { data } = await intakeApi.get<QueueTicket[]>("/v1/queue/reception", {
+      params: { departmentId: departmentId ?? undefined, date },
+      signal,
+    });
+    return data;
+  } catch (error) {
+    if (axios.isCancel(error)) throw error;
+    throw toApiError(error);
+  }
+}
+
+/**
  * 60-minute slot load balance for a department on a given day, proxied from
  * DoctorScheduleService (:8081).
  */

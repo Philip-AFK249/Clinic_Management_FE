@@ -76,8 +76,8 @@ export default function PatientIdentityForm({
           >
             <option value="">-- Chọn --</option>
             {GENDER_OPTIONS.map((option) => (
-              <option key={option} value={option}>
-                {option}
+              <option key={option.value} value={option.value}>
+                {option.label}
               </option>
             ))}
           </select>

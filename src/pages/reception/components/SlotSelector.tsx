@@ -317,7 +317,9 @@ export default function SlotSelector({
                         >
                           {past
                             ? "Đã qua"
-                            : `${slot.availableCapacity}/${slot.totalCapacity} chỗ`}
+                            : slot.availableCapacity > 0
+                              ? `Còn ${slot.availableCapacity} chỗ`
+                              : "Hết chỗ"}
                         </span>
                       </button>
                     );

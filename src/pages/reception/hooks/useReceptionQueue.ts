@@ -1,11 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { getDoctorQueue, updateTicketStatus } from "../../../services/intakeApi";
+import { getReceptionQueue, updateTicketStatus } from "../../../services/intakeApi";
 import { IntakeApiError } from "../../../services/intakeApi";
 import type { QueueStatus, QueueTicket } from "../../../services/intakeApi";
-// The canonical :8081 client. Reused so the reception desk resolves the real
-// doctor roster instead of hard-coding ids.
-import { getDoctors } from "../../admin/services/scheduleApi";
 import { RECEPTION_DEPARTMENTS, buildFallbackQueue } from "../data/receptionMockData";
 
 const POLL_INTERVAL_MS = 10_000;
@@ -46,9 +43,13 @@ function dedupe(tickets: QueueTicket[]): QueueTicket[] {
 }
 
 /**
- * Live waiting-room monitor for the whole clinic. The queue API is scoped per
- * doctor, so we resolve the roster from DoctorScheduleService and fan out one
- * request per doctor, then merge the results.
+ * Live waiting-room monitor for the whole clinic.
+ *
+ * Calls `GET /api/v1/queue/reception` once per department (the endpoint is
+ * scoped by `departmentId`) in parallel, then merges and de-duplicates; the
+ * panel's department tabs filter the merged list client-side. Re-polls every
+ * 10 seconds. Falls back to a synthesized queue (flagged via `isOffline`) so
+ * the desk keeps triaging while PatientIntakeService is down.
  */
 export function useReceptionQueue(date: string): ReceptionQueueState {
   const [tickets, setTickets] = useState<QueueTicket[]>([]);
@@ -72,27 +73,19 @@ export function useReceptionQueue(date: string): ReceptionQueueState {
     async function load() {
       if (isFirstLoad.current) setIsLoading(true);
       try {
-        const rosters = await Promise.all(
+        const results = await Promise.allSettled(
           RECEPTION_DEPARTMENTS.map((department) =>
-            getDoctors(department.id, signal).then(
-              (doctors) => doctors.filter((doctor) => doctor.active).map((doctor) => doctor.id),
-              () => [] as number[],
-            ),
+            getReceptionQueue(department.id, date, signal),
           ),
         );
         if (signal.aborted) return;
 
-        const doctorIds = rosters.flat();
-        if (doctorIds.length === 0) throw new Error("empty-roster");
-
-        const results = await Promise.allSettled(
-          doctorIds.map((doctorId) => getDoctorQueue(doctorId, date, signal)),
-        );
-        if (signal.aborted) return;
-
         const live = results
-          .filter((result) => result.status === "fulfilled")
-          .flatMap((result) => (result as PromiseFulfilledResult<QueueTicket[]>).value);
+          .filter(
+            (result): result is PromiseFulfilledResult<QueueTicket[]> =>
+              result.status === "fulfilled",
+          )
+          .flatMap((result) => result.value);
         const failures = results.filter((result) => result.status === "rejected").length;
 
         if (live.length === 0 && failures > 0) {
@@ -103,7 +96,7 @@ export function useReceptionQueue(date: string): ReceptionQueueState {
         setIsOffline(false);
         setError(
           failures > 0
-            ? `${failures} phòng khám không phản hồi. Đang hiển thị dữ liệu một phần.`
+            ? `${failures} khoa không phản hồi. Đang hiển thị dữ liệu một phần.`
             : "",
         );
         setLastUpdatedAt(new Date());

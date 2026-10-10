@@ -16,6 +16,8 @@ import { useAvailableSlots } from "./hooks/useAvailableSlots";
 import { useReceptionQueue } from "./hooks/useReceptionQueue";
 import { checkInPatient } from "../../services/intakeApi";
 import type { QueueTicket } from "../../services/intakeApi";
+import { toIsoDate } from "../../services/ocrApi";
+import type { BhytOcrData } from "../../services/ocrApi";
 import type { OcrCardSample } from "./data/receptionMockData";
 
 /** Maps a form field to the DOM node we focus/scroll to on a failed submit. */
@@ -174,9 +176,30 @@ export default function ReceptionDeskPage() {
     setPrintedFromQueue(true);
   }
 
-  function handleScanned(sample: OcrCardSample, verified: boolean) {
-    setLastScanned(sample);
-    intake.applyOcrSample(sample, verified);
+  /**
+   * Fold a real AI Gateway OCR payload into the form and keep a display-only
+   * sample for the scanner bar's verified banner. A BHYT card carries no CCCD
+   * number or phone, so those hand-typed fields stay untouched.
+   */
+  function handleApplyOcr(data: BhytOcrData) {
+    intake.applyOcrResult(data);
+    const hospitalFull =
+      (data.noi_kcb_ban_dau_full ?? "").trim() ||
+      (data.ma_noi_dkkcb_ban_dau ?? "").trim();
+    setLastScanned({
+      id: "bhyt-ai-ocr",
+      cardLabel: "Thẻ BHYT (AI OCR)",
+      confidence: 100,
+      fullName: (data.ho_ten ?? data.fullName ?? "").trim(),
+      identityCardNumber: "",
+      insuranceCode: (data.ma_so_bhyt_formatted ?? data.ma_so_bhyt ?? "").trim(),
+      initialHospitalCode: hospitalFull,
+      dateOfBirth: toIsoDate(data.ngay_sinh_iso) || toIsoDate(data.ngay_sinh),
+      gender: (data.gioi_tinh ?? data.gender ?? "").trim(),
+      phone: "",
+      address: (data.dia_chi ?? "").trim(),
+    });
+    toast.success("Đã bóc tách thông tin thẻ BHYT và áp dụng vào form tiếp nhận.");
   }
 
   const isBlocked = isSubmitting || queue.isMutating;
@@ -198,7 +221,7 @@ export default function ReceptionDeskPage() {
               isOcrVerified={form.isOcrVerified}
               sample={lastScanned}
               onModeChange={intake.setMode}
-              onScanned={handleScanned}
+              onApplyOcr={handleApplyOcr}
             />
 
             <PatientIdentityForm

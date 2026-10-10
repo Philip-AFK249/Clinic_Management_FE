@@ -1,5 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 import type { AdministrativeIntakeRequest, IntakeSource, TriagePriority } from "../../../services/intakeApi";
+import { toIsoDate as toOcrIsoDate } from "../../../services/ocrApi";
+import type { BhytOcrData } from "../../../services/ocrApi";
 import { RECEPTION_DEPARTMENTS, toIsoDate } from "../data/receptionMockData";
 import type { OcrCardSample } from "../data/receptionMockData";
 
@@ -67,6 +69,22 @@ function today(): string {
  */
 export function normalizeInsuranceCode(value: string): string {
   return value.replace(/[\s-]+/g, "").toUpperCase();
+}
+
+/**
+ * The card prints `Nam` / `Nữ`; the rest of the system (admin roster, patient
+ * profile, doctor queue) stores the `MALE` / `FEMALE` enum, so an OCR-applied
+ * gender is folded to match. Anything unrecognised is passed through trimmed.
+ */
+export function normalizeOcrGender(value: string | null | undefined): string {
+  const raw = (value ?? "").trim();
+  if (raw.length === 0) return "";
+  const upper = raw.toUpperCase();
+  if (upper === "NAM" || upper === "MALE" || upper === "M") return "MALE";
+  if (upper === "NỮ" || upper === "NU" || upper === "FEMALE" || upper === "F") {
+    return "FEMALE";
+  }
+  return raw;
 }
 
 function createInitialState(): IntakeFormState {
@@ -203,10 +221,44 @@ export function useIntakeForm() {
       insuranceCode: sample.insuranceCode,
       initialHospitalCode: sample.initialHospitalCode,
       dateOfBirth: sample.dateOfBirth,
-      gender: sample.gender,
+      gender: normalizeOcrGender(sample.gender) || current.gender,
       phone: sample.phone,
       address: sample.address,
       isOcrVerified: verified,
+    }));
+  }, []);
+
+  /**
+   * Fold a real AI Gateway OCR payload into the intake form.
+   *
+   * Field selection mirrors `toBhyTelemetry`: prefer the snake_case keys the
+   * endpoint guarantees over the camelCase mirrors. The BHYT card carries no
+   * phone number or street address, so those hand-typed fields are left alone,
+   * and `initialHospitalCode` keeps the `"79-014 (BV ...)"` combined format the
+   * identity form reads and writes.
+   */
+  const applyOcrResult = useCallback((ocrData: BhytOcrData) => {
+    const hospitalCode = (ocrData.ma_noi_dkkcb_ban_dau ?? ocrData.initialHospitalCode ?? "").trim();
+    const hospitalName = (ocrData.noi_kham_chua_benh_ban_dau ?? "").trim();
+    const hospitalFull =
+      (ocrData.noi_kcb_ban_dau_full ?? "").trim() ||
+      (hospitalCode && hospitalName ? `${hospitalCode} (${hospitalName})` : hospitalCode);
+
+    setForm((current) => ({
+      ...current,
+      mode: "SCAN",
+      fullName: (ocrData.ho_ten ?? ocrData.fullName ?? "").trim() || current.fullName,
+      insuranceCode:
+        normalizeInsuranceCode(ocrData.ma_so_bhyt ?? ocrData.insuranceCode ?? "") ||
+        current.insuranceCode,
+      dateOfBirth:
+        toOcrIsoDate(ocrData.ngay_sinh_iso) ||
+        toOcrIsoDate(ocrData.dateOfBirth) ||
+        toOcrIsoDate(ocrData.ngay_sinh) ||
+        current.dateOfBirth,
+      gender: normalizeOcrGender(ocrData.gioi_tinh ?? ocrData.gender) || current.gender,
+      initialHospitalCode: hospitalFull || current.initialHospitalCode,
+      isOcrVerified: true,
     }));
   }, []);
 
@@ -262,6 +314,7 @@ export function useIntakeForm() {
     updateField,
     setMode,
     applyOcrSample,
+    applyOcrResult,
     reset,
     validate,
     toRequest,

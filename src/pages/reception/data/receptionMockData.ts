@@ -52,7 +52,15 @@ export const RECEPTION_DEPARTMENTS: ReceptionDepartment[] = [
 // Clinical routing constants
 // ---------------------------------------------------------------------------
 
-export const GENDER_OPTIONS: string[] = ["Nam", "Nữ"];
+/**
+ * Gender options for the intake form. Values are the canonical enum the rest
+ * of the system stores (admin roster, patient profile, doctor queue); labels
+ * are the Vietnamese words the secretary picks from.
+ */
+export const GENDER_OPTIONS: { value: string; label: string }[] = [
+  { value: "MALE", label: "Nam" },
+  { value: "FEMALE", label: "Nữ" },
+];
 
 export interface TriageOption {
   level: TriagePriority;
