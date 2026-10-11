@@ -1,3 +1,5 @@
+import type { QueueStatus } from "../../../services/intakeApi";
+
 export type TriagePriority = "P1" | "P2" | "P3";
 
 export interface BhyTelemetry {
@@ -149,27 +151,20 @@ export interface ActiveAppointment {
   department: string;
   doctor: string;
   room: string;
+  /** Display label, `dd/MM/yyyy` (or "Hôm nay" before the backend answers). */
   date: string;
   timeSlot: string;
+  /**
+   * PatientIntakeService's `Patient.id`, stamped when the booking was accepted
+   * by `/v1/intake/check-in`. Absent on appointments stored by older builds,
+   * which is why the dashboard falls back to polling by ticket code.
+   */
+  patientId?: number;
+  /** `doctors.id`, so the dashboard can pull that doctor's live queue. */
+  doctorId?: number;
+  /** Queue status as last seen; defaults to WAITING until polling says otherwise. */
+  status?: QueueStatus;
 }
-
-export const ACTIVE_TICKET: ActiveAppointment = {
-  ticketCode: "#APT-2026-8821",
-  patientName: "NGUYỄN VĂN AN",
-  department: "Khoa Dị ứng & Miễn dịch lâm sàng",
-  doctor: "PGS. TS. BS. Trần Minh Tuấn",
-  room: "Phòng khám 201",
-  date: "Hôm nay",
-  timeSlot: "15:30",
-};
-
-export const QUEUE_SNAPSHOT = {
-  currentServing: "A-101",
-  yourTicket: "A-102",
-  personsAhead: 1,
-  estimateMinutes: 6,
-  room: "Phòng khám 201 - PGS.TS.BS Trần Minh Tuấn",
-};
 
 export interface PrescriptionRecord {
   medication: string;

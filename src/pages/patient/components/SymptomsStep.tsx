@@ -15,6 +15,11 @@ import type {
   SessionName,
   VoiceScheduleTriageResponse,
 } from "../../../services/voiceTriageApi";
+import type { TimeSlotResponse } from "../../../services/intakeApi";
+import type { ShiftSelection } from "./ShiftDispatcherCard";
+import BookingSlotChips from "./BookingSlotChips";
+import { isSlotPast } from "../data/bookingSlots";
+import { CLINIC_SERVICES } from "../data/clinicContent";
 
 interface SymptomsStepProps {
   symptoms: string;
@@ -46,14 +51,26 @@ interface SymptomsStepProps {
   /** The recorded clip, which the parent re-uploads to re-query another date. */
   onVoiceClip?: (clip: Blob) => void;
   onVoiceCancel?: () => void;
-  /** Shift + doctor picked in the dispatcher, echoed back for the pressed state. */
-  shiftSelection?: { session: SessionName; doctorId: number | null } | null;
-  onSelectShift?: (session: SessionName, doctorId: number | null) => void;
+  /** Shift + doctor + hour picked in the dispatcher, echoed for the pressed state. */
+  shiftSelection?: ShiftSelection | null;
+  onSelectShift?: (
+    session: SessionName,
+    doctorId: number | null,
+    slotStartTime: string,
+  ) => void;
+  /** Live slot grid for the triage department/date, disabling full chips. */
+  slotAvailability?: TimeSlotResponse[] | null;
+  /** Keyword path: chosen department index in `CLINIC_SERVICES`, `null` = none. */
+  deptIdx?: number | null;
+  onDeptIdxChange?: (index: number) => void;
+  /** The hour the booking will be made for, `HH:mm`, or `null` when none. */
+  slotStartTime?: string | null;
+  /** Keyword path: a 60-minute chip pressed (the dispatcher path uses `onSelectShift`). */
+  onSlotPick?: (slot: string) => void;
   scheduleUnavailable?: boolean;
   triageDate?: string;
   onTriageDateChange?: (date: string) => void;
   isRefreshingSchedule?: boolean;
-  onRefreshSchedule?: () => void;
 }
 
 export default function SymptomsStep({
@@ -72,11 +89,15 @@ export default function SymptomsStep({
   onVoiceCancel,
   shiftSelection = null,
   onSelectShift,
+  slotAvailability = null,
+  deptIdx = null,
+  onDeptIdxChange,
+  slotStartTime = null,
+  onSlotPick,
   scheduleUnavailable = false,
   triageDate = "",
   onTriageDateChange,
   isRefreshingSchedule = false,
-  onRefreshSchedule,
 }: SymptomsStepProps) {
   const [triageAck, setTriageAck] = useState(false);
 
@@ -93,7 +114,8 @@ export default function SymptomsStep({
   const hasSymtoms = symptoms.trim().length > 0;
   /** Whichever disclaimer is actually rendered has to be acknowledged. */
   const needsAck = Boolean(suggestion ?? voiceTriage);
-  const canContinue = hasSymtoms && (!needsAck || triageAck);
+  const hasSlot = Boolean(slotStartTime);
+  const canContinue = hasSymtoms && (!needsAck || triageAck) && hasSlot;
 
   function handleChipSelect(value: string) {
     onChange(symptoms.trim() ? `${symptoms.trimEnd()}, ${value}` : value);
@@ -195,12 +217,14 @@ export default function SymptomsStep({
         <ShiftDispatcherCard
           triage={voiceTriage}
           selected={shiftSelection}
-          onSelect={(session, doctorId) => onSelectShift?.(session, doctorId)}
+          onSelect={(session, doctorId, slot) =>
+            onSelectShift?.(session, doctorId, slot)
+          }
           scheduleUnavailable={scheduleUnavailable}
           targetDate={triageDate}
           onTargetDateChange={(date) => onTriageDateChange?.(date)}
           isRefreshing={isRefreshingSchedule}
-          onRefresh={() => onRefreshSchedule?.()}
+          slotAvailability={slotAvailability}
           acknowledged={triageAck}
           onAcknowledge={setTriageAck}
         />
@@ -210,6 +234,43 @@ export default function SymptomsStep({
           acknowledged={triageAck}
           onAcknowledge={setTriageAck}
         />
+      )}
+
+      {/* Without a rota payload there is no dispatcher to hang the picks on, so
+          the department and the 60-minute hour live here instead - the same
+          two choices the voice path makes inside its session cards. */}
+      {!voiceTriage && (
+        <section className="rounded-xl border border-slate-200/80 bg-white p-5">
+          <p className="mb-3 text-base font-medium text-slate-900">
+            Chọn chuyên khoa
+          </p>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {CLINIC_SERVICES.map((service, index) => (
+              <button
+                key={service.title}
+                type="button"
+                onClick={() => onDeptIdxChange?.(index)}
+                aria-pressed={deptIdx === index}
+                className={`flex items-center rounded-lg border px-4 py-3 text-left text-base transition-colors ${
+                  deptIdx === index
+                    ? "border-clinical-600 bg-clinical-50 text-clinical-700"
+                    : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                }`}
+              >
+                {service.title}
+              </button>
+            ))}
+          </div>
+
+          <p className="mb-2 mt-4 text-base font-medium text-slate-900">
+            Chọn khung giờ khám
+          </p>
+          <BookingSlotChips
+            value={slotStartTime}
+            onSelect={(slot) => onSlotPick?.(slot)}
+            isDisabled={(slot) => (triageDate ? isSlotPast(triageDate, slot) : false)}
+          />
+        </section>
       )}
 
       {/* Deferred AI indicator */}
@@ -230,14 +291,19 @@ export default function SymptomsStep({
       </div>
 
       {/* Primary navigation */}
-      <div className="flex justify-end pt-1">
+      <div className="flex flex-col items-end gap-2 pt-1">
+        {!hasSlot && (
+          <p className="text-sm font-medium text-amber-700">
+            Chọn một khung giờ khám 60 phút để tiếp tục.
+          </p>
+        )}
         <button
           type="button"
           onClick={onContinue}
           disabled={!canContinue}
           className="inline-flex h-12 items-center gap-2 rounded-xl bg-cta px-8 text-lg font-semibold text-white shadow-sm transition-all hover:bg-cta-hover disabled:cursor-not-allowed disabled:opacity-50"
         >
-          Tiếp tục chọn chuyên khoa
+          Tiếp tục xác nhận
           <ArrowRight className="h-5 w-5" aria-hidden="true" />
         </button>
       </div>

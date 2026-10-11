@@ -1,9 +1,18 @@
-import { useCallback, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Calendar, ChevronLeft, Check, PhoneCall } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "../../context/useAuth";
 import { updateMyProfileApi } from "../../services/authApi";
 import type { UpdatePatientRequestDto } from "../../services/authApi";
+import {
+  checkInPatient,
+  getAvailableSlots,
+  IntakeApiError,
+} from "../../services/intakeApi";
+import type {
+  AdministrativeIntakeRequest,
+  TimeSlotResponse,
+} from "../../services/intakeApi";
 import PatientNavbar from "./components/PatientNavbar";
 import PatientFooter from "./components/PatientFooter";
 import SymptomsStep from "./components/SymptomsStep";
@@ -12,6 +21,7 @@ import BookingTicketModal from "./components/BookingTicketModal";
 import FloatingRagChatbot from "./components/FloatingRagChatbot";
 import {
   CLINIC_SERVICES,
+  departmentForServiceIndex,
   resolveDoctorForService,
   serviceIndexForDepartment,
 } from "./data/clinicContent";
@@ -26,6 +36,7 @@ import {
 import type { BookingIdentityFieldsValue } from "./components/BookingIdentityFields";
 import type { Service } from "./data/clinicContent";
 import type { User } from "../../types/auth";
+import type { ShiftSelection } from "./components/ShiftDispatcherCard";
 import type {
   SessionName,
   VoiceScheduleTriageResponse,
@@ -102,31 +113,7 @@ async function syncScannedCardToProfile(
   }
 }
 
-const TIME_SLOTS = [
-  "08:30",
-  "09:30",
-  "10:30",
-  "11:30",
-  "14:00",
-  "15:30",
-  "16:30",
-  "17:30",
-];
-
-const STEP_LABELS = ["Triệu chứng", "Chuyên khoa", "Xác nhận"];
-
-/**
- * Booking times that fall inside each half of the clinic day, as the schedule
- * service defines them (`07:30 - 11:30` / `13:00 - 17:00`).
- *
- * Used to turn a session picked in the dispatcher into an actual slot: the two
- * lists do not overlap, so the first entry is always a valid choice rather than a
- * guess at which of these eight is "morning".
- */
-const SESSION_TIME_SLOTS: Record<SessionName, string[]> = {
-  MORNING: ["08:30", "09:30", "10:30", "11:30"],
-  AFTERNOON: ["14:00", "15:30", "16:30", "17:30"],
-};
+const STEP_LABELS = ["Triệu chứng & Chọn lịch", "Xác nhận"];
 
 /** Today in the local offset, as the `target_date` query param wants it. */
 function todayIso(): string {
@@ -192,6 +179,14 @@ export default function BookingPage() {
   );
   const [ticket, setTicket] = useState<ActiveAppointment | null>(null);
   /**
+   * Set while the final confirmation is in flight to PatientIntakeService.
+   *
+   * The check-in is the one irreversible action on this page (it mints a real
+   * queue ticket), so the submit button has to be gated against a double click
+   * for the whole round-trip, not just the first frame.
+   */
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  /**
    * Set when a patient with a card on file asks to replace it.
    *
    * Not "has scanned": until they ask, the card in the session stands in for a
@@ -219,10 +214,9 @@ export default function BookingPage() {
   const [isRefreshingSchedule, setIsRefreshingSchedule] = useState(false);
   const [scheduleUnavailable, setScheduleUnavailable] = useState(false);
   const [triageDate, setTriageDate] = useState(todayIso);
-  const [shiftSelection, setShiftSelection] = useState<{
-    session: SessionName;
-    doctorId: number | null;
-  } | null>(null);
+  const [shiftSelection, setShiftSelection] = useState<ShiftSelection | null>(
+    null,
+  );
   /**
    * The gateway's `department_id` for the current verdict (1/2/3), kept apart from
    * `deptIdx`.
@@ -244,6 +238,44 @@ export default function BookingPage() {
    * which case there is nothing to compare and the verdict simply stands.
    */
   const [triageSourceText, setTriageSourceText] = useState("");
+  /**
+   * The live 60-minute slot grid for the triage department/day.
+   *
+   * Keyed like the reception desk's hook so a department or date change flips
+   * the derived value below immediately: the old grid is never shown as though
+   * it answered the new day, and the chips fall back to session-level capacity
+   * while the fetch is in flight or has failed.
+   */
+  const [slotGrid, setSlotGrid] = useState<{ key: string; slots: TimeSlotResponse[] }>({
+    key: "",
+    slots: [],
+  });
+
+  const voiceDepartmentId = voiceTriage?.department_id ?? null;
+  const slotGridKey =
+    voiceDepartmentId !== null && triageDate
+      ? `${voiceDepartmentId}|${triageDate}`
+      : "";
+
+  useEffect(() => {
+    if (voiceDepartmentId === null || !triageDate) return undefined;
+    const controller = new AbortController();
+    const key = `${voiceDepartmentId}|${triageDate}`;
+    getAvailableSlots(voiceDepartmentId, triageDate, controller.signal)
+      .then((slots) => {
+        if (!controller.signal.aborted) setSlotGrid({ key, slots });
+      })
+      .catch(() => {
+        // No grid is better than a wrong one: without it the dispatcher still
+        // disables full sessions and past hours from the rota payload itself.
+        if (!controller.signal.aborted) setSlotGrid({ key, slots: [] });
+      });
+    return () => controller.abort();
+  }, [voiceDepartmentId, triageDate]);
+
+  /** The grid that belongs to what is on screen, or `null` while/unless unknown. */
+  const slotAvailability =
+    slotGrid.key === slotGridKey ? slotGrid.slots : null;
 
   /**
    * Adopt the session's card the first time it shows up.
@@ -274,22 +306,6 @@ export default function BookingPage() {
    */
   const savedCardCode = user?.insuranceCode?.trim() ?? "";
   const canSkipScan = savedCardCode.length > 0 && !rescanRequested;
-
-  /**
-   * Which department the "Đề xuất" chip marks on step 2.
-   *
-   * The voice verdict wins over keyword matching whenever both exist: it was
-   * produced by a clinical model reading an actual transcript, whereas the
-   * keyword matcher only sees the words and matches substrings.
-   */
-  const keywordSuggestion = triageSymptoms(symptoms);
-  const suggestedIdx = voiceTriage
-    ? serviceIndexForDepartment(
-        selectedDepartmentId ?? voiceTriage.department_id,
-      )
-    : keywordSuggestion
-      ? CLINIC_SERVICES.findIndex((s) => s.title === keywordSuggestion.department)
-      : null;
 
   /** Type-safe single-field write, so the identity inputs and the scan share one setter. */
   function setFormField<K extends keyof BookingFormData>(
@@ -365,10 +381,12 @@ export default function BookingPage() {
   /**
    * Adopt a verdict.
    *
-   * The department is pre-selected from the triage mapping and the time slot from
-   * the recommended shift, but the patient is *not* advanced: an LLM picking a
-   * consultant for them is a suggestion, and the whole point of the dispatcher
-   * being visible first is that they get to look at it.
+   * The department is pre-selected from the triage mapping, but the hour is
+   * not: the slot grid belongs to the department and the day, and the patient
+   * has to see what is actually free before one is bound to the booking. The
+   * patient is *not* advanced either - an LLM picking a consultant for them is
+   * a suggestion, and the whole point of the dispatcher being visible first is
+   * that they get to look at it.
    */
   function applyVoiceTriage(result: VoiceScheduleTriageResponse) {
     setVoiceTriage(result);
@@ -382,10 +400,9 @@ export default function BookingPage() {
     // A 200 can still mean "the rota service did not answer" - the gateway says so
     // positively rather than erroring, because the clinical half is usable.
     setScheduleUnavailable(result.schedule_connected === false);
-    const session = result.recommended_shift;
-    if (session === "MORNING" || session === "AFTERNOON") {
-      setTimeSlot(SESSION_TIME_SLOTS[session][0]);
-    }
+    // Any previous pick belonged to an older rota (a re-record, another day).
+    setShiftSelection(null);
+    setTimeSlot(null);
   }
 
   /**
@@ -435,27 +452,39 @@ export default function BookingPage() {
   }
 
   /**
+   * The intended visit day changed - re-query the rota for it immediately.
+   *
+   * The transcription and every field the patient has since typed are left
+   * alone: only the rota changes, and it is replaced wholesale by the new answer
+   * so a slot that has since filled cannot linger as "available". Any earlier
+   * shift/slot pick belonged to the old day's grid and is dropped on the spot.
+   */
+  function handleTriageDateChange(next: string) {
+    if (!next) return;
+    setTriageDate(next);
+    setShiftSelection(null);
+    setTimeSlot(null);
+    if (voiceClip) void requerySchedule(next);
+  }
+
+  /**
    * Re-run the same clip against another date.
    *
-   * The transcription and every field the patient has since typed are left alone:
-   * only the rota changes, and it is replaced wholesale by the new answer so a
-   * slot that has since filled cannot linger as "available".
+   * The clip has to be sent again - the gateway caches nothing by patient, so
+   * there is no cheaper way to ask "what about tomorrow?" while keeping the
+   * transcription.
    */
-  async function refreshSchedule() {
+  async function requerySchedule(date: string) {
     if (!voiceClip) return;
     setIsRefreshingSchedule(true);
     try {
-      const result = await sendVoiceScheduleTriage(voiceClip, triageDate);
+      const result = await sendVoiceScheduleTriage(voiceClip, date);
       setVoiceTriage(result);
       setScheduleUnavailable(result.schedule_connected === false);
-      setShiftSelection(null);
-      // The previously selected slot may not exist on the new day.
-      setTimeSlot(null);
     } catch (error) {
       // The rota on screen belongs to the old date now, so it must stop being
       // presented as though it answers the one the patient just asked for.
       setScheduleUnavailable(true);
-      setShiftSelection(null);
       handleVoiceTriageFailure(error);
     } finally {
       setIsRefreshingSchedule(false);
@@ -463,23 +492,26 @@ export default function BookingPage() {
   }
 
   /**
-   * A shift or doctor picked in the dispatcher.
+   * An hour (and usually a doctor) picked in the dispatcher or the keyword
+   * chips.
    *
-   * Selecting a doctor implies their session, so one click sets the department
-   * (the rota is for that department), a slot inside that half of the day, and the
-   * selection itself, then moves on to confirmation. Full sessions and full
-   * doctors are not clickable at all, so nothing here has to re-check them.
+   * Binds the department from the remembered triage category and the chosen
+   * 60-minute start time, but does not advance: the patient presses "Tiếp tục"
+   * once they are happy with the whole pick. Full sessions and unavailable
+   * hours are not clickable at all, so nothing here has to re-check them.
    */
-  function handleSelectShift(session: SessionName, doctorId: number | null) {
-    setShiftSelection({ session, doctorId });
+  function handleSelectShift(
+    session: SessionName,
+    doctorId: number | null,
+    slotStartTime: string,
+  ) {
+    setShiftSelection({ session, doctorId, slotStartTime });
     // Re-derive the service from the remembered category rather than trusting
     // `deptIdx`: it may still hold whatever the patient clicked before speaking.
     if (selectedDepartmentId !== null) {
       setDeptIdx(serviceIndexForDepartment(selectedDepartmentId));
     }
-    const slots = SESSION_TIME_SLOTS[session];
-    if (slots.length > 0) setTimeSlot(slots[0]);
-    setStep(2);
+    setTimeSlot(slotStartTime);
   }
 
   /**
@@ -516,6 +548,7 @@ export default function BookingPage() {
     setTimeSlot(null);
     setFormData(formFromSession(user));
     setTicket(null);
+    setIsSubmitting(false);
     setRescanRequested(false);
     setScannedThisSession(false);
     setVoiceTriage(null);
@@ -528,21 +561,23 @@ export default function BookingPage() {
   }
 
   function validateStep(): boolean {
-    if (step === 0 && !symptoms.trim()) {
-      toast.error("Vui lòng chia sẻ một chút về triệu chứng của bạn để chúng tôi hỗ trợ.");
-      return false;
-    }
-    if (step === 1) {
-      if (deptIdx === null) {
-        toast.error("Vui lòng chọn một chuyên khoa.");
+    if (step === 0) {
+      if (!symptoms.trim()) {
+        toast.error("Vui lòng chia sẻ một chút về triệu chứng của bạn để chúng tôi hỗ trợ.");
         return false;
       }
       if (!timeSlot) {
-        toast.error("Vui lòng chọn khung giờ khám.");
+        toast.error("Vui lòng chọn một khung giờ khám 60 phút.");
+        return false;
+      }
+      // The voice path derives the department from its verdict; the keyword path
+      // has no rota payload, so the patient must have picked one on the card.
+      if (!voiceTriage && deptIdx === null) {
+        toast.error("Vui lòng chọn một chuyên khoa.");
         return false;
       }
     }
-    if (step === 2) {
+    if (step === 1) {
       if (!formData.fullName.trim()) {
         toast.error("Vui lòng cung cấp họ và tên đầy đủ.");
         return false;
@@ -564,28 +599,95 @@ export default function BookingPage() {
   function handleNext() {
     if (!validateStep()) return;
 
-    if (step === 2) {
-      const service: Service =
-        deptIdx !== null ? CLINIC_SERVICES[deptIdx] : CLINIC_SERVICES[0];
-      const doctor = resolveDoctorForService(service.title);
-      // A roster pick from the dispatcher outranks the service-derived fallback.
-      const chosen = dispatchedDoctor();
+    if (step === 1) {
+      void submitBooking();
+      return;
+    }
+    setStep((s) => s + 1);
+  }
+
+  /**
+   * Turn the confirmed form into a real ticket on PatientIntakeService.
+   *
+   * The check-in is what makes an online booking visible at the reception
+   * desk: it resolves (or creates) the patient record, auto-assigns the
+   * least-busy doctor for the slot, and mints the queue number the rest of the
+   * clinic acts on. The response - not the local form - is what gets stored and
+   * shown, so the room, doctor and `#A-001`-style code are the backend's.
+   *
+   * A failure leaves the patient on the confirmation step with everything they
+   * typed intact and a toast explaining why; nothing is written to storage, so
+   * the dashboard never shows an appointment the clinic does not know about.
+   */
+  async function submitBooking(): Promise<void> {
+    const service: Service =
+      deptIdx !== null ? CLINIC_SERVICES[deptIdx] : CLINIC_SERVICES[0];
+    const doctor = resolveDoctorForService(service.title);
+    // A roster pick from the dispatcher outranks the service-derived fallback.
+    const chosen = dispatchedDoctor();
+    const { departmentId, departmentName } = departmentForServiceIndex(deptIdx);
+    const slotStartTime = `${timeSlot ?? "08:30"}:00`;
+
+    const payload: AdministrativeIntakeRequest = {
+      fullName: formData.fullName.trim(),
+      phone: formData.phone.trim() || user?.phone?.trim() || undefined,
+      insuranceCode: formData.insuranceCode.trim() || undefined,
+      initialHospitalCode: formData.initialHospitalCode.trim() || undefined,
+      dateOfBirth: formData.dateOfBirth || undefined,
+      gender: formData.gender?.trim() || undefined,
+      address: formData.address?.trim() || undefined,
+      isOcrVerified: formData.isOcrVerified,
+      departmentId,
+      departmentName,
+      // Defaults to today; the voice flow can have moved it forward, and that
+      // is the date the rota (and therefore the assignment) was computed for.
+      appointmentDate: triageDate,
+      slotStartTime,
+      // The clinical model's verdict when there is one, else the local keyword
+      // matcher, else routine: an online booking is never an emergency path.
+      priorityLevel:
+        voiceTriage?.priority_level ?? triageSymptoms(symptoms)?.priority ?? "P3",
+      intakeSource: "ONLINE_BOOKING",
+      chiefComplaint: symptoms.trim() || undefined,
+    };
+
+    setIsSubmitting(true);
+    try {
+      const response = await checkInPatient(payload);
       const confirmed: ActiveAppointment = {
-        ticketCode: "#APT-2026-8821",
-        patientName: formData.fullName.trim().toUpperCase(),
-        department: chosen?.department ?? doctor.department,
-        doctor: chosen?.name ?? doctor.name,
-        room: chosen?.room ?? doctor.roomNumber,
-        date: voiceTriage ? dateLabelFrom(triageDate) : "Hôm nay",
-        timeSlot: timeSlot ?? "08:30",
+        ticketCode: response.ticketNumber,
+        patientName: response.patientName || formData.fullName.trim().toUpperCase(),
+        department: response.departmentName || chosen?.department || departmentName,
+        doctor: response.doctorName || chosen?.name || doctor.name,
+        room: response.roomNumber || chosen?.room || doctor.roomNumber,
+        date: dateLabelFrom(response.appointmentDate || triageDate),
+        timeSlot: (response.slotStartTime || slotStartTime).slice(0, 5),
+        // Stamped so the dashboard can poll the live queue by patient, with
+        // the doctor queue as the second key for "who is ahead of me".
+        patientId: response.patientId,
+        doctorId: response.doctorId,
+        status: "WAITING",
       };
       // The dashboard reads this back: without it the patient would land on
       // "Bạn chưa có lịch hẹn khám nào" right after booking.
       writeActiveBooking(confirmed);
       setTicket(confirmed);
-      return;
+      toast.success(
+        response.message ||
+          "Đặt lịch khám thành công. Phiếu của bạn đã vào hàng đợi tiếp đón.",
+      );
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Không đặt được lịch khám. Vui lòng thử lại.";
+      toast.error(message, { duration: 8000 });
+      if (!(error instanceof IntakeApiError)) {
+        console.warn("Booking: check-in failed unexpectedly.", error);
+      }
+    } finally {
+      setIsSubmitting(false);
     }
-    setStep((s) => s + 1);
   }
 
   function handleSubmit(e: FormEvent) {
@@ -609,7 +711,7 @@ export default function BookingPage() {
               Đặt lịch khám
             </h1>
             <p className="mt-2 text-base leading-relaxed text-slate-500">
-              Ba bước nhanh chóng và bạn xong - chúng tôi sẽ xác nhận qua tin
+              Hai bước nhanh chóng và bạn xong - chúng tôi sẽ xác nhận qua tin
               nhắn SMS.
             </p>
           </div>
@@ -673,70 +775,19 @@ export default function BookingPage() {
                   onVoiceCancel={handleVoiceCancel}
                   shiftSelection={shiftSelection}
                   onSelectShift={handleSelectShift}
+                  slotAvailability={slotAvailability}
+                  deptIdx={deptIdx}
+                  onDeptIdxChange={setDeptIdx}
+                  slotStartTime={timeSlot}
+                  onSlotPick={setTimeSlot}
                   scheduleUnavailable={scheduleUnavailable}
                   triageDate={triageDate}
-                  onTriageDateChange={setTriageDate}
+                  onTriageDateChange={handleTriageDateChange}
                   isRefreshingSchedule={isRefreshingSchedule}
-                  onRefreshSchedule={refreshSchedule}
                 />
               )}
 
               {step === 1 && (
-                <div className="space-y-5">
-                  <div>
-                    <p className="mb-3 text-base font-medium text-slate-900">
-                      Chọn chuyên khoa
-                    </p>
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      {CLINIC_SERVICES.map((service, index) => (
-                        <button
-                          key={service.title}
-                          type="button"
-                          onClick={() => setDeptIdx(index)}
-                          aria-pressed={deptIdx === index}
-                          className={`flex items-center gap-3 rounded-lg border px-4 py-3 text-left text-base transition-colors ${
-                            deptIdx === index
-                              ? "border-clinical-600 bg-clinical-50 text-clinical-700"
-                              : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-                          }`}
-                        >
-                          {service.title}
-                          {index === suggestedIdx && (
-                            <span className="ml-auto shrink-0 rounded-full bg-triage-p3-bg px-2 py-0.5 text-xs font-semibold text-triage-p3">
-                              Đề xuất
-                            </span>
-                          )}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div>
-                    <p className="mb-3 text-base font-medium text-slate-900">
-                      Chọn khung giờ khám hôm nay
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      {TIME_SLOTS.map((slot) => (
-                        <button
-                          key={slot}
-                          type="button"
-                          onClick={() => setTimeSlot(slot)}
-                          aria-pressed={timeSlot === slot}
-                          className={`inline-flex h-10 items-center rounded-lg border px-4 text-base font-medium transition-colors ${
-                            timeSlot === slot
-                              ? "border-clinical-600 bg-clinical-600 text-white"
-                              : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-                          }`}
-                        >
-                          {slot}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {step === 2 && (
                 <div className="space-y-5">
                   {formData.isOcrVerified && (
                     <div className="rounded-lg border border-teal-200 bg-teal-50 p-4">
@@ -789,7 +840,7 @@ export default function BookingPage() {
                   <BookingIdentityFields
                     value={formData}
                     onChange={setFormField}
-                    idPrefix="booking-step3"
+                    idPrefix="booking-step2"
                   />
 
                   <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
@@ -803,6 +854,12 @@ export default function BookingPage() {
                           {deptIdx !== null
                             ? CLINIC_SERVICES[deptIdx].title
                             : "Khám Nội Tổng quát & Tầm soát"}
+                        </dd>
+                      </div>
+                      <div className="flex justify-between">
+                        <dt>Ngày khám</dt>
+                        <dd className="font-medium text-slate-900">
+                          {dateLabelFrom(triageDate)}
                         </dd>
                       </div>
                       <div className="flex justify-between">
@@ -839,13 +896,18 @@ export default function BookingPage() {
 
                   <button
                     type="submit"
-                    className={`inline-flex h-11 items-center justify-center rounded-lg px-6 text-base font-semibold text-white shadow-card transition-all hover:shadow-elevated ${
-                      step === 2
+                    disabled={isSubmitting}
+                    className={`inline-flex h-11 items-center justify-center rounded-lg px-6 text-base font-semibold text-white shadow-card transition-all hover:shadow-elevated disabled:cursor-not-allowed disabled:opacity-70 ${
+                      step === 1
                         ? "bg-cta hover:bg-cta-hover"
                         : "bg-clinical-600 hover:bg-clinical-700"
                     }`}
                   >
-                    {step === 2 ? "Xác nhận lịch hẹn" : "Tiếp tục"}
+                    {step === 1
+                      ? isSubmitting
+                        ? "Đang xác nhận..."
+                        : "Xác nhận lịch hẹn"
+                      : "Tiếp tục"}
                   </button>
                 </div>
               )}

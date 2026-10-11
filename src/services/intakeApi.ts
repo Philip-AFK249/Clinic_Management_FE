@@ -122,6 +122,39 @@ export interface IntakePatient {
 }
 
 /**
+ * Flattened ticket + patient shape returned by `/v1/queue/tickets/{ticketNumber}`
+ * and `/v1/queue/patient/{patientId}/active` (the DTO, not the JPA entity), so
+ * the patient portal can poll its own ticket without the nested-patient shape.
+ * All java.time fields arrive as ISO strings under Spring Boot defaults.
+ */
+export interface QueueTicketDetailResponse {
+  ticketNumber: string; // "#A-001"
+  departmentId: number;
+  departmentName: string;
+  doctorId: number;
+  doctorName: string;
+  roomNumber: string; // "Phòng 101"
+  appointmentDate: string; // "yyyy-MM-dd"
+  slotStartTime: string; // "HH:mm:ss"
+  priorityLevel: TriagePriority;
+  intakeSource: IntakeSource;
+  status: QueueStatus;
+  chiefComplaint: string | null;
+  checkInTime: string | null; // ISO datetime
+  calledAt: string | null;
+  patientId: number;
+  patientFullName: string;
+  identityCardNumber: string | null;
+  insuranceCode: string | null;
+  initialHospitalCode: string | null;
+  dateOfBirth: string | null; // "yyyy-MM-dd"
+  gender: string | null;
+  phone: string | null;
+  address: string | null;
+  isOcrVerified: boolean | null;
+}
+
+/**
  * The queue endpoints serialise the JPA entity directly, so the patient comes
  * back as a nested object rather than flattened onto the ticket.
  */
@@ -308,6 +341,92 @@ export async function checkInPatient(
     if (axios.isCancel(error)) throw error;
     throw toApiError(error);
   }
+}
+
+/**
+ * Full ticket + patient record for one ticket number, as the patient portal
+ * reads it back after booking. Ticket numbers start with "#" so the path
+ * segment must be percent-encoded (same rule as the status PATCH).
+ */
+export async function getTicketDetails(
+  ticketNumber: string,
+  signal?: AbortSignal,
+): Promise<QueueTicketDetailResponse> {
+  try {
+    const { data } = await intakeApi.get<QueueTicketDetailResponse>(
+      `/v1/queue/tickets/${encodeURIComponent(ticketNumber)}`,
+      { signal },
+    );
+    return data;
+  } catch (error) {
+    if (axios.isCancel(error)) throw error;
+    throw toApiError(error);
+  }
+}
+
+/**
+ * The patient's most recent still-active ticket (WAITING/CALLED/
+ * IN_CONSULTATION). The service answers 400 - not 404 - when they have none,
+ * which is an expected state rather than a failure; use
+ * `isNoActiveTicketError` to tell it apart from a real fault.
+ */
+export async function getActivePatientTicket(
+  patientId: number,
+  signal?: AbortSignal,
+): Promise<QueueTicketDetailResponse> {
+  try {
+    const { data } = await intakeApi.get<QueueTicketDetailResponse>(
+      `/v1/queue/patient/${patientId}/active`,
+      { signal },
+    );
+    return data;
+  } catch (error) {
+    if (axios.isCancel(error)) throw error;
+    throw toApiError(error);
+  }
+}
+
+/**
+ * True when the active-ticket lookup said "this patient has no active ticket".
+ *
+ * The backend raises IllegalArgumentException (-> 400) for that case, so a
+ * caller polling on a timer can stop or fall back to the stored ticket instead
+ * of surfacing an error toast for a perfectly ordinary "already finished".
+ */
+export function isNoActiveTicketError(error: unknown): boolean {
+  return error instanceof IntakeApiError && error.status === 400;
+}
+
+/**
+ * What PatientIntakeService actually mints: `#` + one queue letter + a
+ * zero-padded sequence, e.g. `#A-001`, `#C-142` (see `generateTicketNumber`
+ * in IntakeService; the letter defaults to `K` for unrecognised departments).
+ */
+export const TICKET_NUMBER_PATTERN = /^#[A-Z]-\d{3,}$/;
+
+/**
+ * Whether a stored ticket number could have come from the backend.
+ *
+ * Legacy UI mocks used the shape `#APT-2026-8821`, which the service rejects
+ * with a 400 - so anything that fails the real pattern is treated as garbage
+ * on read and purged rather than polled into an endless error loop.
+ */
+export function isValidTicketNumber(ticketNumber: string): boolean {
+  return TICKET_NUMBER_PATTERN.test(ticketNumber);
+}
+
+/**
+ * True when a ticket lookup said "no such ticket" (400 from the
+ * IllegalArgumentException handler, or a 404 route miss).
+ *
+ * Unlike `isNoActiveTicketError`, this means the *number itself* is unknown to
+ * the backend - the signal to stop polling and drop the stored booking.
+ */
+export function isUnknownTicketError(error: unknown): boolean {
+  return (
+    error instanceof IntakeApiError &&
+    (error.status === 400 || error.status === 404)
+  );
 }
 
 // ---------------------------------------------------------------------------

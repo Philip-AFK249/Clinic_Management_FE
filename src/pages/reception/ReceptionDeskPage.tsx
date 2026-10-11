@@ -298,6 +298,7 @@ export default function ReceptionDeskPage() {
         <aside className="flex w-[40%] min-w-0 flex-col">
           <QueueMonitorPanel
             tickets={queue.tickets}
+            date={form.appointmentDate}
             waitingCount={queue.waitingCount}
             emergencyCount={queue.emergencyCount}
             isLoading={queue.isLoading}

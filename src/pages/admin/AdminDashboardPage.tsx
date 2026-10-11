@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { KnowledgeDocument, AdminTab } from "./data/adminMockData";
+import type { AdminTab } from "./data/adminMockData";
 import AdminSidebar from "./components/AdminSidebar";
 import AdminHeader from "./components/AdminHeader";
 import OverviewTab from "./components/OverviewTab";
@@ -16,14 +16,6 @@ export default function AdminDashboardPage() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const metrics = useAdminMetrics();
   const kb = useKnowledgeBase();
-
-  function handleAddKnowledgeDoc(doc: KnowledgeDocument) {
-    kb.addDocument(doc);
-  }
-
-  function handleDeleteKnowledgeDoc(docId: string) {
-    kb.deleteDocument(docId);
-  }
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-surface-light text-slate-900 font-sans">
@@ -47,12 +39,12 @@ export default function AdminDashboardPage() {
             {activeTab === "AI_GATEWAY" && (
               <AiGatewayTab
                 documents={kb.documents}
-                ocrLogs={metrics.ocrLogs}
-                isReindexing={kb.isReindexing}
-                reindexProgress={kb.reindexProgress}
-                onAddDocument={handleAddKnowledgeDoc}
-                onDeleteDocument={handleDeleteKnowledgeDoc}
-                onTriggerReindex={kb.triggerReindex}
+                isLoadingDocuments={kb.isLoading}
+                documentsError={kb.error}
+                deletingDocId={kb.deletingDocId}
+                onRefreshDocuments={() => void kb.refreshDocs()}
+                onDeleteDocument={kb.deleteDoc}
+                onRunIngest={kb.reindexFile}
               />
             )}
           </div>

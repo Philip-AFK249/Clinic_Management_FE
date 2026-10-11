@@ -424,6 +424,49 @@ export function serviceIndexForDepartment(departmentId: number): number {
   return VOICE_TRIAGE_DEPARTMENTS[departmentId]?.serviceIndex ?? 3;
 }
 
+/**
+ * PatientIntakeService's real department rows, keyed by the `CLINIC_SERVICES`
+ * index the booking form actually submits.
+ *
+ * The backend only knows three departments (1/2/3 - see the ticket-prefix
+ * switch in IntakeService), so the six marketing services have to collapse onto
+ * them: the two allergy/respiratory panels go to 2, dermatology to 3, and
+ * everything else - paediatrics included, since there is no children's
+ * department - to general internal medicine. Names mirror
+ * RECEPTION_DEPARTMENTS so a booking lands under the same label the reception
+ * desk groups it by.
+ */
+export const BOOKING_DEPARTMENTS: Record<
+  number,
+  { departmentId: number; departmentName: string }
+> = {
+  0: { departmentId: 2, departmentName: "Khoa Hô hấp & Dị ứng - Miễn dịch lâm sàng" },
+  1: { departmentId: 2, departmentName: "Khoa Hô hấp & Dị ứng - Miễn dịch lâm sàng" },
+  2: { departmentId: 1, departmentName: "Khoa Nội Tổng quát & Tim mạch" },
+  3: { departmentId: 1, departmentName: "Khoa Nội Tổng quát & Tim mạch" },
+  4: { departmentId: 3, departmentName: "Khoa Da liễu" },
+  5: { departmentId: 1, departmentName: "Khoa Nội Tổng quát & Tim mạch" },
+};
+
+/** General internal medicine - the catch-all the form falls back to. */
+const FALLBACK_BOOKING_DEPARTMENT = {
+  departmentId: 1,
+  departmentName: "Khoa Nội Tổng quát & Tim mạch",
+};
+
+/**
+ * The intake department a chosen service books into.
+ *
+ * Same fallback as `serviceIndexForDepartment`: an index nobody mapped is a
+ * general complaint, not a reason to fail the booking.
+ */
+export function departmentForServiceIndex(
+  serviceIndex: number | null,
+): { departmentId: number; departmentName: string } {
+  if (serviceIndex === null) return FALLBACK_BOOKING_DEPARTMENT;
+  return BOOKING_DEPARTMENTS[serviceIndex] ?? FALLBACK_BOOKING_DEPARTMENT;
+}
+
 export function resolveDoctorForService(serviceTitle: string): StaffMember {
   const title = serviceTitle.toLowerCase();
   const match = MEDICAL_STAFF.find((staff) => {

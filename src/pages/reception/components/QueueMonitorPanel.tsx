@@ -15,6 +15,8 @@ import type { QueueScope } from "../hooks/useReceptionQueue";
 
 interface QueueMonitorPanelProps {
   tickets: QueueTicket[];
+  /** `YYYY-MM-DD` the queue was loaded for - shown so the desk knows the filter. */
+  date: string;
   waitingCount: number;
   emergencyCount: number;
   isLoading: boolean;
@@ -27,8 +29,15 @@ interface QueueMonitorPanelProps {
   onPrint: (ticket: QueueTicket) => void;
 }
 
+/** `YYYY-MM-DD` as the `dd/MM/yyyy` the desk reads dates as. */
+function dateLabelFrom(iso: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : iso;
+}
+
 export default function QueueMonitorPanel({
   tickets,
+  date,
   waitingCount,
   emergencyCount,
   isLoading,
@@ -64,7 +73,7 @@ export default function QueueMonitorPanel({
                 Màn Hình Hàng Đợi Trực Tiếp
               </h2>
               <p className="text-[11px] text-slate-500">
-                {waitingCount} đang chờ
+                Ngày {dateLabelFrom(date)} &middot; {waitingCount} đang chờ
                 {emergencyCount > 0 && (
                   <span className="font-semibold text-red-600">
                     {" "}

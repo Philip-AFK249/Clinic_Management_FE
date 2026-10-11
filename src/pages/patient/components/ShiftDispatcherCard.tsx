@@ -5,7 +5,6 @@ import {
   CircleSlash,
   Loader2,
   MapPin,
-  RefreshCw,
   Sparkles,
   Stethoscope,
   Sun,
@@ -21,12 +20,23 @@ import type {
   TriagePriorityLevel,
   VoiceScheduleTriageResponse,
 } from "../../../services/voiceTriageApi";
+import type { TimeSlotResponse } from "../../../services/intakeApi";
+import { SESSION_SLOT_TIMES, isSlotPast } from "../data/bookingSlots";
+import { SlotChip } from "./BookingSlotChips";
+
+/** A concrete bookable pick: which half of the day, which doctor, which hour. */
+export interface ShiftSelection {
+  session: SessionName;
+  doctorId: number | null;
+  /** 60-minute start time, `HH:mm`. */
+  slotStartTime: string;
+}
 
 interface ShiftDispatcherCardProps {
   triage: VoiceScheduleTriageResponse;
   /** What the patient has already picked, echoed back for the pressed state. */
-  selected: { session: SessionName; doctorId: number | null } | null;
-  onSelect: (session: SessionName, doctorId: number | null) => void;
+  selected: ShiftSelection | null;
+  onSelect: (session: SessionName, doctorId: number | null, slotStartTime: string) => void;
   /** True when the schedule service could not be reached; the picker is hidden. */
   scheduleUnavailable?: boolean;
   /** `YYYY-MM-DD` the schedule below was queried for. */
@@ -34,7 +44,12 @@ interface ShiftDispatcherCardProps {
   onTargetDateChange: (date: string) => void;
   /** True while a re-query for another date is in flight. */
   isRefreshing: boolean;
-  onRefresh: () => void;
+  /**
+   * The live 60-minute slot grid for `targetDate`, when PatientIntakeService
+   * answered. Chips for full or unavailable slots are disabled from it; `null`
+   * degrades to session-level capacity plus the past-time check only.
+   */
+  slotAvailability?: TimeSlotResponse[] | null;
   /**
    * Acknowledgement of the medical disclaimer.
    *
@@ -127,7 +142,7 @@ export default function ShiftDispatcherCard({
   targetDate,
   onTargetDateChange,
   isRefreshing,
-  onRefresh,
+  slotAvailability = null,
   acknowledged,
   onAcknowledge,
 }: ShiftDispatcherCardProps) {
@@ -143,6 +158,20 @@ export default function ShiftDispatcherCard({
    */
   const scheduleDown =
     scheduleUnavailable || triage.schedule_connected === false;
+
+  /** Live capacity per `HH:mm`, so a chip can be disabled the moment it fills. */
+  const availabilityByKey = new Map<string, TimeSlotResponse>();
+  for (const slot of slotAvailability ?? []) {
+    availabilityByKey.set(slot.startTime.slice(0, 5), slot);
+  }
+
+  /** Full session, a start time that has already passed, or no capacity left. */
+  function slotDisabled(session: SessionSchedule, slot: string): boolean {
+    if (session.is_full) return true;
+    if (isSlotPast(targetDate, slot)) return true;
+    const live = availabilityByKey.get(slot);
+    return Boolean(live && (!live.isAvailable || live.availableCapacity <= 0));
+  }
 
   return (
     <section className="space-y-4 rounded-xl border border-slate-200/80 bg-white p-5 shadow-card">
@@ -215,7 +244,8 @@ export default function ShiftDispatcherCard({
         </div>
       )}
 
-      {/* Date the rota below belongs to */}
+      {/* Date the rota below belongs to. Changing it re-queries the schedule
+          immediately - there is no separate "load this date" action to forget. */}
       <div className="flex flex-wrap items-end gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
         <div className="min-w-0">
           <label
@@ -228,24 +258,18 @@ export default function ShiftDispatcherCard({
             id="triage-target-date"
             type="date"
             value={targetDate}
+            disabled={isRefreshing}
+            aria-busy={isRefreshing}
             onChange={(event) => onTargetDateChange(event.target.value)}
-            className="mt-1 h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 transition-colors focus:border-clinical-500 focus:outline-none focus:ring-2 focus:ring-clinical-100"
+            className="mt-1 h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 transition-colors focus:border-clinical-500 focus:outline-none focus:ring-2 focus:ring-clinical-100 disabled:opacity-60"
           />
         </div>
-        <button
-          type="button"
-          onClick={onRefresh}
-          disabled={isRefreshing}
-          aria-busy={isRefreshing}
-          className="inline-flex h-10 items-center gap-2 rounded-lg border border-clinical-200 bg-white px-4 text-sm font-semibold text-clinical-700 transition-colors hover:bg-clinical-50 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {isRefreshing ? (
+        {isRefreshing && (
+          <span className="inline-flex h-10 items-center gap-2 text-xs font-semibold text-clinical-700">
             <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-          ) : (
-            <RefreshCw className="h-4 w-4" aria-hidden="true" />
-          )}
-          {isRefreshing ? "Đang tải lịch..." : "Xem lại lịch ngày này"}
-        </button>
+            Đang tải lịch khám...
+          </span>
+        )}
         <p className="text-xs text-slate-500">
           Đổi ngày không mất nội dung bạn đã nói.
         </p>
@@ -275,6 +299,7 @@ export default function ShiftDispatcherCard({
               isRecommended={session.session === triage.recommended_shift}
               selected={selected}
               onSelect={onSelect}
+              slotDisabled={(slot) => slotDisabled(session, slot)}
             />
           ))}
         </div>
@@ -326,8 +351,10 @@ function EmergencyBanner({ advice }: { advice: string }) {
 interface SessionPanelProps {
   session: SessionSchedule;
   isRecommended: boolean;
-  selected: { session: SessionName; doctorId: number | null } | null;
-  onSelect: (session: SessionName, doctorId: number | null) => void;
+  selected: ShiftSelection | null;
+  onSelect: (session: SessionName, doctorId: number | null, slotStartTime: string) => void;
+  /** Whether a 60-minute chip in this session must render disabled. */
+  slotDisabled: (slot: string) => boolean;
 }
 
 function SessionPanel({
@@ -335,6 +362,7 @@ function SessionPanel({
   isRecommended,
   selected,
   onSelect,
+  slotDisabled,
 }: SessionPanelProps) {
   const meta = SESSION_META[session.session];
   const Icon = meta.icon;
@@ -342,6 +370,40 @@ function SessionPanel({
   const free = session.doctors
     .filter((doctor) => !doctor.is_full)
     .reduce((sum, doctor) => sum + doctor.available_capacity, 0);
+  const sessionSlots = SESSION_SLOT_TIMES[session.session];
+
+  /**
+   * A slot chip pressed.
+   *
+   * Keeps the doctor already chosen in this session - the patient picked a
+   * person, not an hour - and otherwise falls back to the first doctor with
+   * room, mirroring the backend's own least-busy assignment.
+   */
+  function handleSlotPick(slot: string) {
+    const doctorId =
+      (selected?.session === session.session ? selected.doctorId : null) ??
+      session.doctors.find((doctor) => !doctor.is_full)?.doctor_id ??
+      null;
+    onSelect(session.session, doctorId, slot);
+  }
+
+  /**
+   * A doctor row pressed.
+   *
+   * Keeps the currently selected hour when it still works for this session, so
+   * choosing a person after an hour does not silently move the appointment.
+   */
+  function handleDoctorPick(doctorId: number | null) {
+    const current = selected?.slotStartTime;
+    const slot =
+      selected?.session === session.session &&
+      current &&
+      !slotDisabled(current)
+        ? current
+        : sessionSlots.find((candidate) => !slotDisabled(candidate)) ?? null;
+    if (!slot) return;
+    onSelect(session.session, doctorId, slot);
+  }
 
   return (
     <div
@@ -386,19 +448,38 @@ function SessionPanel({
           Ca này đã đủ bệnh nhân. Vui lòng chọn ca còn trống.
         </p>
       ) : (
-        <div className="mt-3 space-y-2">
-          {session.doctors.map((doctor) => (
-            <DoctorRow
-              key={doctor.doctor_id}
-              doctor={doctor}
-              isSelected={
-                selected?.session === session.session &&
-                selected.doctorId === doctor.doctor_id
-              }
-              onSelect={() => onSelect(session.session, doctor.doctor_id)}
-            />
-          ))}
-        </div>
+        <>
+          <div className="mt-3 space-y-2">
+            {session.doctors.map((doctor) => (
+              <DoctorRow
+                key={doctor.doctor_id}
+                doctor={doctor}
+                isSelected={selected?.doctorId === doctor.doctor_id}
+                onSelect={() => handleDoctorPick(doctor.doctor_id)}
+              />
+            ))}
+          </div>
+
+          <div className="mt-4 border-t border-slate-100 pt-3">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Khung giờ khám 60 phút
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {sessionSlots.map((slot) => (
+                <SlotChip
+                  key={slot}
+                  slot={slot}
+                  isSelected={
+                    selected?.session === session.session &&
+                    selected.slotStartTime === slot
+                  }
+                  disabled={slotDisabled(slot)}
+                  onSelect={handleSlotPick}
+                />
+              ))}
+            </div>
+          </div>
+        </>
       )}
     </div>
   );

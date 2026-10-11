@@ -1,62 +1,117 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { X, UploadCloud, FileUp } from "lucide-react";
-import type { KnowledgeDocument } from "../../data/adminMockData";
+import { X, FileUp, FileText, Loader2, FolderOpen } from "lucide-react";
+import {
+  getRawPipelineFilesApi,
+  gatewayErrorDetail,
+} from "../../../../services/aiGatewayAdminApi";
+import type {
+  ParserType,
+  RawPipelineFile,
+  TargetAudienceOverride,
+} from "../../../../services/aiGatewayAdminApi";
+import type { ReindexOptions } from "../../hooks/useKnowledgeBase";
 
 interface AddKnowledgeDocModalProps {
   onClose: () => void;
-  onAdd: (doc: KnowledgeDocument) => void;
+  /**
+   * Run the real ingestion pipeline for one `raw_docs` file. The parent's
+   * knowledge-base hook owns the call (and its loading flag), so this modal
+   * only collects the parameters and reports the outcome.
+   */
+  onRunIngest: (
+    filename: string,
+    parserType: ParserType,
+    options?: ReindexOptions,
+  ) => Promise<{ chunks_created: number; message: string; specialty: string }>;
 }
 
-const CATEGORY_OPTIONS = [
-  { value: "BHYT_POLICY", label: "Chính sách BHYT" },
-  { value: "PRICING", label: "Bảng giá" },
-  { value: "DOCTOR_SCHEDULE", label: "Lịch trực / Lịch công tác" },
-  { value: "CLINIC_GUIDE", label: "Quy trình hướng dẫn" },
-] as const;
+const PARSER_OPTIONS: {
+  value: ParserType;
+  title: string;
+  detail: string;
+}[] = [
+  {
+    value: "docling",
+    title: "Docling (Local CPU)",
+    detail: "Phân tích .docx/.pdf tại chỗ - Khuyến nghị",
+  },
+  {
+    value: "llama",
+    title: "LlamaParse (Cloud Vision)",
+    detail: "Đám mây - tốt cho scan / bố cục phức tạp",
+  },
+];
+
+const AUDIENCE_OPTIONS: { value: TargetAudienceOverride; label: string }[] = [
+  { value: "auto", label: "Tự động phân loại" },
+  { value: "tiep_don", label: "Tiếp nhận" },
+  { value: "bac_si", label: "Bác sĩ" },
+];
 
 export default function AddKnowledgeDocModal({
   onClose,
-  onAdd,
+  onRunIngest,
 }: AddKnowledgeDocModalProps) {
-  const [title, setTitle] = useState("");
-  const [category, setCategory] = useState<KnowledgeDocument["category"]>("BHYT_POLICY");
-  const [fileName, setFileName] = useState("");
-  const [content, setContent] = useState("");
+  const [rawFiles, setRawFiles] = useState<RawPipelineFile[]>([]);
+  const [isLoadingFiles, setIsLoadingFiles] = useState(true);
+  const [filesError, setFilesError] = useState("");
+  const [selectedFile, setSelectedFile] = useState<string>("");
+  const [manualFilename, setManualFilename] = useState("");
+  const [parserType, setParserType] = useState<ParserType>("docling");
+  const [audience, setAudience] = useState<TargetAudienceOverride>("auto");
+  const [forceReparse, setForceReparse] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (file) {
-      setFileName(file.name);
-      const baseTitle = file.name.replace(/\.(md|txt)$/i, "").replace(/[-_]/g, " ");
-      setTitle(baseTitle);
-    }
-  }
+  // The gateway lists what actually sits in data/raw_docs/ - the modal can
+  // only ingest files it can see, so this replaces the old free-text upload
+  // fantasy (no file ever left the browser).
+  useEffect(() => {
+    const controller = new AbortController();
+    getRawPipelineFilesApi()
+      .then((files) => {
+        if (controller.signal.aborted) return;
+        setRawFiles(files);
+        setFilesError("");
+      })
+      .catch((cause: unknown) => {
+        if (controller.signal.aborted) return;
+        setFilesError(gatewayErrorDetail(cause));
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setIsLoadingFiles(false);
+      });
+    return () => controller.abort();
+  }, []);
 
-  function handleSubmit(e: React.FormEvent) {
+  // The effective filename: an explicit manual entry wins over the picked row,
+  // so an admin can still ingest a file dropped in after the list loaded.
+  const filename = manualFilename.trim() || selectedFile;
+
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!title.trim() || !content.trim()) {
-      toast.error("Vui lòng nhập Tiêu đề và Nội dung tài liệu.");
+    if (!filename) {
+      toast.error("Vui lòng chọn một tệp từ data/raw_docs/ hoặc nhập tên tệp.");
       return;
     }
 
-    const newDoc: KnowledgeDocument = {
-      id: `KB-${Date.now().toString().slice(-6)}`,
-      title: title.trim(),
-      category,
-      contentSnippet: content.trim().slice(0, 180) + (content.trim().length > 180 ? "..." : ""),
-      chunkCount: Math.max(1, Math.ceil(content.trim().length / 500)),
-      embeddingModel: "text-embedding-3-small (1536d)",
-      updatedAt: "Hôm nay",
-      status: "INDEXED",
-    };
-
-    onAdd(newDoc);
-    toast.success(
-      `Tài liệu "${newDoc.title}" đã được phân đoạn thành ${newDoc.chunkCount} chunks và nhúng vào pgvector.`,
-      { duration: 4000 },
-    );
-    onClose();
+    setIsSubmitting(true);
+    try {
+      const result = await onRunIngest(filename, parserType, {
+        forceReparse,
+        targetAudienceOverride: audience,
+      });
+      toast.success(
+        `Đã nhúng "${result.specialty || filename}" thành ${result.chunks_created} chunks vào pgvector.` +
+          (result.message ? ` ${result.message}` : ""),
+        { duration: 5000 },
+      );
+      onClose();
+    } catch (cause) {
+      toast.error(gatewayErrorDetail(cause), { duration: 6000 });
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   return (
@@ -70,7 +125,9 @@ export default function AddKnowledgeDocModal({
         <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
           <div className="flex items-center gap-2">
             <FileUp size={18} className="text-slate-700" aria-hidden="true" />
-            <h3 className="text-sm font-bold text-slate-900">Tải Lên Tài Liệu Mới</h3>
+            <h3 className="text-sm font-bold text-slate-900">
+              Chỉ mục Tài liệu RAG
+            </h3>
           </div>
           <button
             type="button"
@@ -85,87 +142,159 @@ export default function AddKnowledgeDocModal({
         <form onSubmit={handleSubmit} className="space-y-4 px-5 py-4">
           <div>
             <label className="mb-1 block text-xs font-semibold text-slate-700">
-              Danh mục tài liệu *
+              Tệp trong data/raw_docs/ *
             </label>
-            <div className="grid grid-cols-2 gap-2">
-              {CATEGORY_OPTIONS.map((opt) => (
-                <button
-                  key={opt.value}
-                  type="button"
-                  onClick={() => setCategory(opt.value)}
-                  className={`rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${
-                    category === opt.value
-                      ? "border-slate-800 bg-slate-800 text-white"
-                      : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-                  }`}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
+            {isLoadingFiles ? (
+              <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-4 text-xs text-slate-500">
+                <Loader2 size={14} className="animate-spin" aria-hidden="true" />
+                Đang tải danh sách tệp từ AI Gateway...
+              </div>
+            ) : rawFiles.length > 0 ? (
+              <div className="max-h-44 space-y-1 overflow-y-auto rounded-lg border border-slate-200 p-1.5">
+                {rawFiles.map((file) => {
+                  const active = selectedFile === file.filename && !manualFilename.trim();
+                  return (
+                    <button
+                      key={file.filename}
+                      type="button"
+                      onClick={() => {
+                        setSelectedFile(file.filename);
+                        setManualFilename("");
+                      }}
+                      aria-pressed={active}
+                      className={`flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left transition-colors ${
+                        active
+                          ? "bg-slate-800 text-white"
+                          : "text-slate-700 hover:bg-slate-50"
+                      }`}
+                    >
+                      <FileText size={14} className="shrink-0" aria-hidden="true" />
+                      <span className="min-w-0 flex-1 truncate text-xs font-semibold">
+                        {file.filename}
+                      </span>
+                      <span
+                        className={`shrink-0 text-[10px] ${active ? "text-slate-300" : "text-slate-400"}`}
+                      >
+                        {file.size_kb.toFixed(1)} KB
+                        {file.has_parsed_md ? " · đã parse" : ""}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-500">
+                <FolderOpen size={14} aria-hidden="true" />
+                {filesError
+                  ? `Không tải được danh sách tệp: ${filesError}`
+                  : "Thư mục data/raw_docs/ đang trống - hãy sao chép tài liệu vào đó trước."}
+              </div>
+            )}
           </div>
 
           <div>
             <label className="mb-1 block text-xs font-semibold text-slate-700">
-              Tiêu đề tài liệu *
+              Hoặc nhập tên tệp thủ công
             </label>
             <input
               type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="VD: Chính sách BHYT Phòng khám 2026"
+              value={manualFilename}
+              onChange={(e) => setManualFilename(e.target.value)}
+              placeholder="VD: Trieu chung chan doan som.docx"
               className="h-10 w-full rounded-lg border border-slate-200 px-3 text-sm text-slate-800 placeholder-slate-400 focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-300"
             />
           </div>
 
           <div>
             <label className="mb-1 block text-xs font-semibold text-slate-700">
-              Tệp nguồn (Markdown hoặc Text)
+              Bộ phân tích (Parser) *
             </label>
-            <label className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center transition-colors hover:border-slate-400 hover:bg-slate-100">
-              <UploadCloud size={20} className="text-slate-400" aria-hidden="true" />
-              <span className="mt-2 text-xs font-semibold text-slate-600">
-                {fileName || "Chọn tệp .md / .txt"}
-              </span>
-              <span className="text-[11px] text-slate-400">
-                Tài liệu sẽ được phân đoạn (Chunking) & nhúng Vector (1536 dims)
-              </span>
-              <input
-                type="file"
-                accept=".md,.txt,text/markdown,text/plain"
-                className="hidden"
-                onChange={handleFileSelect}
-              />
-            </label>
+            <div className="space-y-2">
+              {PARSER_OPTIONS.map((opt) => (
+                <label
+                  key={opt.value}
+                  className={`flex cursor-pointer items-start gap-2.5 rounded-lg border px-3 py-2.5 transition-colors ${
+                    parserType === opt.value
+                      ? "border-slate-800 bg-slate-50"
+                      : "border-slate-200 bg-white hover:bg-slate-50"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="parser-type"
+                    value={opt.value}
+                    checked={parserType === opt.value}
+                    onChange={() => setParserType(opt.value)}
+                    className="mt-0.5 accent-slate-800"
+                  />
+                  <span>
+                    <span className="block text-xs font-bold text-slate-800">
+                      {opt.title}
+                    </span>
+                    <span className="block text-[11px] text-slate-500">
+                      {opt.detail}
+                    </span>
+                  </span>
+                </label>
+              ))}
+            </div>
           </div>
 
-          <div>
-            <label className="mb-1 block text-xs font-semibold text-slate-700">
-              Nội dung tài liệu *
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-slate-700">
+                Phân loại độc giả
+              </label>
+              <select
+                value={audience}
+                onChange={(e) =>
+                  setAudience(e.target.value as TargetAudienceOverride)
+                }
+                className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-800 focus:border-slate-400 focus:outline-none"
+              >
+                {AUDIENCE_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <label className="mt-5 flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 px-3 py-2.5 text-xs font-semibold text-slate-700">
+              <input
+                type="checkbox"
+                checked={forceReparse}
+                onChange={(e) => setForceReparse(e.target.checked)}
+                className="accent-slate-800"
+              />
+              Phân tích lại dù đã có bản parse
             </label>
-            <textarea
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-              rows={5}
-              placeholder="Dán hoặc nhập nội dung Markdown / text..."
-              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-300"
-            />
           </div>
 
           <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
             <button
               type="button"
               onClick={onClose}
-              className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50"
+              disabled={isSubmitting}
+              className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-50"
             >
               Hủy
             </button>
             <button
               type="submit"
-              className="inline-flex items-center gap-1.5 rounded-lg bg-slate-800 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-slate-900"
+              disabled={isSubmitting || !filename}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-slate-800 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              <FileUp size={16} aria-hidden="true" />
-              Tải Lên & Chỉ mục RAG
+              {isSubmitting ? (
+                <>
+                  <Loader2 size={16} className="animate-spin" aria-hidden="true" />
+                  Đang phân tích &amp; nhúng...
+                </>
+              ) : (
+                <>
+                  <FileUp size={16} aria-hidden="true" />
+                  Chạy Pipeline &amp; Chỉ mục RAG
+                </>
+              )}
             </button>
           </div>
         </form>

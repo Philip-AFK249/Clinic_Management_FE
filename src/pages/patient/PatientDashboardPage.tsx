@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import {
   CalendarX,
@@ -10,32 +10,90 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "../../context/useAuth";
+import type { QueueStatus } from "../../services/intakeApi";
 import PatientNavbar from "./components/PatientNavbar";
 import PatientFooter from "./components/PatientFooter";
-import { PAST_ENCOUNTERS, QUEUE_SNAPSHOT } from "./data/patientMockRecords";
+import { PAST_ENCOUNTERS } from "./data/patientMockRecords";
 import { readActiveBooking } from "./data/activeBooking";
+import { usePatientTicket } from "./hooks/usePatientTicket";
 
 type DashboardTab = "queue" | "records";
+
+/** `yyyy-MM-dd` (what the intake service stores) as the `dd/MM/yyyy` we print. */
+function dateLabelFrom(iso: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : iso;
+}
+
+/**
+ * Queue status as the patient should read it.
+ *
+ * Every state the backend can report is listed, including the two terminal
+ * ones the live poll can still return via the stored ticket number - a screen
+ * that blanks out because a visit ended would look like an outage.
+ */
+const STATUS_BADGES: Record<
+  QueueStatus,
+  { label: string; className: string; icon: typeof CheckCircle2 }
+> = {
+  WAITING: {
+    label: "Đang chờ tiếp đón",
+    className: "border-amber-200 bg-amber-50 text-amber-700",
+    icon: Clock,
+  },
+  CALLED: {
+    label: "Đã được gọi",
+    className: "border-clinical-200 bg-clinical-50 text-clinical-700",
+    icon: CheckCircle2,
+  },
+  IN_CONSULTATION: {
+    label: "Đang khám",
+    className: "border-teal-200 bg-teal-50 text-teal-700",
+    icon: CheckCircle2,
+  },
+  COMPLETED: {
+    label: "Đã hoàn tất khám",
+    className: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    icon: CheckCircle2,
+  },
+  SKIPPED: {
+    label: "Đã bỏ lỡ",
+    className: "border-slate-200 bg-slate-50 text-slate-600",
+    icon: Clock,
+  },
+  CANCELLED: {
+    label: "Đã hủy",
+    className: "border-slate-200 bg-slate-50 text-slate-600",
+    icon: Clock,
+  },
+};
+
+const FINISHED_NOTICES: Record<QueueStatus, string> = {
+  COMPLETED:
+    "Phiếu khám của bạn đã hoàn tất. Kết quả và đơn thuốc (nếu có) sẽ xuất hiện trong tab Hồ sơ sức khỏe điện tử.",
+  SKIPPED:
+    "Phiếu khám đã bị bỏ qua do không có mặt khi được gọi. Vui lòng liên hệ quầy tiếp đón để được xếp lại lịch.",
+  CANCELLED:
+    "Phiếu khám đã bị hủy. Bạn có thể đặt một lịch hẹn mới bất cứ lúc nào.",
+  WAITING: "",
+  CALLED: "",
+  IN_CONSULTATION: "",
+};
 
 export default function PatientDashboardPage() {
   const { user } = useAuth();
   const [tab, setTab] = useState<DashboardTab>("queue");
-  const [serving, setServing] = useState(QUEUE_SNAPSHOT.currentServing);
   // Read once on mount: the route unmounts between visits, so a booking made on
   // /patient/booking is picked up the next time the dashboard is opened.
-  const [activeBooking] = useState(readActiveBooking);
-
-  useEffect(() => {
-    if (serving === QUEUE_SNAPSHOT.yourTicket) return;
-    const handle = window.setTimeout(
-      () => setServing(QUEUE_SNAPSHOT.yourTicket),
-      6000,
-    );
-    return () => window.clearTimeout(handle);
-  }, [serving]);
-
-  const yourTurn = serving === QUEUE_SNAPSHOT.yourTicket;
-  const personsAhead = yourTurn ? 0 : QUEUE_SNAPSHOT.personsAhead;
+  // `readActiveBooking` itself purges anything the backend could not have
+  // minted (e.g. the legacy mock `#APT-2026-8821`).
+  const [storedBooking] = useState(readActiveBooking);
+  // Live view of that booking: the stored record seeds the screen immediately,
+  // and the hook overwrites it with the backend's answer as soon as one lands.
+  const ticket = usePatientTicket(storedBooking);
+  // A booking the backend rejects as unknown (400/404) is dropped by the hook;
+  // from the page's point of view the patient simply has no appointment left.
+  const activeBooking = ticket.invalidTicket ? null : storedBooking;
 
   function handleDownload(receipt: string) {
     toast.info(
@@ -43,6 +101,23 @@ export default function PatientDashboardPage() {
       { duration: 4000 },
     );
   }
+
+  // The stored booking renders on its own while the first poll is in flight;
+  // once it answers, the backend's copy wins everywhere it has an opinion.
+  const display = {
+    ticketCode: ticket.detail?.ticketNumber ?? activeBooking?.ticketCode ?? "",
+    patientName: ticket.detail?.patientFullName ?? activeBooking?.patientName ?? "",
+    department: ticket.detail?.departmentName ?? activeBooking?.department ?? "",
+    doctor: ticket.detail?.doctorName ?? activeBooking?.doctor ?? "",
+    room: ticket.detail?.roomNumber ?? activeBooking?.room ?? "",
+    date: ticket.detail
+      ? dateLabelFrom(ticket.detail.appointmentDate)
+      : activeBooking?.date ?? "",
+    timeSlot: ticket.detail
+      ? ticket.detail.slotStartTime.slice(0, 5)
+      : activeBooking?.timeSlot ?? "",
+  };
+  const statusBadge = STATUS_BADGES[ticket.status];
 
   return (
     <div className="min-h-screen bg-surface-light text-slate-900">
@@ -107,80 +182,114 @@ export default function PatientDashboardPage() {
                   <p className="text-sm font-semibold uppercase tracking-wide text-slate-500">
                     Lịch hẹn đang hoạt động
                   </p>
-                  <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
-                    <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
-                    Đã xác nhận
+                  <span
+                    className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold ${statusBadge.className}`}
+                  >
+                    <statusBadge.icon className="h-3.5 w-3.5" aria-hidden="true" />
+                    {statusBadge.label}
                   </span>
                 </div>
                 <dl className="mt-4 space-y-3 text-sm">
-                  <Row label="Mã phiếu khám" value={activeBooking.ticketCode} bold />
+                  <Row label="Mã phiếu khám" value={display.ticketCode} bold />
                   <Row
                     label="Ngày & Giờ"
-                    value={`${activeBooking.date}, ${activeBooking.timeSlot}`}
+                    value={`${display.date}, ${display.timeSlot}`}
                   />
-                  <Row label="Chuyên khoa" value={activeBooking.department} />
-                  <Row label="Bác sĩ" value={activeBooking.doctor} />
-                  <Row label="Phòng khám" value={activeBooking.room} />
+                  <Row label="Chuyên khoa" value={display.department} />
+                  <Row label="Bác sĩ" value={display.doctor} />
+                  <Row label="Phòng khám" value={display.room} />
                 </dl>
-                <div className="mt-4 flex items-start gap-3 rounded-lg border border-clinical-100 bg-clinical-50 p-3">
-                  <QrCode
-                    className="h-5 w-5 shrink-0 text-clinical-600"
-                    aria-hidden="true"
-                  />
-                  <p className="text-sm leading-relaxed text-slate-600">
-                    Xuất trình vé QR check-in tại kiosk cửa vào để lấy số thứ tự
-                    nhanh.
-                  </p>
-                </div>
+                {ticket.isActive && (
+                  <div className="mt-4 flex items-start gap-3 rounded-lg border border-clinical-100 bg-clinical-50 p-3">
+                    <QrCode
+                      className="h-5 w-5 shrink-0 text-clinical-600"
+                      aria-hidden="true"
+                    />
+                    <p className="text-sm leading-relaxed text-slate-600">
+                      Xuất trình vé QR check-in tại kiosk cửa vào để lấy số thứ tự
+                      nhanh.
+                    </p>
+                  </div>
+                )}
+                {ticket.isOffline && (
+                  <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                    <p className="text-sm leading-relaxed text-amber-800">
+                      {ticket.error ||
+                        "Không kết nối được dịch vụ hàng đợi. Đang hiển thị thông tin xác nhận lúc đặt lịch."}
+                    </p>
+                  </div>
+                )}
               </section>
 
-              {/* Live queue tracker */}
-              <section className="rounded-xl border border-slate-200/80 bg-white p-5 shadow-card">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-                    Theo dõi hàng đợi trực tiếp
-                  </p>
-                  <span className="text-xs font-medium text-slate-400">
-                    Cập nhật tự động mỗi vài giây
-                  </span>
-                </div>
-
-                <div className="mt-4 space-y-3">
-                  <QueueRow
-                    label="Đang phục vụ"
-                    value={serving}
-                    active
-                    detail="Đang được tư vấn"
-                  />
-                  <QueueRow
-                    label="Vé của bạn"
-                    value={QUEUE_SNAPSHOT.yourTicket}
-                    highlight
-                    detail={
-                      yourTurn
-                        ? "Đến lượt của bạn - vui lòng đến phòng khám"
-                        : `${personsAhead} người trước bạn, ước tính ~${QUEUE_SNAPSHOT.estimateMinutes} phút`
-                    }
-                  />
-                  <div className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
-                    <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-clinical-600 text-white">
-                      <Users className="h-5 w-5" aria-hidden="true" />
+              {ticket.isActive ? (
+                /* Live queue tracker */
+                <section className="rounded-xl border border-slate-200/80 bg-white p-5 shadow-card">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+                      Theo dõi hàng đợi trực tiếp
+                    </p>
+                    <span className="text-xs font-medium text-slate-400">
+                      Cập nhật tự động mỗi 10 giây
                     </span>
-                    <div className="text-sm">
-                      <p className="font-semibold text-slate-900">{activeBooking.room}</p>
-                      <p className="text-slate-500">
-                        Bác sĩ sẵn sàng tiếp đón bạn ngay sau đây.
-                      </p>
+                  </div>
+
+                  <div className="mt-4 space-y-3">
+                    <QueueRow
+                      label="Đang phục vụ"
+                      value={ticket.currentServing ?? "Chưa có ai"}
+                      active={ticket.currentServing !== null}
+                      detail="Đang được tư vấn"
+                    />
+                    <QueueRow
+                      label="Vé của bạn"
+                      value={display.ticketCode}
+                      highlight
+                      detail={
+                        ticket.yourTurn
+                          ? "Đến lượt của bạn - vui lòng đến phòng khám"
+                          : ticket.personsAhead !== null
+                            ? `${ticket.personsAhead} người trước bạn`
+                            : "Đang cập nhật thứ tự..."
+                      }
+                    />
+                    <div className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                      <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-clinical-600 text-white">
+                        <Users className="h-5 w-5" aria-hidden="true" />
+                      </span>
+                      <div className="text-sm">
+                        <p className="font-semibold text-slate-900">
+                          {display.room}
+                        </p>
+                        <p className="text-slate-500">
+                          {display.doctor} sẵn sàng tiếp đón bạn ngay sau đây.
+                        </p>
+                      </div>
                     </div>
                   </div>
-                </div>
-              </section>
+                </section>
+              ) : (
+                /* Finished, cancelled or skipped: no queue to track any more. */
+                <section className="rounded-xl border border-slate-200/80 bg-white p-5 shadow-card">
+                  <p className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+                    Phiếu khám đã kết thúc
+                  </p>
+                  <p className="mt-4 text-sm leading-relaxed text-slate-600">
+                    {FINISHED_NOTICES[ticket.status]}
+                  </p>
+                  <Link
+                    to="/patient/booking"
+                    className="mt-6 inline-flex h-11 items-center justify-center rounded-lg bg-clinical-600 px-6 text-sm font-semibold text-white shadow-card transition-colors hover:bg-clinical-700"
+                  >
+                    Đặt lịch khám mới
+                  </Link>
+                </section>
+              )}
             </div>
           ) : (
             <section className="mt-8 rounded-xl border border-slate-200/80 bg-white p-10 text-center shadow-card">
               <CalendarX size={32} className="mx-auto text-slate-300" aria-hidden="true" />
               <h2 className="mt-4 text-lg font-bold text-slate-900">
-                Bạn chưa có lịch hẹn khám nào
+                Bạn chưa có lịch hẹn khám nào đang hoạt động
               </h2>
               <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-slate-500">
                 Chủ động đặt lịch khám trước để chọn chuyên khoa, khung giờ phù
