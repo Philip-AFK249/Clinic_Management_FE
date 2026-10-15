@@ -13,7 +13,7 @@ export default function RegisterPage() {
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
-  const [dob, setDob] = useState("");
+  const [dateOfBirth, setDateOfBirth] = useState("");
   const [gender, setGender] = useState<Gender | "">("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -79,7 +79,7 @@ export default function RegisterPage() {
         password,
         confirmPassword,
         role: "PATIENT",
-        dateOfBirth: dob || undefined,
+        dateOfBirth: dateOfBirth || undefined,
         gender: (gender as Gender) || undefined,
       });
       toast.success(
@@ -182,8 +182,8 @@ export default function RegisterPage() {
             <input
               id="reg-dob"
               type="date"
-              value={dob}
-              onChange={(e) => setDob(e.target.value)}
+              value={dateOfBirth}
+              onChange={(e) => setDateOfBirth(e.target.value)}
               className="h-11 w-full rounded-lg border border-slate-200 bg-white px-4 text-sm text-slate-900 transition-colors focus:border-clinical-600 focus:outline-none focus:ring-2 focus:ring-clinical-500/20"
             />
           </div>

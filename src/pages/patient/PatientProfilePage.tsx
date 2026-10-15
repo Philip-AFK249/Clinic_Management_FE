@@ -56,6 +56,25 @@ interface FormState {
 }
 
 /**
+ * Fold whatever the backend holds into the `YYYY-MM-DD` an
+ * `<input type="date">` requires.
+ *
+ * AuthService serialises its `LocalDate` column as ISO already, so the happy
+ * path is a pass-through - but a value that arrives as an ISO datetime
+ * (`1984-08-14T00:00:00`) or another parseable shape would silently render the
+ * date input as blank (`mm/dd/yyyy`) rather than showing a slightly-off date.
+ * Anything unparseable becomes "", which reads as "not set" instead of a
+ * plausible-looking 1970-01-01.
+ */
+function formatToDateInput(val?: string | null): string {
+  if (!val) return "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(val)) return val;
+  const parsed = new Date(val);
+  if (Number.isNaN(parsed.getTime())) return "";
+  return parsed.toISOString().slice(0, 10);
+}
+
+/**
  * The session, as the form wants it.
  *
  * `genderFrom` is the one fold needed here: the session carries the backend's
@@ -66,7 +85,7 @@ function formFromSession(user: User | null): FormState {
   return {
     fullName: user?.fullName ?? "",
     phone: user?.phone ?? "",
-    dateOfBirth: user?.dateOfBirth ?? "",
+    dateOfBirth: formatToDateInput(user?.dateOfBirth),
     gender: user?.gender ? genderFrom(user.gender) : "",
     address: user?.address ?? "",
     identityCardNumber: user?.identityCardNumber ?? "",
