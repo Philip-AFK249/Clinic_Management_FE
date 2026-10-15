@@ -11,11 +11,13 @@ import {
   CreditCard,
   FileText,
   ShieldCheck,
+  Trash2,
   AlertTriangle,
   Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
+  deletePatientByAdminApi,
   getAllPatientsApi,
   resetUserPasswordApi,
   toggleUserStatusApi,
@@ -40,8 +42,15 @@ const PAGE_SIZE = 10;
 
 export default function PatientManagementTab() {
   const { user } = useAuth();
-  const { patients, isLoading, error, isUnavailable, refresh, applyPatient } =
-    useAdminPatients();
+  const {
+    patients,
+    isLoading,
+    error,
+    isUnavailable,
+    refresh,
+    applyPatient,
+    removePatient,
+  } = useAdminPatients();
   const [searchQuery, setSearchQuery] = useState("");
   const [filter, setFilter] = useState<PatientFilter>("ALL");
   const [page, setPage] = useState(1);
@@ -110,6 +119,32 @@ export default function PatientManagementTab() {
         cause instanceof Error
           ? cause.message
           : "Không thể đặt lại mật khẩu.",
+      );
+    } finally {
+      setBusyUserId(null);
+    }
+  }
+
+  async function handleDelete(patient: AuthResponseDto) {
+    if (!token) return;
+    const name = patient.fullName;
+    if (
+      !window.confirm(
+        `Bạn có chắc chắn muốn xóa bệnh nhân ${name} khỏi hệ thống?`,
+      )
+    ) {
+      return;
+    }
+    setBusyUserId(patient.userId);
+    try {
+      await deletePatientByAdminApi(patient.userId, token);
+      removePatient(patient.userId);
+      toast.success(`Đã xóa hồ sơ bệnh nhân ${name} thành công.`);
+    } catch (cause) {
+      toast.error(
+        cause instanceof Error
+          ? cause.message
+          : "Không thể xóa hồ sơ bệnh nhân.",
       );
     } finally {
       setBusyUserId(null);
@@ -370,7 +405,7 @@ export default function PatientManagementTab() {
                               onClick={() => setEditing(patient)}
                               disabled={busy}
                               className="flex h-7 w-7 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 disabled:opacity-40"
-                              title="Sửa hồ sơ & BHYT"
+                              title="Xem & Sửa hồ sơ chi tiết BHYT"
                             >
                               <Edit size={14} />
                             </button>
@@ -391,6 +426,20 @@ export default function PatientManagementTab() {
                               title="Đặt lại mật khẩu"
                             >
                               <KeyRound size={14} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void handleDelete(patient)}
+                              disabled={busy}
+                              className="flex h-7 w-7 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-40"
+                              title="Xóa bệnh nhân"
+                              aria-label={`Xóa bệnh nhân ${patient.fullName}`}
+                            >
+                              {busy ? (
+                                <Loader2 size={14} className="animate-spin" />
+                              ) : (
+                                <Trash2 size={14} />
+                              )}
                             </button>
                           </div>
                         </td>
@@ -470,9 +519,6 @@ export default function PatientManagementTab() {
           onSaved={(updated) => {
             applyPatient(updated);
             setEditing(null);
-            toast.success(
-              `Đã cập nhật hồ sơ & BHYT của ${updated.fullName}.`,
-            );
           }}
         />
       )}

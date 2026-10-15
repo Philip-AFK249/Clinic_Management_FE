@@ -14,7 +14,7 @@ import type { QueueStatus } from "../../services/intakeApi";
 import PatientNavbar from "./components/PatientNavbar";
 import PatientFooter from "./components/PatientFooter";
 import { PAST_ENCOUNTERS } from "./data/patientMockRecords";
-import { readActiveBooking } from "./data/activeBooking";
+import { readOwnedActiveBooking } from "./data/activeBooking";
 import { usePatientTicket } from "./hooks/usePatientTicket";
 
 type DashboardTab = "queue" | "records";
@@ -85,15 +85,37 @@ export default function PatientDashboardPage() {
   const [tab, setTab] = useState<DashboardTab>("queue");
   // Read once on mount: the route unmounts between visits, so a booking made on
   // /patient/booking is picked up the next time the dashboard is opened.
-  // `readActiveBooking` itself purges anything the backend could not have
-  // minted (e.g. the legacy mock `#APT-2026-8821`).
-  const [storedBooking] = useState(readActiveBooking);
-  // Live view of that booking: the stored record seeds the screen immediately,
-  // and the hook overwrites it with the backend's answer as soon as one lands.
-  const ticket = usePatientTicket(storedBooking);
+  // Only this account's own scoped cache is consulted, and it must pass an
+  // ownership check (printed name or contact phone) before it is shown -
+  // anything else is purged rather than rendered. The reader itself also sweeps
+  // the legacy shared keys an earlier build wrote (`clinic_active_booking`).
+  const [storedBooking] = useState(() =>
+    readOwnedActiveBooking(
+      user
+        ? { email: user.email, fullName: user.fullName, phone: user.phone }
+        : null,
+    ),
+  );
+  // Identifier for the intake service: phone first (what check-in records),
+  // then CCCD, then the BHYT number. AuthService's `users.id` must never be
+  // sent - it is a different database's primary key and does not map onto
+  // PatientIntakeService's `Patient.id`.
+  const identifier =
+    user?.phone?.trim() ||
+    user?.identityCardNumber?.trim() ||
+    user?.insuranceCode?.trim() ||
+    "";
+  // Live view of the ticket: the verified stored booking seeds the screen
+  // immediately, and the hook overwrites it with the backend's answer (found
+  // via the identifier, so it survives the cache being cleared on logout)
+  // as soon as one lands.
+  const ticket = usePatientTicket(storedBooking, identifier, user?.email ?? null);
   // A booking the backend rejects as unknown (400/404) is dropped by the hook;
   // from the page's point of view the patient simply has no appointment left.
-  const activeBooking = ticket.invalidTicket ? null : storedBooking;
+  // The backend's own answer also counts as a real appointment, even when the
+  // cache was lost - it was found by the signed-in patient's own identifier.
+  const ownedBooking = ticket.invalidTicket ? null : storedBooking;
+  const hasAppointment = ticket.detail !== null || ownedBooking !== null;
 
   function handleDownload(receipt: string) {
     toast.info(
@@ -105,17 +127,17 @@ export default function PatientDashboardPage() {
   // The stored booking renders on its own while the first poll is in flight;
   // once it answers, the backend's copy wins everywhere it has an opinion.
   const display = {
-    ticketCode: ticket.detail?.ticketNumber ?? activeBooking?.ticketCode ?? "",
-    patientName: ticket.detail?.patientFullName ?? activeBooking?.patientName ?? "",
-    department: ticket.detail?.departmentName ?? activeBooking?.department ?? "",
-    doctor: ticket.detail?.doctorName ?? activeBooking?.doctor ?? "",
-    room: ticket.detail?.roomNumber ?? activeBooking?.room ?? "",
+    ticketCode: ticket.detail?.ticketNumber ?? ownedBooking?.ticketCode ?? "",
+    patientName: ticket.detail?.patientFullName ?? ownedBooking?.patientName ?? "",
+    department: ticket.detail?.departmentName ?? ownedBooking?.department ?? "",
+    doctor: ticket.detail?.doctorName ?? ownedBooking?.doctor ?? "",
+    room: ticket.detail?.roomNumber ?? ownedBooking?.room ?? "",
     date: ticket.detail
       ? dateLabelFrom(ticket.detail.appointmentDate)
-      : activeBooking?.date ?? "",
+      : ownedBooking?.date ?? "",
     timeSlot: ticket.detail
       ? ticket.detail.slotStartTime.slice(0, 5)
-      : activeBooking?.timeSlot ?? "",
+      : ownedBooking?.timeSlot ?? "",
   };
   const statusBadge = STATUS_BADGES[ticket.status];
 
@@ -174,7 +196,7 @@ export default function PatientDashboardPage() {
         </div>
 
         {tab === "queue" ? (
-          activeBooking ? (
+          hasAppointment ? (
             <div className="mt-8 grid gap-5 lg:grid-cols-2">
               {/* Active appointment */}
               <section className="rounded-xl border border-slate-200/80 bg-white p-5 shadow-card">

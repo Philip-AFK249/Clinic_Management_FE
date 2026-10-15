@@ -657,6 +657,9 @@ export default function BookingPage() {
       const confirmed: ActiveAppointment = {
         ticketCode: response.ticketNumber,
         patientName: response.patientName || formData.fullName.trim().toUpperCase(),
+        // The account's contact number, so the dashboard can prove ownership
+        // of this cache entry even when the booking was made for a relative.
+        phone: payload.phone ?? "",
         department: response.departmentName || chosen?.department || departmentName,
         doctor: response.doctorName || chosen?.name || doctor.name,
         room: response.roomNumber || chosen?.room || doctor.roomNumber,
@@ -669,8 +672,9 @@ export default function BookingPage() {
         status: "WAITING",
       };
       // The dashboard reads this back: without it the patient would land on
-      // "Bạn chưa có lịch hẹn khám nào" right after booking.
-      writeActiveBooking(confirmed);
+      // "Bạn chưa có lịch hẹn khám nào" right after booking. Scoped to this
+      // account's email so no other session on this browser can ever see it.
+      writeActiveBooking(confirmed, user?.email);
       setTicket(confirmed);
       toast.success(
         response.message ||

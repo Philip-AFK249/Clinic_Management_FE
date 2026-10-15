@@ -73,12 +73,23 @@ export interface LoginRequestDto {
   password: string;
 }
 
-/** Patient self-registration. The backend always forces `role = PATIENT`. */
+/**
+ * Patient self-registration. The backend always forces `role = PATIENT`.
+ *
+ * `dateOfBirth` and `gender` are optional columns on `users`, collected by the
+ * registration form so a patient's profile is complete from the first login
+ * rather than having to be re-entered on /patient/profile. A jar that predates
+ * them simply ignores the extra JSON keys.
+ */
 export interface RegisterPatientRequestDto {
   fullName: string;
   email: string;
   phone: string;
   password: string;
+  /** `LocalDate`, serialised as `YYYY-MM-DD`. */
+  dateOfBirth?: string;
+  /** MALE / FEMALE / OTHER - the column is a free-form varchar. */
+  gender?: string;
 }
 
 /** Staff account creation. The backend assigns the password `password123`. */
@@ -404,6 +415,32 @@ export async function updatePatientByAdminApi(
       `/auth/admin/patients/${id}`,
       payload,
       { headers: { Authorization: `Bearer ${token}` }, signal },
+    );
+    return data;
+  } catch (error) {
+    if (axios.isCancel(error)) throw error;
+    throw toApiError(error);
+  }
+}
+
+/**
+ * `DELETE /auth/admin/patients/{id}` - permanently remove a PATIENT account and
+ * its BHYT / CCCD columns.
+ *
+ * Same deployment caveat as `getAllPatientsApi`: until the endpoint lands on the
+ * running jar it answers 404/403, and the caller must surface the failure
+ * instead of dropping the row optimistically.
+ */
+export async function deletePatientByAdminApi(
+  patientId: number,
+  token: string | undefined,
+): Promise<{ message: string }> {
+  try {
+    const { data } = await authApi.delete<{ message: string }>(
+      `/auth/admin/patients/${patientId}`,
+      {
+        ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}),
+      },
     );
     return data;
   } catch (error) {

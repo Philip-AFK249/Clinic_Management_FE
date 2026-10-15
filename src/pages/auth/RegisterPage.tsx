@@ -21,6 +21,25 @@ export default function RegisterPage() {
 
   const [errors, setErrors] = useState<Record<string, string>>({});
 
+  // Deterministic O(1) slice-based formatter: strip non-digits, cap at 11,
+  // then group as "0912 345 678". No loops, no recursive calls, no complex
+  // regex - just two length checks and three slices.
+  function handlePhoneChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const digits = e.target.value.replace(/\D/g, "").slice(0, 11);
+    let formatted = digits;
+    if (digits.length > 7) {
+      formatted = `${digits.slice(0, 4)} ${digits.slice(4, 7)} ${digits.slice(7)}`;
+    } else if (digits.length > 4) {
+      formatted = `${digits.slice(0, 4)} ${digits.slice(4)}`;
+    }
+    setPhone(formatted);
+    setErrors((p) => {
+      const n = { ...p };
+      delete n.phone;
+      return n;
+    });
+  }
+
   function validate(): boolean {
     const next: Record<string, string> = {};
 
@@ -55,7 +74,8 @@ export default function RegisterPage() {
       const user = await register({
         fullName,
         email,
-        phone,
+        // Submit sanitized digits only: the spaces are display-only grouping.
+        phone: phone.replace(/\s/g, ""),
         password,
         confirmPassword,
         role: "PATIENT",
@@ -146,7 +166,7 @@ export default function RegisterPage() {
               autoComplete="tel"
               placeholder="0912 345 678"
               value={phone}
-              onChange={(e) => { setPhone(e.target.value); setErrors((p) => { const n = { ...p }; delete n.phone; return n; }); }}
+              onChange={handlePhoneChange}
               className={fieldClass("phone")}
             />
           </div>

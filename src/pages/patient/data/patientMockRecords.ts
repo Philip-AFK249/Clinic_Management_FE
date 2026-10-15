@@ -148,6 +148,12 @@ export function triageSymptoms(symptoms: string): TriageSuggestion | null {
 export interface ActiveAppointment {
   ticketCode: string;
   patientName: string;
+  /**
+   * Contact number the check-in was made with, stamped so the dashboard can
+   * prove a cached ticket belongs to the signed-in account even when the
+   * booking was made under a relative's name.
+   */
+  phone?: string;
   department: string;
   doctor: string;
   room: string;

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  getActivePatientTicket,
+  getActivePatientTicketByIdentifier,
   getDoctorQueue,
   getTicketDetails,
   isNoActiveTicketError,
@@ -54,12 +54,15 @@ export interface PatientTicketState {
  *
  * Two lookups, in order of preference:
  *
- * 1. `GET /v1/queue/patient/{patientId}/active` - survives the browser losing
- *    the stored booking, and always reflects the newest active visit.
- * 2. `GET /v1/queue/tickets/{ticketNumber}` - for bookings stored before the
- *    backend stamped a `patientId`, and as the fallback when (1) says the
- *    patient has no active ticket: the stored number then reveals the final
- *    status (COMPLETED / CANCELLED) instead of blanking the screen.
+ * 1. `GET /v1/queue/patient/active?identifier=...` - addressed by the patient's
+ *    phone / CCCD / BHYT number rather than by AuthService's `users.id`, which
+ *    belongs to a different database and does not map onto the intake service's
+ *    `Patient.id`. Survives the browser losing the stored booking, and always
+ *    reflects the newest active visit.
+ * 2. `GET /v1/queue/tickets/{ticketNumber}` - for a stored booking whose owner
+ *    has already been verified, and as the fallback when (1) says the patient
+ *    has no active ticket: the stored number then reveals the final status
+ *    (COMPLETED / CANCELLED) instead of blanking the screen.
  *
  * Lifecycle rules:
  *
@@ -69,10 +72,17 @@ export interface PatientTicketState {
  *   not an error to keep retrying: the stored booking is purged, the poll
  *   stops, and the caller gets `invalidTicket` so the empty state can render
  *   without a single toast.
+ * - An empty identifier is skipped entirely, and a 400/404 on the identifier
+ *   lookup is read as "no active ticket" - both fall through to the stored
+ *   number (or to nothing), never to an error surface.
  * - Genuine offline/server faults keep the last known state and keep polling,
  *   because those usually recover on their own.
  */
-export function usePatientTicket(booking: ActiveAppointment | null): PatientTicketState {
+export function usePatientTicket(
+  booking: ActiveAppointment | null,
+  identifier: string,
+  ownerEmail: string | null,
+): PatientTicketState {
   const [detail, setDetail] = useState<QueueTicketDetailResponse | null>(null);
   const [queue, setQueue] = useState<QueueTicket[]>([]);
   const [isUnknownNumber, setIsUnknownNumber] = useState(false);
@@ -81,8 +91,8 @@ export function usePatientTicket(booking: ActiveAppointment | null): PatientTick
   const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
 
   const ticketCode = booking?.ticketCode ?? null;
-  const patientId = booking?.patientId ?? null;
   const doctorId = booking?.doctorId ?? null;
+  const trimmedIdentifier = identifier.trim();
   // Judged from the booking alone, before any network call: a mock number such
   // as `#APT-2026-8821` must never reach the backend at all. Derived rather
   // than stored so the purge can happen in an effect without a cascading
@@ -92,11 +102,13 @@ export function usePatientTicket(booking: ActiveAppointment | null): PatientTick
   useEffect(() => {
     if (malformed) {
       // External system: an effect may update it synchronously.
-      clearActiveBooking();
+      clearActiveBooking(ownerEmail);
       return undefined;
     }
-    if (!ticketCode) return undefined;
-    const code: string = ticketCode;
+    // Nothing to ask about: no verified stored ticket and no identifier to
+    // query the intake service with.
+    if (!ticketCode && !trimmedIdentifier) return undefined;
+    const code: string | null = ticketCode;
 
     const controller = new AbortController();
     const { signal } = controller;
@@ -114,7 +126,7 @@ export function usePatientTicket(booking: ActiveAppointment | null): PatientTick
     /** Drop a booking the backend has never heard of; no toast, no retry. */
     function purgeUnknownTicket() {
       stopPolling();
-      clearActiveBooking();
+      clearActiveBooking(ownerEmail);
       setIsUnknownNumber(true);
       setDetail(null);
       setQueue([]);
@@ -125,18 +137,21 @@ export function usePatientTicket(booking: ActiveAppointment | null): PatientTick
     async function load() {
       try {
         let next: QueueTicketDetailResponse | null = null;
-        if (patientId !== null) {
+        if (trimmedIdentifier) {
           try {
-            next = await getActivePatientTicket(patientId, signal);
+            next = await getActivePatientTicketByIdentifier(trimmedIdentifier, signal);
           } catch (cause) {
             if (signal.aborted) return;
-            // "No active ticket" is an ordinary answer (the visit finished),
-            // not a fault - read the final state off the stored number instead.
-            if (!isNoActiveTicketError(cause)) throw cause;
+            // "No such patient / no active ticket" (400) and a not-yet-deployed
+            // endpoint (404) are ordinary answers - fall through to the stored
+            // number rather than surfacing either as a fault.
+            if (!isNoActiveTicketError(cause) && !isUnknownTicketError(cause)) {
+              throw cause;
+            }
             next = null;
           }
         }
-        if (next === null) {
+        if (next === null && code !== null) {
           try {
             next = await getTicketDetails(code, signal);
           } catch (cause) {
@@ -149,6 +164,15 @@ export function usePatientTicket(booking: ActiveAppointment | null): PatientTick
           }
         }
         if (signal.aborted) return;
+        if (next === null) {
+          // Identifier answered "nothing active" and there is no stored number
+          // to fall back on: the patient simply has no appointment.
+          setDetail(null);
+          setQueue([]);
+          setLastUpdatedAt(new Date());
+          stopPolling();
+          return;
+        }
         setDetail(next);
         setIsUnknownNumber(false);
         setIsOffline(false);
@@ -186,7 +210,7 @@ export function usePatientTicket(booking: ActiveAppointment | null): PatientTick
       controller.abort();
       if (intervalId !== 0) window.clearInterval(intervalId);
     };
-  }, [ticketCode, patientId, doctorId, malformed]);
+  }, [ticketCode, trimmedIdentifier, doctorId, ownerEmail, malformed]);
 
   const status: QueueStatus = detail?.status ?? booking?.status ?? "WAITING";
   const isActive = ACTIVE_STATUSES.includes(status);

@@ -387,6 +387,38 @@ export async function getActivePatientTicket(
 }
 
 /**
+ * The same "most recent active ticket" lookup, addressed by patient identifier
+ * (phone, CCCD or BHYT number) instead of `Patient.id`.
+ *
+ * The patient portal must not pass AuthService's `users.id` here: that primary
+ * key belongs to a different database and does not correspond to
+ * `PatientIntakeService`'s `Patient.id`, so the id-based route answers 400 for
+ * a perfectly real patient. The identifier is matched against the intake
+ * record's own columns, which the check-in flow populates from the same values
+ * the AuthService session holds.
+ *
+ * A 400 ("no such patient / no active ticket") or 404 (endpoint not deployed)
+ * is an ordinary answer for the portal's polling loop - use
+ * `isNoActiveTicketError` / `isUnknownTicketError` to treat it as "no ticket"
+ * rather than as a fault.
+ */
+export async function getActivePatientTicketByIdentifier(
+  identifier: string,
+  signal?: AbortSignal,
+): Promise<QueueTicketDetailResponse> {
+  try {
+    const { data } = await intakeApi.get<QueueTicketDetailResponse>(
+      "/v1/queue/patient/active",
+      { params: { identifier }, signal },
+    );
+    return data;
+  } catch (error) {
+    if (axios.isCancel(error)) throw error;
+    throw toApiError(error);
+  }
+}
+
+/**
  * True when the active-ticket lookup said "this patient has no active ticket".
  *
  * The backend raises IllegalArgumentException (-> 400) for that case, so a

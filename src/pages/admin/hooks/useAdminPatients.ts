@@ -18,6 +18,8 @@ export interface AdminPatients {
    * re-read everything.
    */
   applyPatient: (patient: AuthResponseDto) => void;
+  /** Drop a deleted patient from the live list after a successful DELETE. */
+  removePatient: (patientId: number) => void;
 }
 
 /**
@@ -46,6 +48,10 @@ export function useAdminPatients(): AdminPatients {
         existing.userId === patient.userId ? { ...existing, ...patient } : existing,
       ),
     );
+  }, []);
+
+  const removePatient = useCallback((patientId: number) => {
+    setPatients((prev) => prev.filter((p) => p.userId !== patientId));
   }, []);
 
   useEffect(() => {
@@ -81,5 +87,6 @@ export function useAdminPatients(): AdminPatients {
     isUnavailable: error !== null && patients.length === 0,
     refresh,
     applyPatient,
+    removePatient,
   };
 }

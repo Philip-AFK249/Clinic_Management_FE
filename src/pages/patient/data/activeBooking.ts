@@ -9,15 +9,23 @@ import type { QueueStatus } from "../../../services/intakeApi";
  * BookingPage writes it on confirmation and PatientDashboardPage reads it on
  * mount: the dashboard must not invent an appointment for a patient who never
  * booked one, so "no stored booking" has to be a real, reachable state.
+ *
+ * The key is scoped to the owner's email (`patient_active_booking_<email>`)
+ * because a browser on localhost holds one localStorage for every account that
+ * ever signs in on it. An unscoped key lets a freshly created patient see the
+ * ticket someone else booked during earlier testing - and, after an admin
+ * deletes that other account, resurrects a ticket that belongs to nobody
+ * signed-in at all.
  */
-export const ACTIVE_BOOKING_STORAGE_KEY = "patient_active_booking";
+const ACTIVE_BOOKING_STORAGE_PREFIX = "patient_active_booking";
 
 /**
- * Keys an earlier build wrote to and then abandoned. Left in place they would
- * keep resurrecting a legacy mock ticket (`#APT-2026-8821`) that the intake
- * service rejects with a 400 on every poll, so both are swept on every read.
+ * Keys an earlier build wrote to and then abandoned - including the original
+ * unscoped booking key. Left in place they would keep resurrecting a legacy
+ * mock ticket (`#APT-2026-8821`) or leaking one patient's appointment into
+ * another's session, so all are swept on every read and clear.
  */
-const LEGACY_STORAGE_KEYS = ["clinic_active_booking"];
+const LEGACY_STORAGE_KEYS = ["clinic_active_booking", "patient_active_booking"];
 
 const QUEUE_STATUSES: readonly QueueStatus[] = [
   "WAITING",
@@ -27,6 +35,12 @@ const QUEUE_STATUSES: readonly QueueStatus[] = [
   "SKIPPED",
   "CANCELLED",
 ];
+
+/** The storage key for one account; empty email has no key at all. */
+function scopedKey(ownerEmail: string | null | undefined): string | null {
+  const email = ownerEmail?.trim().toLowerCase();
+  return email ? `${ACTIVE_BOOKING_STORAGE_PREFIX}_${email}` : null;
+}
 
 function isActiveAppointment(value: unknown): value is ActiveAppointment {
   if (!value || typeof value !== "object") return false;
@@ -55,6 +69,9 @@ function isActiveAppointment(value: unknown): value is ActiveAppointment {
   if (source.doctorId !== undefined && typeof source.doctorId !== "number") {
     return false;
   }
+  if (source.phone !== undefined && typeof source.phone !== "string") {
+    return false;
+  }
   if (
     source.status !== undefined &&
     (typeof source.status !== "string" ||
@@ -65,17 +82,73 @@ function isActiveAppointment(value: unknown): value is ActiveAppointment {
   return true;
 }
 
-/** The stored appointment, or `null` when the patient has not booked yet. */
-export function readActiveBooking(): ActiveAppointment | null {
+/** Fold a person's name for comparison: trim, collapse runs, case-fold. */
+function normalizeName(value: string | null | undefined): string {
+  return value?.trim().toLowerCase().replace(/\s+/g, " ") ?? "";
+}
+
+/** Fold a phone number: keep the digits, so "0912 345 678" == "0912345678". */
+function normalizePhone(value: string | null | undefined): string {
+  return value?.replace(/\D/g, "") ?? "";
+}
+
+/**
+ * Whether a cached ticket can be shown to the signed-in account.
+ *
+ * A match on either the printed name or the contact phone is enough: a booking
+ * made for a relative carries a different name but the account's own phone, and
+ * a booking made under the account's name may predate the phone being stored.
+ * Nothing to compare against (an old record with no phone, an account with no
+ * name) counts as a mismatch - the safe default is to show nothing rather than
+ * someone else's appointment.
+ */
+export function bookingMatchesUser(
+  booking: ActiveAppointment,
+  userFullName: string | null | undefined,
+  userPhone: string | null | undefined,
+): boolean {
+  const nameMatches =
+    normalizeName(userFullName).length > 0 &&
+    normalizeName(booking.patientName) === normalizeName(userFullName);
+  const bookingPhone = normalizePhone(booking.phone);
+  const phoneMatches =
+    bookingPhone.length > 0 &&
+    bookingPhone === normalizePhone(userPhone);
+  return nameMatches || phoneMatches;
+}
+
+/** The signed-in account, as the booking cache needs to know it. */
+export interface BookingCacheOwner {
+  email: string | null | undefined;
+  fullName: string | null | undefined;
+  phone: string | null | undefined;
+}
+
+/**
+ * The stored appointment for this account, or `null`.
+ *
+ * Reads only the caller's own scoped key - never another user's - and verifies
+ * the record against the account before handing it back. A ticket that fails
+ * the ownership check (a stale write from a previous build, or data left by a
+ * deleted account) is purged on the spot rather than shown.
+ */
+export function readOwnedActiveBooking(
+  owner: BookingCacheOwner | null,
+): ActiveAppointment | null {
   try {
     sweepLegacyKeys();
-    const raw = localStorage.getItem(ACTIVE_BOOKING_STORAGE_KEY);
+    if (!owner) return null;
+    const key = scopedKey(owner.email);
+    if (!key) return null;
+    const raw = localStorage.getItem(key);
     if (!raw) return null;
     const parsed: unknown = JSON.parse(raw);
-    if (isActiveAppointment(parsed)) return parsed;
-    // Corrupted, half-written, or a mock ticket: keep the dashboard from ever
-    // polling it again rather than leaving a landmine for the next mount.
-    clearActiveBooking();
+    if (isActiveAppointment(parsed) && bookingMatchesUser(parsed, owner.fullName, owner.phone)) {
+      return parsed;
+    }
+    // Corrupted, half-written, a mock ticket, or someone else's: keep the
+    // dashboard from ever polling it again rather than leaving a landmine.
+    localStorage.removeItem(key);
     return null;
   } catch {
     // Private-mode Safari and a corrupted entry both land here; "cannot tell"
@@ -84,18 +157,29 @@ export function readActiveBooking(): ActiveAppointment | null {
   }
 }
 
-export function writeActiveBooking(appointment: ActiveAppointment): void {
+export function writeActiveBooking(
+  appointment: ActiveAppointment,
+  ownerEmail: string | null | undefined,
+): void {
+  const key = scopedKey(ownerEmail);
+  if (!key) return;
   try {
-    localStorage.setItem(ACTIVE_BOOKING_STORAGE_KEY, JSON.stringify(appointment));
+    localStorage.setItem(key, JSON.stringify(appointment));
   } catch {
     // A full or blocked localStorage only costs the patient a re-entry after a
     // reload - the booking itself already succeeded.
   }
 }
 
-export function clearActiveBooking(): void {
+/**
+ * Drop the cached booking for one account (or, without an email, only the
+ * legacy keys). Called on logout so the next account that signs in on this
+ * browser starts from a clean slate.
+ */
+export function clearActiveBooking(ownerEmail?: string | null): void {
   try {
-    localStorage.removeItem(ACTIVE_BOOKING_STORAGE_KEY);
+    const key = scopedKey(ownerEmail);
+    if (key) localStorage.removeItem(key);
     sweepLegacyKeys();
   } catch {
     // Nothing to do - there is no fallback store left behind.

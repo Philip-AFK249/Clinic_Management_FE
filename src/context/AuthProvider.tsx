@@ -27,6 +27,7 @@ import {
 } from "../pages/doctor/data/doctorDirectory";
 import { PHARMACIST_DIRECTORY } from "../pages/pharmacy/data/pharmacyDirectory";
 import { NURSE_DIRECTORY } from "../pages/reception/data/nurseDirectory";
+import { clearActiveBooking } from "../pages/patient/data/activeBooking";
 
 function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
@@ -203,15 +204,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       // `role` is dropped because AuthService forces PATIENT on
-      // self-registration, `confirmPassword` has no server counterpart, and
-      // `RegisterPatientRequest` has no field for `dateOfBirth`/`gender` - the
-      // `users` table has no column for them, so they are collected by the form
-      // and dropped here rather than silently posted and ignored.
+      // self-registration, and `confirmPassword` has no server counterpart.
+      // `dateOfBirth` and `gender` ARE forwarded: they are columns on `users`,
+      // so the session handed back by `toUser` already carries them and
+      // /patient/profile renders them without a second round trip.
       const dto = await registerPatientApi({
         fullName: payload.fullName.trim(),
         email: payload.email.trim(),
         phone: payload.phone.trim(),
         password: payload.password,
+        dateOfBirth: payload.dateOfBirth || undefined,
+        gender: payload.gender || undefined,
       });
 
       return commit(toUser(dto));
@@ -220,9 +223,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const logout = useCallback(() => {
+    // Drop this account's cached appointment (and sweep the legacy shared
+    // keys) so the next account signed in on this browser never inherits it.
+    clearActiveBooking(user?.email);
     setUser(null);
     clearStoredSession();
-  }, []);
+  }, [user]);
 
   /**
    * Apply a self-service edit to the live session.
