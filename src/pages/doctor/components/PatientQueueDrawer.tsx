@@ -10,6 +10,7 @@ import {
 import { useState } from "react";
 import type { PatientRecord, TriageLevel } from "../data/doctorMockData";
 import type { QueueSource } from "../hooks/useDoctorQueue";
+import { dayOffsetIso, todayIso } from "../hooks/useDoctorQueue";
 
 interface PatientQueueDrawerProps {
   queue: PatientRecord[];
@@ -17,6 +18,12 @@ interface PatientQueueDrawerProps {
   source: QueueSource;
   isRefreshing: boolean;
   isCalling: boolean;
+  /** Day the list is scoped to, `YYYY-MM-DD` - drives the Hôm nay/Ngày mai pills. */
+  selectedDate: string;
+  /** True when the "from today onward" window is shown instead of one day. */
+  isUpcoming: boolean;
+  onSelectDate: (date: string) => void;
+  onToggleUpcoming: () => void;
   onCallNext: () => void;
   onSkip: (ticketNumber: string) => void;
   onRefresh: () => void;
@@ -40,17 +47,57 @@ const TRIAGE_STYLES: Record<
   },
 };
 
+/** `YYYY-MM-DD` as `dd/MM/yyyy` for the date caption beside the pills. */
+function isoToLabel(iso: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : iso;
+}
+
+/** One date-view switch: Hôm nay / Ngày mai / Sắp tới. */
+function DatePill({
+  label,
+  isActive,
+  onClick,
+}: {
+  label: string;
+  isActive: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={isActive}
+      className={`rounded-md border px-2 py-1 text-[11px] font-semibold transition-colors ${
+        isActive
+          ? "border-teal-600 bg-teal-600 text-white"
+          : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+      }`}
+    >
+      {label}
+    </button>
+  );
+}
+
 export default function PatientQueueDrawer({
   queue,
   activePatient,
   source,
   isRefreshing,
   isCalling,
+  selectedDate,
+  isUpcoming,
+  onSelectDate,
+  onToggleUpcoming,
   onCallNext,
   onSkip,
   onRefresh,
 }: PatientQueueDrawerProps) {
   const [collapsed, setCollapsed] = useState(false);
+  const today = todayIso();
+  const tomorrow = dayOffsetIso(1);
+  /** A future day is read-only for calling: nobody is in the building yet. */
+  const viewingFutureDay = !isUpcoming && selectedDate !== today;
 
   if (collapsed) {
     return (
@@ -128,12 +175,36 @@ export default function PatientQueueDrawer({
         </div>
       </div>
 
+      {/* Date navigation: a ticket booked for tomorrow only shows once
+          tomorrow (or the upcoming window) is selected. */}
+      <div className="flex items-center gap-1.5 border-b border-slate-200/80 px-3 py-2">
+        <DatePill
+          label="Hôm nay"
+          isActive={!isUpcoming && selectedDate === today}
+          onClick={() => onSelectDate(today)}
+        />
+        <DatePill
+          label="Ngày mai"
+          isActive={!isUpcoming && selectedDate === tomorrow}
+          onClick={() => onSelectDate(tomorrow)}
+        />
+        <DatePill label="Sắp tới" isActive={isUpcoming} onClick={onToggleUpcoming} />
+        <span className="ml-auto text-[11px] font-semibold text-slate-500">
+          {isUpcoming ? "Từ hôm nay trở đi" : isoToLabel(selectedDate)}
+        </span>
+      </div>
+
       {/* Call next action */}
       <div className="border-b border-slate-200/80 p-3">
         <button
           type="button"
           onClick={onCallNext}
-          disabled={Boolean(activePatient) || isCalling}
+          disabled={Boolean(activePatient) || isCalling || viewingFutureDay}
+          title={
+            viewingFutureDay
+              ? "Chỉ gọi bệnh nhân trong ngày hôm nay - lịch mai chưa đến ca."
+              : undefined
+          }
           className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-teal-600 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-teal-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500"
         >
           {isCalling ? (

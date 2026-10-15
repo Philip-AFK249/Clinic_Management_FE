@@ -484,6 +484,28 @@ export async function getDoctorQueue(
 }
 
 /**
+ * Every waiting ticket for one doctor from today onward - the window a
+ * per-date `getDoctorQueue` misses when a ticket was pre-booked for tomorrow
+ * while the request is scoped to today (the backend anchors this one at
+ * `LocalDate.now()`, so it takes no date param).
+ */
+export async function getDoctorUpcomingQueue(
+  doctorId: number,
+  signal?: AbortSignal,
+): Promise<QueueTicket[]> {
+  try {
+    const { data } = await intakeApi.get<QueueTicket[]>(
+      `/v1/queue/doctor/${doctorId}/upcoming`,
+      { signal },
+    );
+    return data;
+  } catch (error) {
+    if (axios.isCancel(error)) throw error;
+    throw toApiError(error);
+  }
+}
+
+/**
  * Promote the head of the waiting list to CALLED. The backend raises a 500
  * (not a 404) when nobody is waiting, so callers should surface the message.
  */

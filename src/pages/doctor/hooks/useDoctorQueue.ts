@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import {
   callNextPatient,
   getDoctorQueue,
+  getDoctorUpcomingQueue,
   updateTicketStatus,
 } from "../../../services/intakeApi";
 import { IntakeApiError } from "../../../services/intakeApi";
@@ -15,6 +16,36 @@ import { ticketToPatientRecord } from "../data/ticketMapper";
 const POLL_INTERVAL_MS = 8_000;
 
 export type QueueSource = "live" | "mock";
+
+/**
+ * What the queue list is scoped to.
+ *
+ * - `date`: one day via `GET /queue/doctor/{id}?date=YYYY-MM-DD` (defaults to
+ *   today), so tickets booked for tomorrow appear as soon as the doctor
+ *   switches the date selector to tomorrow.
+ * - `upcoming`: `GET /queue/doctor/{id}/upcoming` - every waiting ticket from
+ *   today onward, so a pre-booked tomorrow ticket is never missed.
+ */
+export type DoctorQueueView = "date" | "upcoming";
+
+/**
+ * `YYYY-MM-DD` in the browser's local offset, shifted by `dayOffset` days
+ * (negative = past). The offset correction mirrors BookingPage's `todayIso`:
+ * `toISOString()` alone reports UTC, which reads as "yesterday" during the
+ * first hours of the day in Asia/Ho_Chi_Minh.
+ */
+export function dayOffsetIso(dayOffset = 0): string {
+  const date = new Date();
+  date.setDate(date.getDate() + dayOffset);
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
+    .toISOString()
+    .slice(0, 10);
+}
+
+/** Today in local time - the date the queue defaults to. */
+export function todayIso(): string {
+  return dayOffsetIso(0);
+}
 
 /**
  * The doctor workspace is a long-lived single-page screen. Once the tab is
@@ -35,10 +66,21 @@ function sortByPriority(queue: PatientRecord[]): PatientRecord[] {
  * `doctorIdOverride` exists for tests and for screens that deliberately pin a
  * roster row; the EHR itself always follows the signed-in account so the queue
  * can never be scoped to a different doctor than the one in the header.
+ *
+ * `targetDate` (`YYYY-MM-DD`) picks which day's queue is polled; it defaults
+ * to today and re-fetches whenever it changes, which is what makes a ticket
+ * booked for tomorrow (e.g. #C-001 on 16/10/2026) appear the moment the
+ * doctor selects tomorrow. `view` switches between that per-day fetch and the
+ * `upcoming` window described on `DoctorQueueView`.
  */
-export function useDoctorQueue(doctorIdOverride?: number) {
+export function useDoctorQueue(
+  doctorIdOverride?: number,
+  targetDate?: string,
+  view: DoctorQueueView = "date",
+) {
   const { doctorId: sessionDoctorId } = useDoctorSession();
   const doctorId = doctorIdOverride ?? sessionDoctorId;
+  const date = targetDate ?? todayIso();
 
   const [activePatient, setActivePatient] = useState<PatientRecord | null>(
     ACTIVE_PATIENT,
@@ -85,11 +127,12 @@ export function useDoctorQueue(doctorIdOverride?: number) {
     async function load(showSpinner: boolean) {
       if (showSpinner) setIsRefreshing(true);
       try {
-        const tickets: QueueTicket[] = await getDoctorQueue(
-          doctorId,
-          undefined,
-          controller.signal,
-        );
+        // Per-day fetch carries the selected date so tomorrow's bookings show
+        // under "Ngày mai"; the upcoming window is dateless on the backend.
+        const tickets: QueueTicket[] =
+          view === "upcoming"
+            ? await getDoctorUpcomingQueue(doctorId, controller.signal)
+            : await getDoctorQueue(doctorId, date, controller.signal);
         if (cancelled) return;
 
         const records = tickets.map(ticketToPatientRecord);
@@ -144,13 +187,18 @@ export function useDoctorQueue(doctorIdOverride?: number) {
       controller.abort();
       window.clearInterval(interval);
     };
-  }, [doctorId, isTabVisible, reloadToken]);
+  }, [date, doctorId, isTabVisible, reloadToken, view]);
 
   /** Promote the head of the waiting list into the consultation room. */
   const callNext = useCallback(async () => {
     setIsCalling(true);
     try {
-      const ticket = await callNextPatient(doctorId);
+      // The upcoming window is anchored at today on the backend, so only the
+      // per-day view pins an explicit `date` onto the call.
+      const ticket = await callNextPatient(
+        doctorId,
+        view === "date" ? date : undefined,
+      );
       const record = ticketToPatientRecord(ticket);
       activeTicketRef.current = record.ticketNumber;
       setActivePatient(record);
@@ -166,7 +214,7 @@ export function useDoctorQueue(doctorIdOverride?: number) {
     } finally {
       setIsCalling(false);
     }
-  }, [doctorId, refresh]);
+  }, [date, doctorId, refresh, view]);
 
   const skipPatient = useCallback(
     async (ticketNumber: string) => {

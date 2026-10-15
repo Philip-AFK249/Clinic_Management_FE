@@ -79,7 +79,7 @@ interface SeededDoctor extends Omit<DoctorProfile, "departmentName"> {
   departmentId: number;
 }
 
-/** Mirrors the eight `doctors` seed rows, in `doctors.id` order. */
+/** Mirrors the nine `doctors` seed rows, in `doctors.id` order. */
 const SEEDED_DOCTORS: SeededDoctor[] = [
   {
     id: 1,
@@ -151,6 +151,15 @@ const SEEDED_DOCTORS: SeededDoctor[] = [
     credential: "Thạc sĩ Y khoa",
     email: "duc.vu@smartclinic.vn",
     roomNumber: "Phòng 206",
+    departmentId: 3,
+  },
+  {
+    id: 9,
+    fullName: "BS. Mai Thu Hương",
+    title: "BS",
+    credential: "Bác sĩ",
+    email: "huong.mai@smartclinic.vn",
+    roomNumber: "Phòng 205",
     departmentId: 3,
   },
 ];

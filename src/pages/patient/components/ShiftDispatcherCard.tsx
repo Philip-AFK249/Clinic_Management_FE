@@ -21,7 +21,7 @@ import type {
   VoiceScheduleTriageResponse,
 } from "../../../services/voiceTriageApi";
 import type { TimeSlotResponse } from "../../../services/intakeApi";
-import { SESSION_SLOT_TIMES, isSlotPast } from "../data/bookingSlots";
+import { getInitialDate, SESSION_SLOT_TIMES, isSlotPast } from "../data/bookingSlots";
 import { SlotChip } from "./BookingSlotChips";
 
 /** A concrete bookable pick: which half of the day, which doctor, which hour. */
@@ -258,6 +258,9 @@ export default function ShiftDispatcherCard({
             id="triage-target-date"
             type="date"
             value={targetDate}
+            // Today once the clinic closes is an already-expired choice, so
+            // the floor rolls to tomorrow with it (>= 17:00).
+            min={getInitialDate()}
             disabled={isRefreshing}
             aria-busy={isRefreshing}
             onChange={(event) => onTargetDateChange(event.target.value)}

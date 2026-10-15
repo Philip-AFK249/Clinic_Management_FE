@@ -1,5 +1,12 @@
 import { useState } from "react";
-import { ArrowRight, RefreshCw, ShieldCheck, Sparkles, UserRound } from "lucide-react";
+import {
+  ArrowRight,
+  CalendarClock,
+  RefreshCw,
+  ShieldCheck,
+  Sparkles,
+  UserRound,
+} from "lucide-react";
 import VoiceInputCard from "./VoiceInputCard";
 import QuickSymptomChips from "./QuickSymptomChips";
 import BhyTOcrUpload from "./BhyTOcrUpload";
@@ -71,6 +78,11 @@ interface SymptomsStepProps {
   triageDate?: string;
   onTriageDateChange?: (date: string) => void;
   isRefreshingSchedule?: boolean;
+  /**
+   * The booking page opened at/after the 17:00 closing time, so the date
+   * started on tomorrow. Drives the auto-shift banner below.
+   */
+  afterHours?: boolean;
 }
 
 export default function SymptomsStep({
@@ -98,6 +110,7 @@ export default function SymptomsStep({
   triageDate = "",
   onTriageDateChange,
   isRefreshingSchedule = false,
+  afterHours = false,
 }: SymptomsStepProps) {
   const [triageAck, setTriageAck] = useState(false);
 
@@ -211,6 +224,25 @@ export default function SymptomsStep({
         </p>
         <QuickSymptomChips onSelect={handleChipSelect} />
       </div>
+
+      {/* After the 17:00 closing time (or when the rota itself points at the
+          next day), the whole form is already scoped to tomorrow - say so
+          rather than let the date jump look like a misread. */}
+      {(afterHours || voiceTriage?.recommended_shift === "NEXT_DAY") && (
+        <p
+          role="status"
+          className="flex items-start gap-2 rounded-xl border border-clinical-200 bg-clinical-50 p-4 text-sm font-medium leading-relaxed text-clinical-800"
+        >
+          <CalendarClock
+            className="mt-0.5 h-4 w-4 shrink-0 text-clinical-600"
+            aria-hidden="true"
+          />
+          <span>
+            Đã qua 17:00 (hết ca làm việc hôm nay). Hệ thống đã tự động chọn
+            lịch khám cho ngày mai.
+          </span>
+        </p>
+      )}
 
       {/* Exactly one of these two renders; see `suggestion` above. */}
       {voiceTriage ? (

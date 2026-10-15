@@ -28,6 +28,7 @@ import {
 import { triageSymptoms } from "./data/patientMockRecords";
 import { hospitalCodeFrom } from "./data/patientProfile";
 import { writeActiveBooking } from "./data/activeBooking";
+import { dayOffsetIso, getInitialDate } from "./data/bookingSlots";
 import {
   sendVoiceScheduleTriage,
   sessionScheduleFor,
@@ -114,14 +115,6 @@ async function syncScannedCardToProfile(
 }
 
 const STEP_LABELS = ["Triệu chứng & Chọn lịch", "Xác nhận"];
-
-/** Today in the local offset, as the `target_date` query param wants it. */
-function todayIso(): string {
-  const now = new Date();
-  return new Date(now.getTime() - now.getTimezoneOffset() * 60_000)
-    .toISOString()
-    .slice(0, 10);
-}
 
 /** `YYYY-MM-DD` as the `dd/MM/yyyy` the ticket prints. */
 function dateLabelFrom(iso: string): string {
@@ -213,7 +206,22 @@ export default function BookingPage() {
   const [isAnalysing, setIsAnalysing] = useState(false);
   const [isRefreshingSchedule, setIsRefreshingSchedule] = useState(false);
   const [scheduleUnavailable, setScheduleUnavailable] = useState(false);
-  const [triageDate, setTriageDate] = useState(todayIso);
+  /**
+   * The day the rota/slots are queried for.
+   *
+   * `getInitialDate` rolls to tomorrow once the clinic has closed (>= 17:00),
+   * so from the very first render the slot grid loads tomorrow's hours rather
+   * than today's already-expired ones - the same roll the gateway applies
+   * server-side to `target_date`.
+   */
+  const [triageDate, setTriageDate] = useState(getInitialDate);
+  /**
+   * Whether the page opened after the 17:00 closing time.
+   *
+   * Read once on mount (the banner and the date jump describe *how the form
+   * started*, not a clock that keeps ticking), and constant for this visit.
+   */
+  const [afterHours] = useState(() => new Date().getHours() >= 17);
   const [shiftSelection, setShiftSelection] = useState<ShiftSelection | null>(
     null,
   );
@@ -370,7 +378,7 @@ export default function BookingPage() {
     setScheduleUnavailable(false);
     try {
       const result = await sendVoiceScheduleTriage(clip, triageDate);
-      applyVoiceTriage(result);
+      applyVoiceTriage(result, clip);
     } catch (error) {
       handleVoiceTriageFailure(error);
     } finally {
@@ -387,8 +395,16 @@ export default function BookingPage() {
    * patient is *not* advanced either - an LLM picking a consultant for them is
    * a suggestion, and the whole point of the dispatcher being visible first is
    * that they get to look at it.
+   *
+   * `clip` is the recording this verdict came from, kept for the NEXT_DAY hop
+   * below: the rota that verdict answers belongs to the queried day, so once
+   * the date moves to tomorrow the same clip has to be re-queried for that day
+   * (the gateway caches nothing, exactly as in `requerySchedule`).
    */
-  function applyVoiceTriage(result: VoiceScheduleTriageResponse) {
+  function applyVoiceTriage(
+    result: VoiceScheduleTriageResponse,
+    clip?: Blob,
+  ) {
     setVoiceTriage(result);
     const transcript = result.transcription.trim();
     if (transcript) {
@@ -403,6 +419,18 @@ export default function BookingPage() {
     // Any previous pick belonged to an older rota (a re-record, another day).
     setShiftSelection(null);
     setTimeSlot(null);
+
+    // The queried day's rota came back full: jump the booking date to tomorrow
+    // (which flips the slot grid there too) and re-query the clip against that
+    // day, so the sessions on screen answer the date shown above them. One hop
+    // only - a requery result is adopted directly and never re-enters here.
+    if (result.recommended_shift === "NEXT_DAY") {
+      const tomorrow = dayOffsetIso(1);
+      if (triageDate < tomorrow) {
+        setTriageDate(tomorrow);
+        if (clip) void requerySchedule(tomorrow, clip);
+      }
+    }
   }
 
   /**
@@ -472,13 +500,16 @@ export default function BookingPage() {
    *
    * The clip has to be sent again - the gateway caches nothing by patient, so
    * there is no cheaper way to ask "what about tomorrow?" while keeping the
-   * transcription.
+   * transcription. `clipOverride` serves the NEXT_DAY hop inside
+   * `applyVoiceTriage`, where the recording is in hand but the `voiceClip`
+   * state has not committed yet.
    */
-  async function requerySchedule(date: string) {
-    if (!voiceClip) return;
+  async function requerySchedule(date: string, clipOverride?: Blob) {
+    const clip = clipOverride ?? voiceClip;
+    if (!clip) return;
     setIsRefreshingSchedule(true);
     try {
-      const result = await sendVoiceScheduleTriage(voiceClip, date);
+      const result = await sendVoiceScheduleTriage(clip, date);
       setVoiceTriage(result);
       setScheduleUnavailable(result.schedule_connected === false);
     } catch (error) {
@@ -557,7 +588,7 @@ export default function BookingPage() {
     setSelectedDepartmentId(null);
     setTriageSourceText("");
     setScheduleUnavailable(false);
-    setTriageDate(todayIso());
+    setTriageDate(getInitialDate());
   }
 
   function validateStep(): boolean {
@@ -788,6 +819,7 @@ export default function BookingPage() {
                   triageDate={triageDate}
                   onTriageDateChange={handleTriageDateChange}
                   isRefreshingSchedule={isRefreshingSchedule}
+                  afterHours={afterHours}
                 />
               )}
 

@@ -9,7 +9,7 @@ import PatientHistoryModal from "./components/PatientHistoryModal";
 import WorkspaceSplitView from "./components/WorkspaceSplitView";
 import LiveTranscriptPanel from "./components/LiveTranscriptPanel";
 import SoapNoteEditor from "./components/SoapNoteEditor";
-import { useDoctorQueue } from "./hooks/useDoctorQueue";
+import { useDoctorQueue, todayIso } from "./hooks/useDoctorQueue";
 import { useAmbientConsultation } from "./hooks/useAmbientConsultation";
 import { useDoctorSession } from "./hooks/useDoctorSession";
 import { toDiagnoses, toPrescriptionItems } from "./data/rxMapper";
@@ -44,8 +44,21 @@ export default function DoctorEHRPage() {
   );
   const [isStartingEncounter, setIsStartingEncounter] = useState(false);
   const [isSubmittingEncounter, setIsSubmittingEncounter] = useState(false);
+  /**
+   * Which slice of the queue the drawer is looking at.
+   *
+   * The date feeds the hook directly, so switching to "Ngày mai" re-polls
+   * `?date=tomorrow` and a ticket booked for tomorrow lands in the list
+   * immediately; "Sắp tới" swaps to the `/upcoming` window instead.
+   */
+  const [selectedDate, setSelectedDate] = useState(() => todayIso());
+  const [isUpcomingView, setIsUpcomingView] = useState(false);
 
-  const queue = useDoctorQueue();
+  const queue = useDoctorQueue(
+    undefined,
+    selectedDate,
+    isUpcomingView ? "upcoming" : "date",
+  );
   const session = useDoctorSession();
   const {
     status, elapsedSeconds, waveform, revealedLines, soapDraft, setSoapDraft,
@@ -222,6 +235,13 @@ export default function DoctorEHRPage() {
           source={queue.source}
           isRefreshing={queue.isRefreshing}
           isCalling={queue.isCalling}
+          selectedDate={selectedDate}
+          isUpcoming={isUpcomingView}
+          onSelectDate={(date) => {
+            setIsUpcomingView(false);
+            setSelectedDate(date);
+          }}
+          onToggleUpcoming={() => setIsUpcomingView((prev) => !prev)}
           onCallNext={() => void queue.callNext()}
           onSkip={(ticketNumber) => void queue.skipPatient(ticketNumber)}
           onRefresh={queue.refresh}
