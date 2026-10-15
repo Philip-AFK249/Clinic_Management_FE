@@ -11,6 +11,7 @@ import {
   Loader2,
   Save,
   CloudOff,
+  Layers,
 } from "lucide-react";
 import {
   getAdminModelsApi,
@@ -29,6 +30,7 @@ import type {
 } from "../../../services/aiGatewayAdminApi";
 import { DOC_TYPE_LABELS } from "../data/adminMockData";
 import AddKnowledgeDocModal from "./Modals/AddKnowledgeDocModal";
+import ChunkInspectorModal from "./Modals/ChunkInspectorModal";
 
 interface AiGatewayTabProps {
   documents: RealKnowledgeDoc[];
@@ -142,6 +144,7 @@ export default function AiGatewayTab({
   onRunIngest,
 }: AiGatewayTabProps) {
   const [showAddModal, setShowAddModal] = useState(false);
+  const [inspectingDoc, setInspectingDoc] = useState<RealKnowledgeDoc | null>(null);
 
   // --- Runtime model configuration ------------------------------------------
   const [modelsConfig, setModelsConfig] = useState<AdminModelsResponse | null>(null);
@@ -157,12 +160,22 @@ export default function AiGatewayTab({
   const [isLoadingLogs, setIsLoadingLogs] = useState(true);
   const [logsError, setLogsError] = useState("");
 
-  /** Adopt a fresh models payload and reset the three selections to it. */
+  /**
+   * Adopt a fresh models payload and reset the three selections to it.
+   *
+   * The gateway has shipped both `active_models` and the shorter `active`
+   * key across builds, and reading a missing one crashed the whole tab with
+   * `Cannot read properties of undefined (reading 'llm_model')` - so the
+   * active block is resolved through its fallback before anything is read.
+   */
   const applyModels = useCallback((response: AdminModelsResponse) => {
     setModelsConfig(response);
-    setSelectedLlm(response.active_models.llm_model);
-    setSelectedStt(response.active_models.stt_model);
-    setSelectedVlm(response.active_models.vlm_model);
+    const active = response.active_models ?? response.active;
+    if (active) {
+      setSelectedLlm(active.llm_model);
+      setSelectedStt(active.stt_model);
+      setSelectedVlm(active.vlm_model);
+    }
     setModelsError("");
   }, []);
 
@@ -241,9 +254,30 @@ export default function AiGatewayTab({
     }
   }
 
-  const active = modelsConfig?.active_models;
-  const options = modelsConfig?.available_options;
-  const infra = modelsConfig?.infrastructure_status;
+  // Resolve the three optional blocks through their fallback aliases so a
+  // gateway build that only ships `active`/`available`/`infrastructure` still
+  // renders - and a payload missing every alias degrades to empty values
+  // rather than throwing.
+  const active = modelsConfig?.active_models ?? modelsConfig?.active;
+  const options = modelsConfig?.available_options ?? {
+    llm_models: (modelsConfig?.available?.llm_models ?? []).map((m) => ({
+      id: m,
+      name: m,
+    })),
+    stt_models: (modelsConfig?.available?.stt_models ?? []).map((m) => ({
+      id: m,
+      name: m,
+    })),
+    vlm_models: (modelsConfig?.available?.vlm_models ?? []).map((m) => ({
+      id: m,
+      name: m,
+    })),
+  };
+  const infra = modelsConfig?.infrastructure_status ?? {
+    ai_gateway: modelsConfig?.infrastructure?.ai_gateway?.status ?? "",
+    pgvector: modelsConfig?.infrastructure?.pgvector?.status ?? "",
+    embedding_device: modelsConfig?.infrastructure?.embedding_device?.status ?? "",
+  };
   const modelsDirty =
     active !== undefined &&
     (selectedLlm !== active.llm_model ||
@@ -335,20 +369,31 @@ export default function AiGatewayTab({
                       </span>
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => void handleDelete(doc)}
-                    disabled={deletingDocId === doc.id}
-                    className="flex h-7 w-7 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-60"
-                    title="Xóa tài liệu"
-                    aria-label={`Xóa tài liệu ${doc.title}`}
-                  >
-                    {deletingDocId === doc.id ? (
-                      <Loader2 size={14} className="animate-spin" aria-hidden="true" />
-                    ) : (
-                      <Trash2 size={14} />
-                    )}
-                  </button>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setInspectingDoc(doc)}
+                      className="flex h-7 w-7 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+                      title="Kiểm tra chunks & entities trong pgvector"
+                      aria-label={`Kiểm tra chunks của tài liệu ${doc.title}`}
+                    >
+                      <Layers size={14} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleDelete(doc)}
+                      disabled={deletingDocId === doc.id}
+                      className="flex h-7 w-7 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-60"
+                      title="Xóa tài liệu"
+                      aria-label={`Xóa tài liệu ${doc.title}`}
+                    >
+                      {deletingDocId === doc.id ? (
+                        <Loader2 size={14} className="animate-spin" aria-hidden="true" />
+                      ) : (
+                        <Trash2 size={14} />
+                      )}
+                    </button>
+                  </div>
                 </div>
               ))
             )}
@@ -393,7 +438,7 @@ export default function AiGatewayTab({
               <ModelSelect
                 label="Clinical LLM (Triage / SOAP)"
                 name="llm"
-                options={options?.llm_models ?? []}
+                options={options.llm_models}
                 value={selectedLlm}
                 onChange={setSelectedLlm}
                 isLoading={isLoadingModels}
@@ -401,7 +446,7 @@ export default function AiGatewayTab({
               <ModelSelect
                 label="Whisper STT"
                 name="stt"
-                options={options?.stt_models ?? []}
+                options={options.stt_models}
                 value={selectedStt}
                 onChange={setSelectedStt}
                 isLoading={isLoadingModels}
@@ -409,7 +454,7 @@ export default function AiGatewayTab({
               <ModelSelect
                 label="BHYT VLM"
                 name="vlm"
-                options={options?.vlm_models ?? []}
+                options={options.vlm_models}
                 value={selectedVlm}
                 onChange={setSelectedVlm}
                 isLoading={isLoadingModels}
@@ -449,9 +494,9 @@ export default function AiGatewayTab({
                 <div className="space-y-1.5">
                   {(
                     [
-                      ["AI Gateway (FastAPI)", infra?.ai_gateway ?? "—"],
-                      ["PostgreSQL pgvector", infra?.pgvector ?? "—"],
-                      ["Embedding engine", infra?.embedding_device ?? "—"],
+                      ["AI Gateway (FastAPI)", infra.ai_gateway || "—"],
+                      ["PostgreSQL pgvector", infra.pgvector || "—"],
+                      ["Embedding engine", infra.embedding_device || "—"],
                     ] as [string, string][]
                   ).map(([label, value]) => (
                     <p key={label} className="flex items-center justify-between gap-2">
@@ -567,6 +612,14 @@ export default function AiGatewayTab({
         <AddKnowledgeDocModal
           onClose={() => setShowAddModal(false)}
           onRunIngest={onRunIngest}
+        />
+      )}
+
+      {inspectingDoc && (
+        <ChunkInspectorModal
+          docId={inspectingDoc.id}
+          docTitle={inspectingDoc.title}
+          onClose={() => setInspectingDoc(null)}
         />
       )}
     </div>

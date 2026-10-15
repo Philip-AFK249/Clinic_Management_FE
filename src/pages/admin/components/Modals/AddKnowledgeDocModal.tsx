@@ -1,12 +1,24 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { X, FileUp, FileText, Loader2, FolderOpen } from "lucide-react";
+import {
+  X,
+  FileUp,
+  FileText,
+  Loader2,
+  FolderOpen,
+  UploadCloud,
+  Terminal,
+  CheckCircle2,
+  AlertTriangle,
+} from "lucide-react";
 import {
   getRawPipelineFilesApi,
+  uploadRawDocApi,
   gatewayErrorDetail,
 } from "../../../../services/aiGatewayAdminApi";
 import type {
   ParserType,
+  PipelineRunResult,
   RawPipelineFile,
   TargetAudienceOverride,
 } from "../../../../services/aiGatewayAdminApi";
@@ -17,13 +29,14 @@ interface AddKnowledgeDocModalProps {
   /**
    * Run the real ingestion pipeline for one `raw_docs` file. The parent's
    * knowledge-base hook owns the call (and its loading flag), so this modal
-   * only collects the parameters and reports the outcome.
+   * only collects the parameters and reports the outcome. The full result is
+   * kept on screen so its `logs` can feed the terminal window.
    */
   onRunIngest: (
     filename: string,
     parserType: ParserType,
     options?: ReindexOptions,
-  ) => Promise<{ chunks_created: number; message: string; specialty: string }>;
+  ) => Promise<PipelineRunResult>;
 }
 
 const PARSER_OPTIONS: {
@@ -62,6 +75,11 @@ export default function AddKnowledgeDocModal({
   const [audience, setAudience] = useState<TargetAudienceOverride>("auto");
   const [forceReparse, setForceReparse] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  /** Finished pipeline run whose logs/badges the terminal is showing. */
+  const [pipelineResult, setPipelineResult] = useState<PipelineRunResult | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // The gateway lists what actually sits in data/raw_docs/ - the modal can
   // only ingest files it can see, so this replaces the old free-text upload
@@ -84,6 +102,37 @@ export default function AddKnowledgeDocModal({
     return () => controller.abort();
   }, []);
 
+  /**
+   * POST one local file into the gateway's data/raw_docs/, then re-list so
+   * the fresh upload lands in the selection list already highlighted.
+   * Only ever called from event handlers, never from an effect.
+   */
+  const handleUpload = useCallback(async (file: File) => {
+    setIsUploading(true);
+    try {
+      const uploaded = await uploadRawDocApi(file);
+      const storedName = uploaded.filename || file.name;
+      toast.success(
+        uploaded.message ??
+          `Đã tải lên "${storedName}" vào data/raw_docs/.`,
+      );
+      try {
+        const files = await getRawPipelineFilesApi();
+        setRawFiles(files);
+        setFilesError("");
+      } catch (cause: unknown) {
+        setFilesError(gatewayErrorDetail(cause));
+      }
+      setSelectedFile(storedName);
+      setManualFilename("");
+      setPipelineResult(null);
+    } catch (cause: unknown) {
+      toast.error(gatewayErrorDetail(cause), { duration: 6000 });
+    } finally {
+      setIsUploading(false);
+    }
+  }, []);
+
   // The effective filename: an explicit manual entry wins over the picked row,
   // so an admin can still ingest a file dropped in after the list loaded.
   const filename = manualFilename.trim() || selectedFile;
@@ -96,17 +145,19 @@ export default function AddKnowledgeDocModal({
     }
 
     setIsSubmitting(true);
+    setPipelineResult(null);
     try {
       const result = await onRunIngest(filename, parserType, {
         forceReparse,
         targetAudienceOverride: audience,
       });
+      // Keep the modal open: the terminal window below shows the returned
+      // logs and the chunk/entity/rows summary instead of a bare toast.
+      setPipelineResult(result);
       toast.success(
-        `Đã nhúng "${result.specialty || filename}" thành ${result.chunks_created} chunks vào pgvector.` +
-          (result.message ? ` ${result.message}` : ""),
+        `Đã nhúng "${result.specialty || filename}" thành ${result.chunks_created} chunks vào pgvector.`,
         { duration: 5000 },
       );
-      onClose();
     } catch (cause) {
       toast.error(gatewayErrorDetail(cause), { duration: 6000 });
     } finally {
@@ -121,7 +172,7 @@ export default function AddKnowledgeDocModal({
       aria-modal="true"
       aria-label="Tải lên tài liệu tri thức"
     >
-      <div className="w-full max-w-lg rounded-xl border border-slate-200/80 bg-white shadow-elevated">
+      <div className="flex max-h-[90vh] w-full max-w-2xl flex-col rounded-xl border border-slate-200/80 bg-white shadow-elevated">
         <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
           <div className="flex items-center gap-2">
             <FileUp size={18} className="text-slate-700" aria-hidden="true" />
@@ -139,7 +190,61 @@ export default function AddKnowledgeDocModal({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4 px-5 py-4">
+        <form
+          onSubmit={handleSubmit}
+          className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4"
+        >
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-slate-700">
+              Tải tệp lên data/raw_docs/
+            </label>
+            <div
+              onDragOver={(e) => {
+                e.preventDefault();
+                setIsDragging(true);
+              }}
+              onDragLeave={() => setIsDragging(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setIsDragging(false);
+                const file = e.dataTransfer.files?.[0];
+                if (file) void handleUpload(file);
+              }}
+              className={`flex items-center justify-center gap-2 rounded-lg border-2 border-dashed px-3 py-4 text-center transition-colors ${
+                isDragging
+                  ? "border-slate-700 bg-slate-50"
+                  : "border-slate-300 bg-white"
+              }`}
+            >
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".pdf,.docx,.md"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) void handleUpload(file);
+                  e.target.value = "";
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isUploading}
+                className="inline-flex items-center gap-2 text-xs font-semibold text-slate-700 transition-colors hover:text-slate-900 disabled:opacity-60"
+              >
+                {isUploading ? (
+                  <Loader2 size={15} className="animate-spin" aria-hidden="true" />
+                ) : (
+                  <UploadCloud size={15} aria-hidden="true" />
+                )}
+                {isUploading
+                  ? "Đang tải lên gateway..."
+                  : "Chọn tệp .pdf / .docx hoặc kéo thả vào đây"}
+              </button>
+            </div>
+          </div>
+
           <div>
             <label className="mb-1 block text-xs font-semibold text-slate-700">
               Tệp trong data/raw_docs/ *
@@ -269,6 +374,74 @@ export default function AddKnowledgeDocModal({
               Phân tích lại dù đã có bản parse
             </label>
           </div>
+
+          {(isSubmitting || pipelineResult) && (
+            <div>
+              <p className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-slate-700">
+                <Terminal size={13} aria-hidden="true" />
+                Nhật ký Pipeline
+              </p>
+              <div
+                className="h-56 space-y-1 overflow-y-auto rounded-lg bg-slate-900 p-3 font-mono text-xs text-slate-200"
+                role="log"
+                aria-live="polite"
+              >
+                {isSubmitting && !pipelineResult ? (
+                  <p className="flex items-center gap-2 text-slate-300">
+                    <Loader2 size={12} className="animate-spin shrink-0" aria-hidden="true" />
+                    Đang chạy pipeline cho "{filename}" - phân tích, nhúng và
+                    ghi vào pgvector...
+                  </p>
+                ) : (
+                  pipelineResult?.logs.map((line, index) => (
+                    <p key={index} className="flex items-start gap-2">
+                      <span
+                        className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${
+                          /\b(error|fail|exception|traceback)\b/i.test(line)
+                            ? "bg-red-400"
+                            : /\b(warn|warning)\b/i.test(line)
+                              ? "bg-amber-400"
+                              : "bg-emerald-400"
+                        }`}
+                        aria-hidden="true"
+                      />
+                      <span
+                        className={`min-w-0 break-words ${
+                          /\b(error|fail|exception|traceback)\b/i.test(line)
+                            ? "text-red-400"
+                            : /\b(warn|warning)\b/i.test(line)
+                              ? "text-amber-300"
+                              : "text-slate-200"
+                        }`}
+                      >
+                        {line}
+                      </span>
+                    </p>
+                  ))
+                )}
+              </div>
+              {pipelineResult && !isSubmitting && (
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold text-slate-700">
+                    <CheckCircle2 size={11} className="text-emerald-600" aria-hidden="true" />
+                    {pipelineResult.chunks_created} chunks tạo mới
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold text-slate-700">
+                    {pipelineResult.entities_found} entities trích xuất
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold text-slate-700">
+                    {pipelineResult.rows_deleted} dòng cũ đã xóa
+                  </span>
+                  {!pipelineResult.success && (
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-red-50 px-2.5 py-1 text-[10px] font-bold text-red-600">
+                      <AlertTriangle size={11} aria-hidden="true" />
+                      Pipeline báo lỗi
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
             <button
