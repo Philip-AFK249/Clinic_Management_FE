@@ -345,67 +345,6 @@ export interface TranscriptLine {
   entities: TranscriptEntity[];
 }
 
-export const TRANSCRIPT_LINES: TranscriptLine[] = [
-  {
-    id: "L1",
-    speaker: "DOCTOR",
-    timeOffset: "00:00",
-    text: "Chào anh An, mời anh ngồi. Hôm nay trong người thấy khó chịu ở đâu vậy anh?",
-    entities: [],
-  },
-  {
-    id: "L2",
-    speaker: "PATIENT",
-    timeOffset: "00:04",
-    text: "Chào bác sĩ, tôi bị đau rát cổ họng với nuốt nước bọt thấy đau buốt khoảng 2 hôm nay rồi.",
-    entities: [
-      { type: "SYMPTOM", term: "đau rát cổ họng" },
-      { type: "DURATION", term: "2 hôm nay" },
-    ],
-  },
-  {
-    id: "L3",
-    speaker: "DOCTOR",
-    timeOffset: "00:09",
-    text: "Anh có bị sốt lạnh run hay khó thở gì từ hôm qua đến giờ không?",
-    entities: [],
-  },
-  {
-    id: "L4",
-    speaker: "PATIENT",
-    timeOffset: "00:13",
-    text: "Có bác sĩ, sáng nay tôi đo nhiệt độ ở nhà là 38.5 độ C, họng đau rát tăng lên khi nuốt.",
-    entities: [
-      { type: "VITALS", term: "38.5 độ C" },
-      { type: "SYMPTOM", term: "họng đau rát" },
-    ],
-  },
-  {
-    id: "L5",
-    speaker: "DOCTOR",
-    timeOffset: "00:18",
-    text: "Để tôi kiểm tra họng cho anh. Trước đây anh có tiền sử dị ứng với thuốc hay thức ăn gì không?",
-    entities: [],
-  },
-  {
-    id: "L6",
-    speaker: "PATIENT",
-    timeOffset: "00:22",
-    text: "Có, tôi bị dị ứng nặng với kháng sinh nhóm Penicillin và tôm cua biển.",
-    entities: [
-      { type: "ALLERGY", term: "Penicillin" },
-      { type: "ALLERGY", term: "tôm cua biển" },
-    ],
-  },
-  {
-    id: "L7",
-    speaker: "DOCTOR",
-    timeOffset: "00:26",
-    text: "Tôi ghi nhận rồi. Họng anh đỏ rực, hai amidan sưng nhẹ nhưng chưa có giả mạc. Tôi sẽ tuyệt đối tránh kháng sinh nhóm Penicillin cho anh.",
-    entities: [{ type: "SYMPTOM", term: "amidan sưng nhẹ" }],
-  },
-];
-
 export interface SoapDraft {
   subjective: string;
   objective: string;
@@ -413,31 +352,11 @@ export interface SoapDraft {
   plan: string;
 }
 
-export const AI_SOAP_DRAFT: SoapDraft = {
-  subjective:
-    "Bệnh nhân nam 42 tuổi, đến khám vì đau rát họng và nuốt đau 2 ngày nay. Sốt cao 38.5°C đo tại nhà sáng nay. Đau tăng khi nuốt nước bọt và thức ăn đặc. Không ho, không khó thở, không phát ban. Tiền sử dị ứng: Penicillin (phản vệ độ 2) và Hải sản.",
-  objective:
-    "Huyết áp: 125/82 mmHg, Mạch: 78 ck/phút, Nhiệt độ: 38.2°C, SpO2: 98%. Họng đỏ rực lan tỏa, niêm mạc xung huyết. Amidan 2 bên sưng to độ I-II, không có giả mạc mủ. Hạch góc hàm hai bên sưng nhẹ 1cm, ấn đau nhẹ. Tim đều, phổi trong không rale.",
-  assessment:
-    "J02.9 - Viêm họng cấp tính, không đặc hiệu (Theo dõi căn nguyên virus bội nhiễm vi khuẩn). Cảnh báo: Dị ứng Penicillin mức độ nặng — chống chỉ định tuyệt đối nhóm Beta-lactam.",
-  plan:
-    "1) Chống chỉ định toàn bộ kháng sinh nhóm Penicillin. 2) Cân nhắc kháng sinh thay thế an toàn nếu triệu chứng nhiễm khuẩn tiến triển. 3) Paracetamol 500mg hạ sốt giảm đau khi sốt > 38.5°C. 4) Súc họng bằng nước muối sinh lý ấm 4 lần/ngày, uống nhiều nước ấm, nghỉ ngơi. 5) Tái khám sau 48-72 giờ nếu sốt không hạ.",
-};
-
 export interface IcdCode {
   code: string;
   label: string;
   confidence: number;
 }
-
-export const AI_ICD_SUGGESTIONS: IcdCode[] = [
-  { code: "J02.9", label: "Viêm họng cấp tính, không đặc hiệu", confidence: 94 },
-  {
-    code: "J00",
-    label: "Viêm mũi họng cấp [cảm thường]",
-    confidence: 68,
-  },
-];
 
 export const ICD10_FORMULARY: IcdCode[] = [
   {
@@ -480,32 +399,3 @@ export interface RxLine {
   bhytCoverage: BhyCoverage;
   isPenicillinClass?: boolean;
 }
-
-/**
- * What the AI proposes when the ambient transcript finishes. Stock, coverage
- * and the penicillin flag are deliberately absent: they belong to the live
- * catalog and are filled in by `resolveRxSeeds`, so a stale mock can never
- * prescribe an unknown `drugId` or quote a coverage rate the drug no longer has.
- */
-export interface RxSeed {
-  /** `Drug.name` as seeded in ClinicalConsultationService. */
-  drugName: string;
-  routeFrequency: string;
-  duration: string;
-  quantity: number;
-}
-
-export const AI_RX_SEEDS: RxSeed[] = [
-  {
-    drugName: "Amoxicillin",
-    routeFrequency: "1 viên x 2 lần/ngày sau ăn",
-    duration: "7 ngày",
-    quantity: 14,
-  },
-  {
-    drugName: "Paracetamol",
-    routeFrequency: "1 viên mỗi 6 giờ khi sốt > 38.5°C",
-    duration: "3 ngày",
-    quantity: 10,
-  },
-];

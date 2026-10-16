@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { CheckCircle2, Send } from "lucide-react";
 import DoctorHeader from "./components/DoctorHeader";
@@ -9,15 +9,21 @@ import PatientHistoryModal from "./components/PatientHistoryModal";
 import WorkspaceSplitView from "./components/WorkspaceSplitView";
 import LiveTranscriptPanel from "./components/LiveTranscriptPanel";
 import SoapNoteEditor from "./components/SoapNoteEditor";
+import DoctorAiChatDrawer from "./components/DoctorAiChatDrawer";
+import type { CopilotChartUpdate } from "./components/DoctorAiChatDrawer";
 import { useDoctorQueue, todayIso } from "./hooks/useDoctorQueue";
 import { useAmbientConsultation } from "./hooks/useAmbientConsultation";
 import { useDoctorSession } from "./hooks/useDoctorSession";
 import { toDiagnoses, toPrescriptionItems } from "./data/rxMapper";
 import {
   completeEncounterApi,
+  sendAmbientConsultationApi,
   startEncounterApi,
 } from "../../services/clinicalApi";
-import type { CompleteEncounterPayload } from "../../services/clinicalApi";
+import type {
+  AmbientPatientContext,
+  CompleteEncounterPayload,
+} from "../../services/clinicalApi";
 
 /**
  * `PatientRecord.patientId` is the human-facing `FHIR-P-88219` label, while
@@ -61,10 +67,35 @@ export default function DoctorEHRPage() {
   );
   const session = useDoctorSession();
   const {
-    status, elapsedSeconds, waveform, revealedLines, soapDraft, setSoapDraft,
-    icdAccepted, setIcdAccepted, icdSuggestions, rxLines, setRxLines,
-    start, pause, resume, finish, approve,
+    status,
+    revealedLines,
+    soapDraft,
+    setSoapDraft,
+    icdAccepted,
+    setIcdAccepted,
+    icdSuggestions,
+    rxLines,
+    setRxLines,
+    start,
+    finish,
+    failAnalysis,
+    applyConsultation,
+    applyCopilotUpdate,
+    approve,
   } = useAmbientConsultation();
+
+  /**
+   * Copilot drawer. Closed by default; a clinical red flag (HIV, TB, SJS...)
+   * opens it and lights its badge until the doctor has seen it. Both are keyed
+   * by ticket so the next patient cannot inherit the previous one's alerts.
+   */
+  const [copilotOpen, setCopilotOpen] = useState(false);
+  const [redFlagsByTicket, setRedFlagsByTicket] = useState<
+    Record<string, string[]>
+  >({});
+  const [unseenAlertsByTicket, setUnseenAlertsByTicket] = useState<
+    Record<string, number>
+  >({});
 
   const patient = queue.activePatient;
   // Primitives, not the record itself: the queue polls every 8s and rebuilds
@@ -74,6 +105,57 @@ export default function DoctorEHRPage() {
   const patientName = patient?.name ?? "";
   const patientId = patient ? parsePatientId(patient.patientId) : 1;
   const insuranceCode = patient?.insuranceCode ?? "";
+
+  /** Everything the copilot needs to reason about the person in the room. */
+  const patientContext = useMemo<AmbientPatientContext>(() => {
+    const context: AmbientPatientContext = {
+      departmentId: session.profile.departmentId,
+      doctorId: session.doctorId,
+    };
+    if (!patient) return context;
+
+    context.patientId = patientId;
+    context.patientName = patient.name;
+    context.age = patient.age;
+    context.gender = patient.gender;
+    context.insuranceCode = patient.insuranceCode;
+    context.chiefComplaint = patient.chiefComplaint;
+    context.allergies = patient.allergies.map((allergy) => allergy.name);
+    context.pastDiagnoses = patient.pastEncounters.map(
+      (encounter) => `${encounter.date} - ${encounter.diagnosis}`,
+    );
+    if (patient.vitalsRecorded !== false) {
+      context.vitals = {
+        bloodPressure: patient.vitals.bp,
+        heartRate: patient.vitals.hr,
+        temperature: patient.vitals.temp,
+        spo2: patient.vitals.spo2,
+      };
+    }
+    return context;
+  }, [patient, patientId, session.doctorId, session.profile.departmentId]);
+
+  /** One copilot conversation and one alert badge per ticket. */
+  const activeTicketKey = ticketNumber ?? "no-patient";
+  const redFlags = redFlagsByTicket[activeTicketKey] ?? [];
+  const redFlagAlerts = unseenAlertsByTicket[activeTicketKey] ?? 0;
+
+  const recordRedFlags = useCallback(
+    (flags: string[]) => {
+      setRedFlagsByTicket((prev) => ({ ...prev, [activeTicketKey]: flags }));
+      setUnseenAlertsByTicket((prev) => ({
+        ...prev,
+        [activeTicketKey]: (prev[activeTicketKey] ?? 0) + 1,
+      }));
+    },
+    [activeTicketKey],
+  );
+
+  const handleCopilotAlertsSeen = useCallback(() => {
+    setUnseenAlertsByTicket((prev) =>
+      prev[activeTicketKey] ? { ...prev, [activeTicketKey]: 0 } : prev,
+    );
+  }, [activeTicketKey]);
 
   /** Ticket whose encounter has already been opened; blocks duplicate POSTs. */
   const startedTicketRef = useRef<string | null>(null);
@@ -136,6 +218,77 @@ export default function DoctorEHRPage() {
     session.profile.fullName,
     ticketNumber,
   ]);
+
+  /**
+   * The doctor hit "Dừng & Phân Tích": the clip exists only as an in-memory
+   * Blob, is uploaded to the AI Gateway on this call and is dropped the moment
+   * the request settles - nothing is downloaded or written to disk.
+   */
+  const handleRecordingFinished = useCallback(
+    async (audioBlob: Blob) => {
+      finish();
+      try {
+        const result = await sendAmbientConsultationApi(audioBlob, {
+          departmentId: session.profile.departmentId,
+          doctorId: session.doctorId,
+          patientId,
+          allergies: patient?.allergies
+            .map((allergy) => allergy.name)
+            .join(", "),
+          patientHistory: patient?.pastEncounters
+            .map(
+              (encounter) =>
+                `${encounter.date} - ${encounter.department}: ${encounter.complaint} (${encounter.diagnosis})`,
+            )
+            .join("; "),
+        });
+
+        applyConsultation(result);
+
+        if (result.has_red_flags === true) {
+          recordRedFlags(result.red_flags ?? []);
+        }
+
+        toast.success(
+          "Bệnh án AI đã sẵn sàng. Bác sĩ đối soát và chỉnh sửa trước khi ký duyệt.",
+          { duration: 4000 },
+        );
+      } catch (cause) {
+        failAnalysis();
+        toast.error(
+          cause instanceof Error
+            ? cause.message
+            : "Không phân tích được đoạn ghi âm. Vui lòng thử thu âm lại.",
+          { duration: 6000 },
+        );
+      }
+    },
+    [
+      applyConsultation,
+      failAnalysis,
+      finish,
+      patient,
+      patientId,
+      recordRedFlags,
+      session.doctorId,
+      session.profile.departmentId,
+    ],
+  );
+
+  const handleRecordingAbort = useCallback(() => {
+    failAnalysis();
+  }, [failAnalysis]);
+
+  const handleCopilotUpdate = useCallback(
+    (update: CopilotChartUpdate) => {
+      applyCopilotUpdate({
+        soapNote: update.soapNote,
+        icdCodes: update.icdCodes,
+        prescriptionDraft: update.prescriptionDraft,
+      });
+    },
+    [applyCopilotUpdate],
+  );
 
   const handleApprove = useCallback(async () => {
     if (status !== "DRAFT_READY" || !patient) return;
@@ -257,12 +410,9 @@ export default function DoctorEHRPage() {
               />
               <AmbientRecordingBar
                 status={status}
-                elapsedSeconds={elapsedSeconds}
-                waveform={waveform}
                 onStart={start}
-                onPause={pause}
-                onResume={resume}
-                onFinish={finish}
+                onFinish={(audioBlob) => void handleRecordingFinished(audioBlob)}
+                onAbort={handleRecordingAbort}
               />
               <WorkspaceSplitView
                 left={
@@ -326,7 +476,8 @@ export default function DoctorEHRPage() {
                     className="inline-flex h-12 items-center gap-2 rounded-lg bg-teal-600 px-8 text-base font-bold text-white shadow-md transition-colors hover:bg-teal-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500"
                   >
                     <CheckCircle2 className="h-5 w-5" aria-hidden="true" />
-                    ✍️ Phê Duyệt Bệnh Án &amp; Đẩy Đơn Xuống Quầy Dược
+                    ✍️ Ký Duyệt &amp; Hoàn Tất Ca Khám (Đẩy Đơn Xuống Quầy
+                    Dược)
                   </button>
                 </div>
               </footer>
@@ -357,6 +508,22 @@ export default function DoctorEHRPage() {
         open={historyOpen}
         onClose={() => setHistoryOpen(false)}
         patient={queue.activePatient}
+      />
+
+      <DoctorAiChatDrawer
+        key={activeTicketKey}
+        open={copilotOpen}
+        onOpenChange={setCopilotOpen}
+        alertCount={redFlagAlerts}
+        hasRedFlags={redFlags.length > 0}
+        redFlags={redFlags}
+        onAlertsSeen={handleCopilotAlertsSeen}
+        onRedFlagsDetected={recordRedFlags}
+        patientContext={patientContext}
+        currentSoap={soapDraft}
+        currentDiagnoses={toDiagnoses(icdAccepted)}
+        onApplyUpdate={handleCopilotUpdate}
+        disabled={!queue.activePatient}
       />
     </div>
   );

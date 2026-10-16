@@ -52,7 +52,12 @@ export interface AudioRecorder {
   error: string | null;
   /** False when the browser has no `MediaRecorder` at all. */
   isSupported: boolean;
-  startRecording: () => Promise<void>;
+  /**
+   * Open the microphone. Resolves `true` only when capture actually started -
+   * callers that drive a status machine (the doctor's ambient bar) need to know
+   * whether the failure they cannot see yet belongs to the mic or not.
+   */
+  startRecording: () => Promise<boolean>;
   /** `null` when there was nothing usable to deliver (too short, or cancelled). */
   stopRecording: () => Promise<Blob | null>;
   cancelRecording: () => void;
@@ -115,7 +120,7 @@ export function useAudioRecorder(): AudioRecorder {
       setError(
         "Trình duyệt này không hỗ trợ ghi âm. Vui lòng nhập triệu chứng bằng bàn phím.",
       );
-      return;
+      return false;
     }
 
     let stream: MediaStream;
@@ -127,7 +132,7 @@ export function useAudioRecorder(): AudioRecorder {
       setError(
         "Không mở được microphone. Vui lòng cấp quyền truy cập micro hoặc nhập triệu chứng bằng bàn phím.",
       );
-      return;
+      return false;
     }
 
     const mimeType = pickMimeType();
@@ -139,7 +144,7 @@ export function useAudioRecorder(): AudioRecorder {
     } catch {
       releaseStream();
       setError("Thiết bị không hỗ trợ định dạng ghi âm. Vui lòng thử lại.");
-      return;
+      return false;
     }
 
     streamRef.current = stream;
@@ -183,6 +188,8 @@ export function useAudioRecorder(): AudioRecorder {
     timerRef.current = setInterval(() => {
       setRecordingTime(Math.floor((Date.now() - startedAt) / 1000));
     }, 250);
+
+    return true;
   }, [releaseStream]);
 
   const stopRecording = useCallback(() => {

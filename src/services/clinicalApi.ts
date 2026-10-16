@@ -407,6 +407,283 @@ export async function getPatientEncountersApi(
 }
 
 // ---------------------------------------------------------------------------
+// Ambient AI Gateway (FastAPI) - thu âm hội thoại & Trợ lý AI Copilot
+// ---------------------------------------------------------------------------
+
+/**
+ * Base URL of the FastAPI AI Gateway (`clinic_rag_backend`).
+ *
+ * The ambient endpoints live on the gateway, not on ClinicalConsultationService
+ * (:8083), so the browser talks to them on their own origin - exactly like
+ * `ocrApi` and `voiceTriageApi`, whose CORS is open for the Vite dev ports.
+ * `VITE_AI_GATEWAY_URL` wins over the shared `VITE_RAG_API_URL`; the default
+ * is the port `vite.config.ts` verified the gateway is actually listening on.
+ */
+export const AI_GATEWAY_BASE_URL: string = (
+  import.meta.env.VITE_AI_GATEWAY_URL ||
+  import.meta.env.VITE_RAG_API_URL ||
+  "http://localhost:8012"
+).replace(/\/+$/, "");
+
+const AMBIENT_CONSULTATION_PATH = "/api/v1/clinical/ambient-consultation";
+const COPILOT_CHAT_PATH = "/api/v1/clinical/copilot-chat";
+
+/**
+ * Deliberately its own axios instance rather than `clinicalApi`: a different
+ * host, a timeout measured in minutes (Whisper STT plus the clinical LLM) and
+ * multipart uploads that must not inherit the JSON default content type.
+ */
+const ambientGatewayApi = axios.create({
+  baseURL: AI_GATEWAY_BASE_URL,
+  timeout: 300_000,
+});
+
+/** SOAP note as the gateway writes it; the four sections are single words in both conventions. */
+export interface SoapNote {
+  subjective: string;
+  objective: string;
+  assessment: string;
+  plan: string;
+}
+
+export type DiarizedSpeaker = "DOCTOR" | "PATIENT" | "OTHER";
+
+/** One diarised utterance of the consultation. */
+export interface DiarizedMessage {
+  speaker: DiarizedSpeaker;
+  text: string;
+  /** Seconds from the start of the clip; the gateway may omit them. */
+  start_seconds?: number | null;
+  end_seconds?: number | null;
+  /** Pre-rendered `mm:ss` offset, when the gateway already produced one. */
+  time_offset?: string | null;
+}
+
+export interface Icd10Suggestion {
+  icd10_code: string;
+  disease_name: string;
+  /** True when the LLM ranks this code as the main diagnosis. */
+  is_primary?: boolean;
+  /** Confidence in percent, 0-100. */
+  ai_confidence?: number | null;
+}
+
+/** One line of the AI prescription draft, still keyed by drug *name*. */
+export interface PrescriptionDraftItem {
+  drug_name: string;
+  concentration?: string | null;
+  dosage_form?: string | null;
+  route_frequency?: string | null;
+  duration?: string | null;
+  quantity: number;
+  /** Stock the gateway saw; the live catalog stays authoritative in the UI. */
+  current_stock?: number | null;
+  in_stock?: boolean | null;
+  bhyt_coverage?: string | null;
+}
+
+/**
+ * Answer of `POST /api/v1/clinical/ambient-consultation`.
+ *
+ * The clip itself is never persisted: it travels as one multipart upload and
+ * is dropped from memory the moment this response arrives.
+ */
+export interface AmbientConsultationResponse {
+  success: boolean;
+  diarized_transcript: DiarizedMessage[];
+  soap_note: SoapNote;
+  icd10_suggestions: Icd10Suggestion[];
+  prescription_draft: PrescriptionDraftItem[];
+  /** True when HIV / TB / SJS-class red flags were spotted in the dialogue. */
+  has_red_flags: boolean;
+  red_flags?: string[] | null;
+  summary?: string | null;
+  warnings?: string[] | null;
+  latency_ms?: number | null;
+}
+
+/**
+ * Clinical background sent with each copilot turn so the model can refine the
+ * record without re-listening to the audio. Open-ended on purpose: the drawer
+ * adds whatever the workspace knows (vitals, allergies, past encounters).
+ */
+export interface AmbientPatientContext {
+  patientId?: number | string;
+  patientName?: string;
+  age?: number;
+  gender?: string;
+  insuranceCode?: string;
+  chiefComplaint?: string;
+  allergies?: string[];
+  vitals?: Record<string, string | number>;
+  pastDiagnoses?: string[];
+  departmentId?: number;
+  doctorId?: number;
+  [key: string]: unknown;
+}
+
+export interface CopilotChatRequest {
+  message: string;
+  currentSoap: SoapNote;
+  currentDiagnoses: DiagnosisItem[];
+  patientContext: AmbientPatientContext;
+}
+
+/** Answer of `POST /api/v1/clinical/copilot-chat`. */
+export interface CopilotChatResponse {
+  success: boolean;
+  reply: string;
+  /** Refined sections, present only when the turn actually changed them. */
+  soap_note?: SoapNote | null;
+  icd10_suggestions?: Icd10Suggestion[] | null;
+  prescription_draft?: PrescriptionDraftItem[] | null;
+  has_red_flags?: boolean;
+  red_flags?: string[] | null;
+  /** True when the reply carries a chart update the doctor should accept. */
+  requires_chart_update?: boolean;
+  latency_ms?: number | null;
+}
+
+/** FastAPI error bodies, as in `ocrApi`: a string `detail` or a validation list. */
+function gatewayDetailOf(payload: unknown): string {
+  if (!payload || typeof payload !== "object") return "";
+  const detail = (payload as { detail?: unknown }).detail;
+  if (typeof detail === "string") return detail.trim();
+  if (Array.isArray(detail) && detail.length > 0) {
+    const first = detail[0] as { msg?: unknown };
+    return typeof first?.msg === "string" ? first.msg.trim() : "";
+  }
+  const message = (payload as { message?: unknown }).message;
+  return typeof message === "string" ? message.trim() : "";
+}
+
+function toGatewayError(error: unknown): ClinicalApiError {
+  if (!axios.isAxiosError(error)) {
+    return new ClinicalApiError(
+      error instanceof Error
+        ? error.message
+        : "Đã xảy ra lỗi không xác định khi gọi AI Gateway.",
+      "request",
+    );
+  }
+
+  const status = error.response?.status;
+  const detail = gatewayDetailOf(error.response?.data);
+
+  if (error.code === "ECONNABORTED") {
+    return new ClinicalApiError(
+      "AI Gateway phản hồi quá chậm (Whisper + phân tích lâm sàng). Vui lòng thử lại.",
+      "server",
+      status,
+    );
+  }
+  if (status === undefined) {
+    return new ClinicalApiError(
+      `Không kết nối được AI Gateway (${AI_GATEWAY_BASE_URL}). Vui lòng kiểm tra dịch vụ FastAPI đã khởi động.`,
+      "offline",
+    );
+  }
+  if (detail) {
+    return new ClinicalApiError(detail, FAILURE_KIND_BY_STATUS[status] ?? "server", status);
+  }
+  return new ClinicalApiError(
+    `AI Gateway phản hồi lỗi (HTTP ${status}).`,
+    FAILURE_KIND_BY_STATUS[status] ?? "server",
+    status,
+  );
+}
+
+/** `success: false` is a 200 the gateway still wants treated as a failure. */
+function requireGatewaySuccess<T extends { success?: boolean }>(payload: T): T {
+  if (payload?.success === false) {
+    throw new ClinicalApiError(
+      gatewayDetailOf(payload) || "AI Gateway không trả về kết quả hợp lệ.",
+      "server",
+    );
+  }
+  return payload;
+}
+
+/**
+ * Upload the in-memory consultation clip and get back the diarised dialogue,
+ * the SOAP note, the ICD-10 suggestions and an in-stock prescription draft.
+ *
+ * The `Blob` is consumed by this request and nowhere else: it is never turned
+ * into an object URL, never written to disk and never kept after the response.
+ */
+export async function sendAmbientConsultationApi(
+  audioBlob: Blob,
+  metadata: {
+    departmentId: number;
+    doctorId?: number;
+    patientId?: number;
+    allergies?: string;
+    patientHistory?: string;
+  },
+): Promise<AmbientConsultationResponse> {
+  const form = new FormData();
+  // The extension has to match what was actually recorded: a Safari
+  // `audio/mp4` clip named `.webm` decodes nowhere.
+  const subtype = audioBlob.type.split(";")[0].trim().toLowerCase();
+  const extension =
+    subtype === "audio/mp4"
+      ? "m4a"
+      : subtype === "audio/wav"
+        ? "wav"
+        : subtype === "audio/ogg"
+          ? "ogg"
+          : "webm";
+  form.append("file", audioBlob, `ambient_consultation.${extension}`);
+  form.append("department_id", String(metadata.departmentId));
+  if (metadata.doctorId !== undefined) {
+    form.append("doctor_id", String(metadata.doctorId));
+  }
+  if (metadata.patientId !== undefined) {
+    form.append("patient_id", String(metadata.patientId));
+  }
+  if (metadata.allergies?.trim()) form.append("allergies", metadata.allergies);
+  if (metadata.patientHistory?.trim()) {
+    form.append("patient_history", metadata.patientHistory);
+  }
+
+  try {
+    // No Content-Type by hand: axios has to append the multipart boundary.
+    const { data } = await ambientGatewayApi.post<AmbientConsultationResponse>(
+      AMBIENT_CONSULTATION_PATH,
+      form,
+    );
+    return requireGatewaySuccess(data);
+  } catch (error) {
+    if (axios.isCancel(error)) throw error;
+    if (error instanceof ClinicalApiError) throw error;
+    throw toGatewayError(error);
+  }
+}
+
+/**
+ * One turn of the interactive copilot: the doctor adds history the microphone
+ * never heard ("đã nhiễm HIV 2 năm, đang dùng ARV") and the gateway answers
+ * with a refined record the doctor can choose to bind back into the EHR.
+ */
+export async function sendCopilotChatApi(
+  payload: CopilotChatRequest,
+): Promise<CopilotChatResponse> {
+  try {
+    const { data } = await ambientGatewayApi.post<CopilotChatResponse>(COPILOT_CHAT_PATH, {
+      message: payload.message,
+      current_soap: payload.currentSoap,
+      current_diagnoses: payload.currentDiagnoses,
+      patient_context: payload.patientContext,
+    });
+    return requireGatewaySuccess(data);
+  } catch (error) {
+    if (axios.isCancel(error)) throw error;
+    if (error instanceof ClinicalApiError) throw error;
+    throw toGatewayError(error);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Pharmacy endpoints (dược sĩ)
 // ---------------------------------------------------------------------------
 

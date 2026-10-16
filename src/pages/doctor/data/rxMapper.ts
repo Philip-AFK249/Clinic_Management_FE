@@ -1,5 +1,6 @@
 import type {
   DiagnosisItem,
+  PrescriptionDraftItem,
   PrescriptionItemPayload,
 } from "../../../services/clinicalApi";
 import type { DrugDto } from "../../../services/clinicalApi";
@@ -7,7 +8,6 @@ import type {
   BhyCoverage,
   IcdCode,
   RxLine,
-  RxSeed,
 } from "./doctorMockData";
 
 /**
@@ -80,26 +80,62 @@ function findDrug(drugs: DrugDto[], drugName: string): DrugDto | undefined {
 }
 
 /**
- * Turn the AI's proposal into real prescription lines.
- *
- * Seeds whose drug is absent from (or inactive in) the live catalog are dropped:
- * the backend rejects the whole prescription with a 400 as soon as one
- * `drugId` does not resolve, so keeping an unresolved line would block the
- * doctor from signing the encounter at all.
+ * Resolve an AI Gateway draft line by drug name, tolerating the concentration
+ * the model appends to the name ("Amoxicillin 500mg") being split across
+ * `drug_name` and `concentration` instead.
  */
-export function resolveRxSeeds(
-  seeds: RxSeed[],
+function findDrugLoose(
+  drugs: DrugDto[],
+  drugName: string,
+  concentration?: string | null,
+): DrugDto | undefined {
+  const direct = findDrug(drugs, drugName);
+  if (direct) return direct;
+
+  const wanted = drugName.trim().toLowerCase();
+  const conc = (concentration ?? "").trim().toLowerCase();
+  if (!conc) return undefined;
+
+  const combined = `${wanted} ${conc}`.replace(/\s+/g, " ");
+  return drugs.find((drug) => {
+    const display = drugDisplayName(drug).toLowerCase().replace(/\s+/g, " ");
+    if (display === combined) return true;
+    return (
+      drug.name.trim().toLowerCase() === wanted &&
+      drug.concentration.trim().toLowerCase().startsWith(conc)
+    );
+  });
+}
+
+/**
+ * Turn the AI Gateway's prescription draft into real prescription lines.
+ *
+ * Stock, BHYT coverage and the penicillin flag always come from the live
+ * catalog, never from the draft: the kho moves while the doctor writes, and the
+ * backend checks the real `drugs` row when the prescription is dispensed. Lines
+ * whose drug is absent from the formulary are dropped rather than sent with an
+ * unusable `drugId`, which the backend would reject with a 400 for the whole
+ * prescription.
+ */
+export function resolvePrescriptionDraft(
+  items: PrescriptionDraftItem[],
   drugs: DrugDto[],
 ): RxLine[] {
   const resolved: RxLine[] = [];
-  seeds.forEach((seed, index) => {
-    const drug = findDrug(drugs, seed.drugName);
+  items.forEach((item, index) => {
+    if (!item?.drug_name?.trim()) return;
+    const drug = findDrugLoose(drugs, item.drug_name, item.concentration);
     if (!drug) return;
+
+    const line = drugToRxLine(drug, `RX-DRAFT-${index + 1}`);
     resolved.push({
-      ...drugToRxLine(drug, `RX-AI-${index + 1}`),
-      routeFrequency: seed.routeFrequency,
-      duration: seed.duration,
-      quantity: seed.quantity,
+      ...line,
+      routeFrequency: item.route_frequency?.trim() || line.routeFrequency,
+      duration: item.duration?.trim() || line.duration,
+      quantity:
+        Number.isFinite(item.quantity) && item.quantity > 0
+          ? Math.trunc(item.quantity)
+          : line.quantity,
     });
   });
   return resolved;

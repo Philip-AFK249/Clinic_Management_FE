@@ -46,6 +46,9 @@ export default function Icd10Selector({
       <div className="mt-2 space-y-1.5">
         {suggestions.map((item) => {
           const isAccepted = accepted.some((a) => a.code === item.code);
+          // `toDiagnoses` sends the first accepted code as `isPrimary`, so the
+          // highlight has to follow the same order rather than every tick.
+          const isPrimary = accepted[0]?.code === item.code;
           return (
             <button
               key={item.code}
@@ -66,8 +69,8 @@ export default function Icd10Selector({
               <span className="shrink-0 rounded-full bg-white px-1.5 py-0.5 text-[10px] font-semibold text-teal-700">
                 Độ tin cậy: {item.confidence}%
               </span>
-              {isAccepted && (
-                <span className="text-[10px] font-bold text-teal-700">
+              {isPrimary && (
+                <span className="shrink-0 rounded-full bg-teal-600 px-1.5 py-0.5 text-[10px] font-bold text-white">
                   Chính
                 </span>
               )}
@@ -79,17 +82,26 @@ export default function Icd10Selector({
       {/* Accepted chips */}
       {accepted.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-1.5">
-          {accepted.map((item) => (
+          {accepted.map((item, index) => (
             <span
               key={item.code}
-              className="inline-flex items-center gap-1 rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 text-[11px] font-semibold text-teal-800"
+              className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
+                index === 0
+                  ? "border-teal-600 bg-teal-600 text-white"
+                  : "border-teal-200 bg-teal-50 text-teal-800"
+              }`}
             >
               {item.code}
+              {index === 0 && (
+                <span className="text-[10px] font-bold uppercase opacity-80">
+                  Chính
+                </span>
+              )}
               <button
                 type="button"
                 onClick={() => onRemove(item.code)}
                 aria-label={`Xóa mã ${item.code}`}
-                className="text-teal-600 hover:text-red-600"
+                className={index === 0 ? "text-white/80 hover:text-white" : "text-teal-600 hover:text-red-600"}
               >
                 <X className="h-3 w-3" />
               </button>

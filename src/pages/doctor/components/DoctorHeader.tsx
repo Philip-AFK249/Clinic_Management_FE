@@ -112,11 +112,12 @@ export default function DoctorHeader({
         <button
           type="button"
           onClick={logout}
-          className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-600"
+          className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-600"
           title="Đăng xuất khỏi hệ thống"
           aria-label="Đăng xuất"
         >
-          <LogOut size={16} />
+          <LogOut size={16} aria-hidden="true" />
+          <span className="hidden md:inline">Đăng xuất</span>
         </button>
       </div>
     </header>

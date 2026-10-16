@@ -83,8 +83,9 @@ export default function PrescriptionDraftTable({
         </thead>
         <tbody>
           {rxLines.map((line) => {
-            const lowStock = line.stockUnits < 30;
-            const overStock = line.quantity > line.stockUnits;
+            // Under 100 units the kho is one restock away from running dry.
+            const lowStock = line.stockUnits < 100;
+            const outOfStock = line.quantity > line.stockUnits;
             return (
               <tr key={line.id} className="border-b border-slate-100 align-top">
                 <td className="py-2 pr-2">
@@ -93,15 +94,20 @@ export default function PrescriptionDraftTable({
                   </p>
                   <span
                     className={`mt-0.5 inline-block rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
-                      overStock
+                      outOfStock
                         ? "border border-red-200 bg-red-50 text-red-700"
                         : lowStock
                           ? "border border-amber-200 bg-amber-50 text-amber-700"
                           : "border border-teal-200 bg-teal-50 text-teal-700"
                     }`}
                   >
-                    ● {overStock ? "Không đủ tồn" : lowStock ? "Sắp hết" : "Còn hàng"}:{" "}
-                    {line.stockUnits} đơn vị
+                    ●{" "}
+                    {outOfStock
+                      ? "Không đủ tồn kho"
+                      : lowStock
+                        ? "Sắp hết kho"
+                        : "Còn hàng"}
+                    : {line.stockUnits} đơn vị
                   </span>
                   <span className="mt-0.5 ml-1 inline-block rounded-full border border-teal-200 bg-teal-50 px-1.5 py-0.5 text-[10px] font-semibold text-teal-700">
                     ● {line.bhytCoverage}
