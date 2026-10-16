@@ -5,14 +5,15 @@ import axios from "axios";
  * which serves the admin console's model configuration, the pgvector knowledge
  * store, the ingestion pipeline and the OCR audit trail.
  *
- * Talks to the gateway **directly** at `VITE_RAG_API_URL` (default
- * http://localhost:8008) rather than through the Vite dev proxy, exactly like
- * `ocrApi` / `voiceTriageApi`: CORS is open server-side, and the pipeline run
- * is a synchronous parse+embed round-trip that can take minutes - a proxy rule
- * and a short timeout would only get in its way.
+ * Talks to the gateway **directly** at `VITE_AI_GATEWAY_URL` (default
+ * http://localhost:8008 - the port `uvicorn app.api:app` serves) rather than
+ * through the Vite dev proxy, exactly like `ocrApi` / `voiceTriageApi` /
+ * `clinicalApi`: CORS is open server-side, and the pipeline run is a
+ * synchronous parse+embed round-trip that can take minutes - a proxy rule and a
+ * short timeout would only get in its way.
  */
 export const RAG_ADMIN_BASE: string = (
-  import.meta.env.VITE_RAG_API_URL || "http://localhost:8008"
+  import.meta.env.VITE_AI_GATEWAY_URL || "http://localhost:8008"
 ).replace(/\/+$/, "");
 
 export const aiGatewayAdminApi = axios.create({

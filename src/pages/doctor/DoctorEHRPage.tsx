@@ -16,6 +16,8 @@ import { useAmbientConsultation } from "./hooks/useAmbientConsultation";
 import { useDoctorSession } from "./hooks/useDoctorSession";
 import { toDiagnoses, toPrescriptionItems } from "./data/rxMapper";
 import {
+  AI_GATEWAY_BASE_URL,
+  AI_GATEWAY_START_HINT,
   completeEncounterApi,
   sendAmbientConsultationApi,
   startEncounterApi,
@@ -258,7 +260,7 @@ export default function DoctorEHRPage() {
         toast.error(
           cause instanceof Error
             ? cause.message
-            : "Không phân tích được đoạn ghi âm. Vui lòng thử thu âm lại.",
+            : `Không phân tích được đoạn ghi âm (AI Gateway: ${AI_GATEWAY_BASE_URL}). ${AI_GATEWAY_START_HINT} Vui lòng thử thu âm lại.`,
           { duration: 6000 },
         );
       }

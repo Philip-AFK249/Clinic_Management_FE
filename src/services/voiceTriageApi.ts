@@ -5,13 +5,13 @@ import axios from "axios";
  * backend: Whisper transcription followed by a clinical LLM that returns a
  * department, a priority and the live doctor rota.
  *
- * Talks to the backend **directly** rather than through the Vite dev proxy. The
- * proxied path (`/api/v1/triage` -> :8000) answers 502 because the gateway does
- * not listen on 8000, and CORS is open on the server side
+ * Talks to the backend **directly** rather than through the Vite dev proxy, on
+ * the shared `VITE_AI_GATEWAY_URL` (default http://localhost:8008 - the port
+ * `uvicorn app.api:app` serves). CORS is open on the server side
  * (`allow_origins=["*"]`), so a cross-origin upload needs no proxy at all.
  */
 export const RAG_BASE_URL: string = (
-  import.meta.env.VITE_RAG_API_URL || "http://localhost:8008"
+  import.meta.env.VITE_AI_GATEWAY_URL || "http://localhost:8008"
 ).replace(/\/+$/, "");
 
 /**

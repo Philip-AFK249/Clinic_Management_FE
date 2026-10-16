@@ -411,19 +411,32 @@ export async function getPatientEncountersApi(
 // ---------------------------------------------------------------------------
 
 /**
- * Base URL of the FastAPI AI Gateway (`clinic_rag_backend`).
+ * Base URL of the FastAPI AI Gateway (`uvicorn app.api:app --port 8008`).
  *
  * The ambient endpoints live on the gateway, not on ClinicalConsultationService
  * (:8083), so the browser talks to them on their own origin - exactly like
- * `ocrApi` and `voiceTriageApi`, whose CORS is open for the Vite dev ports.
- * `VITE_AI_GATEWAY_URL` wins over the shared `VITE_RAG_API_URL`; the default
- * is the port `vite.config.ts` verified the gateway is actually listening on.
+ * `ocrApi`, `voiceTriageApi` and `aiGatewayAdminApi`, whose CORS is open for
+ * the Vite dev ports. Every gateway client in this repo reads the same
+ * `VITE_AI_GATEWAY_URL` variable and falls back to port 8008, the port the
+ * gateway is actually served on.
  */
 export const AI_GATEWAY_BASE_URL: string = (
-  import.meta.env.VITE_AI_GATEWAY_URL ||
-  import.meta.env.VITE_RAG_API_URL ||
-  "http://localhost:8012"
+  import.meta.env.VITE_AI_GATEWAY_URL || "http://localhost:8008"
 ).replace(/\/+$/, "");
+
+/** Port of the gateway above, read back off the URL so the hint can never drift. */
+const AI_GATEWAY_PORT: string = (() => {
+  try {
+    return new URL(AI_GATEWAY_BASE_URL).port || "8008";
+  } catch {
+    return "8008";
+  }
+})();
+
+/** One line telling the doctor how to bring the gateway back up. */
+export const AI_GATEWAY_START_HINT: string =
+  `Vui lòng kiểm tra dịch vụ FastAPI đã khởi động ` +
+  `(uvicorn app.api:app --port ${AI_GATEWAY_PORT}).`;
 
 const AMBIENT_CONSULTATION_PATH = "/api/v1/clinical/ambient-consultation";
 const COPILOT_CHAT_PATH = "/api/v1/clinical/copilot-chat";
@@ -579,7 +592,7 @@ function toGatewayError(error: unknown): ClinicalApiError {
   }
   if (status === undefined) {
     return new ClinicalApiError(
-      `Không kết nối được AI Gateway (${AI_GATEWAY_BASE_URL}). Vui lòng kiểm tra dịch vụ FastAPI đã khởi động.`,
+      `Không kết nối được AI Gateway (${AI_GATEWAY_BASE_URL}). ${AI_GATEWAY_START_HINT}`,
       "offline",
     );
   }
@@ -623,7 +636,9 @@ export async function sendAmbientConsultationApi(
 ): Promise<AmbientConsultationResponse> {
   const form = new FormData();
   // The extension has to match what was actually recorded: a Safari
-  // `audio/mp4` clip named `.webm` decodes nowhere.
+  // `audio/mp4` clip named `.webm` decodes nowhere. The field name is fixed by
+  // the gateway signature - `audio_file: UploadFile = File(...)` - and a
+  // differently named part fails validation with 422 "Field required".
   const subtype = audioBlob.type.split(";")[0].trim().toLowerCase();
   const extension =
     subtype === "audio/mp4"
@@ -633,7 +648,7 @@ export async function sendAmbientConsultationApi(
         : subtype === "audio/ogg"
           ? "ogg"
           : "webm";
-  form.append("file", audioBlob, `ambient_consultation.${extension}`);
+  form.append("audio_file", audioBlob, `consultation.${extension}`);
   form.append("department_id", String(metadata.departmentId));
   if (metadata.doctorId !== undefined) {
     form.append("doctor_id", String(metadata.doctorId));
@@ -641,10 +656,10 @@ export async function sendAmbientConsultationApi(
   if (metadata.patientId !== undefined) {
     form.append("patient_id", String(metadata.patientId));
   }
-  if (metadata.allergies?.trim()) form.append("allergies", metadata.allergies);
-  if (metadata.patientHistory?.trim()) {
-    form.append("patient_history", metadata.patientHistory);
-  }
+  // Sent even when empty: the gateway declares them as plain strings, and an
+  // absent part would 422 if the route ever tightens the signature.
+  form.append("allergies", metadata.allergies?.trim() ?? "");
+  form.append("patient_history", metadata.patientHistory?.trim() ?? "");
 
   try {
     // No Content-Type by hand: axios has to append the multipart boundary.

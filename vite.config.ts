@@ -37,18 +37,16 @@ export default defineConfig({
       // Must stay ahead of the '/api' catch-all below, otherwise the scan would
       // be forwarded to DoctorScheduleService and 404.
       //
-      // Checked against the running machine rather than the comment's port: the
-      // gateway is listening on 8012 (8013/8014/8021 too), where
-      // `/api/v1/ocr/bhyt` answers 422 as expected. Nothing listens on 8000 any
-      // more, and 8008 (which the voice client targets) is not running here.
+      // Same origin the gateway clients in `src/services` use: the service runs
+      // as `uvicorn app.api:app --port 8008`, and `VITE_AI_GATEWAY_URL` can
+      // point elsewhere (in which case the clients bypass this proxy entirely).
       '/api/v1/ocr': {
-        target: 'http://127.0.0.1:8012',
+        target: 'http://127.0.0.1:8008',
         changeOrigin: true,
       },
-      // Voice triage is deliberately NOT proxied. It used to be (-> :8000) and
-      // answered 502 because nothing listens there; the client in
-      // `services/voiceTriageApi.ts` goes to VITE_RAG_API_URL directly instead,
-      // and the server has CORS open, so there is nothing for a rule to do here.
+      // Voice triage is deliberately NOT proxied: the client in
+      // `services/voiceTriageApi.ts` goes to VITE_AI_GATEWAY_URL directly, and
+      // the server has CORS open, so there is nothing for a rule to do here.
       // DoctorScheduleService (Spring Boot @ :8081) and everything else.
       '/api': {
         target: 'http://127.0.0.1:8081',

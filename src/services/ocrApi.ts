@@ -5,13 +5,16 @@ import axios from "axios";
  * OCR endpoint the reception desk and the booking form call to autofill a
  * patient's identity.
  *
- * Talks to the gateway **directly** at `VITE_RAG_API_URL` (default
- * http://localhost:8008) rather than through the Vite dev proxy, exactly like
- * `voiceTriageApi`: CORS is open on the server side (`allow_origins=["*"]`),
- * so a cross-origin multipart upload needs no proxy rule.
+ * Talks to the gateway **directly** at `VITE_AI_GATEWAY_URL` (default
+ * http://localhost:8008 - the port `uvicorn app.api:app` serves) rather than
+ * through the Vite dev proxy, exactly like `voiceTriageApi` /
+ * `aiGatewayAdminApi` / `clinicalApi`: CORS is open on the server side
+ * (`allow_origins=["*"]`), so a cross-origin multipart upload needs no proxy
+ * rule. Every gateway client in this repo shares that one variable, so a
+ * single `.env` entry moves all of them at once.
  */
 export const OCR_BASE_URL: string = (
-  import.meta.env.VITE_RAG_API_URL || "http://localhost:8008"
+  import.meta.env.VITE_AI_GATEWAY_URL || "http://localhost:8008"
 ).replace(/\/+$/, "");
 
 /** BHYT card scan endpoint, relative to the gateway root. */
