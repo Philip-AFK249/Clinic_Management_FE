@@ -29,6 +29,7 @@ import { triageSymptoms } from "./data/patientMockRecords";
 import { hospitalCodeFrom } from "./data/patientProfile";
 import { writeActiveBooking } from "./data/activeBooking";
 import { dayOffsetIso, getInitialDate } from "./data/bookingSlots";
+import { formatDoctorName, formatRoom } from "./data/bookingDisplay";
 import {
   sendVoiceScheduleTriage,
   sessionScheduleFor,
@@ -563,8 +564,10 @@ export default function BookingPage() {
     if (!doctor) return null;
     return {
       department: voiceTriage.department_name,
-      name: `${doctor.title} ${doctor.doctor_name}`.trim(),
-      room: doctor.room_number,
+      // The rota may already spell the rank and the "Phòng" prefix into these
+      // fields - printing them verbatim doubled both on the ticket.
+      name: formatDoctorName(doctor.title, doctor.doctor_name),
+      room: formatRoom(doctor.room_number),
     };
   }
 

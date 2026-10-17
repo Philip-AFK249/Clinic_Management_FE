@@ -484,6 +484,8 @@ export interface Icd10Suggestion {
 /** One line of the AI prescription draft, still keyed by drug *name*. */
 export interface PrescriptionDraftItem {
   drug_name: string;
+  /** `drugs.id`, required back by the gateway when the EHR sends its draft. */
+  drug_id?: number;
   concentration?: string | null;
   dosage_form?: string | null;
   route_frequency?: string | null;
@@ -492,6 +494,32 @@ export interface PrescriptionDraftItem {
   /** Stock the gateway saw; the live catalog stays authoritative in the UI. */
   current_stock?: number | null;
   in_stock?: boolean | null;
+  bhyt_coverage?: string | null;
+}
+
+/**
+ * The same draft line as the gateway *writes* it: camelCase, matching the
+ * `PrescriptionItemDraft` model on the FastAPI side, with the snake_case
+ * spelling kept optional so a deployment that still answers the older shape
+ * normalizes the same way instead of silently emptying the prescribing table.
+ */
+export interface PrescriptionDraftWire {
+  drugId?: number;
+  drug_id?: number;
+  drugCode?: string | null;
+  drugName?: string;
+  routeFrequency?: string;
+  duration?: string;
+  quantity?: number;
+  currentStock?: number;
+  concentration?: string | null;
+  dosageForm?: string;
+  bhytCoverage?: string | null;
+  isPenicillinClass?: boolean;
+  drug_name?: string;
+  route_frequency?: string | null;
+  dosage_form?: string | null;
+  current_stock?: number | null;
   bhyt_coverage?: string | null;
 }
 
@@ -535,23 +563,37 @@ export interface AmbientPatientContext {
   [key: string]: unknown;
 }
 
+/**
+ * One turn of the interactive copilot.
+ *
+ * Mirrors the gateway's `CopilotChatRequest`: the clinical note, the draft the
+ * doctor already has on screen and the department the encounter belongs to, so
+ * the model revises *that* record instead of starting from a blank chart.
+ */
 export interface CopilotChatRequest {
   message: string;
-  currentSoap: SoapNote;
-  currentDiagnoses: DiagnosisItem[];
-  patientContext: AmbientPatientContext;
+  soapNote?: SoapNote | null;
+  diagnoses?: DiagnosisItem[];
+  prescriptionDraft?: PrescriptionDraftItem[];
+  departmentId?: number;
+  doctorId?: number;
+  patientId?: number | string;
+  allergies?: string;
+  patientHistory?: string;
 }
 
 /** Answer of `POST /api/v1/clinical/copilot-chat`. */
 export interface CopilotChatResponse {
   success: boolean;
-  reply: string;
+  /** The model's prose answer (`assistant_message` on the gateway). */
+  assistant_message?: string;
   /** Refined sections, present only when the turn actually changed them. */
   soap_note?: SoapNote | null;
-  icd10_suggestions?: Icd10Suggestion[] | null;
-  prescription_draft?: PrescriptionDraftItem[] | null;
+  diagnoses?: (Partial<DiagnosisItem> & Partial<Icd10Suggestion>)[] | null;
+  prescription_draft?: PrescriptionDraftWire[] | null;
   has_red_flags?: boolean;
   red_flags?: string[] | null;
+  warnings?: string[] | null;
   /** True when the reply carries a chart update the doctor should accept. */
   requires_chart_update?: boolean;
   latency_ms?: number | null;
@@ -686,9 +728,18 @@ export async function sendCopilotChatApi(
   try {
     const { data } = await ambientGatewayApi.post<CopilotChatResponse>(COPILOT_CHAT_PATH, {
       message: payload.message,
-      current_soap: payload.currentSoap,
-      current_diagnoses: payload.currentDiagnoses,
-      patient_context: payload.patientContext,
+      soap_note: payload.soapNote ?? null,
+      diagnoses: payload.diagnoses ?? [],
+      prescription_draft: payload.prescriptionDraft ?? [],
+      department_id: payload.departmentId ?? 1,
+      ...(payload.doctorId !== undefined && payload.doctorId !== null
+        ? { doctor_id: payload.doctorId }
+        : {}),
+      ...(payload.patientId !== undefined && payload.patientId !== null
+        ? { patient_id: payload.patientId }
+        : {}),
+      allergies: payload.allergies ?? "",
+      patient_history: payload.patientHistory ?? "",
     });
     return requireGatewaySuccess(data);
   } catch (error) {

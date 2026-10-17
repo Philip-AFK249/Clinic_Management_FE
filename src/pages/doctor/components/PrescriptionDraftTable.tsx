@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { Loader2, Plus, Sparkles, Trash2 } from "lucide-react";
 import { useDrugCatalog } from "../../../hooks/useDrugCatalog";
 import { drugToRxLine } from "../data/rxMapper";
 import type { Allergy, RxLine } from "../data/doctorMockData";
@@ -8,12 +8,21 @@ interface PrescriptionDraftTableProps {
   rxLines: RxLine[];
   setRxLines: React.Dispatch<React.SetStateAction<RxLine[]>>;
   allergies: Allergy[];
+  /** Same copilot turn the ICD-10 card sends, offered while the table is empty. */
+  onSubmitAiProposal: (prompt: string) => void;
+  isSubmittingAi: boolean;
 }
+
+/** What the "Đề xuất AI" badge asks the copilot for when there is no line yet. */
+const RX_AI_NOTE =
+  "Đề xuất đơn thuốc phù hợp với chẩn đoán và bệnh án hiện tại.";
 
 export default function PrescriptionDraftTable({
   rxLines,
   setRxLines,
   allergies,
+  onSubmitAiProposal,
+  isSubmittingAi,
 }: PrescriptionDraftTableProps) {
   // The live formulary replaces the seeded PHARMACY_FORMULARY: stock, BHYT
   // coverage and the penicillin flag of every line come from the kho.
@@ -47,13 +56,31 @@ export default function PrescriptionDraftTable({
 
   return (
     <div className="rounded-lg border border-slate-200/80 bg-white p-3 shadow-card">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
           Bảng Kê Đơn Thuốc
         </p>
-        <span className="rounded-md bg-teal-50 px-1.5 py-0.5 text-[10px] font-bold uppercase text-teal-700">
+        <button
+          type="button"
+          onClick={() => {
+            if (isSubmittingAi || rxLines.length > 0) return;
+            onSubmitAiProposal(RX_AI_NOTE);
+          }}
+          disabled={isSubmittingAi || rxLines.length > 0}
+          title={
+            rxLines.length > 0
+              ? "Đơn thuốc đã có dữ liệu - xóa hết dòng để AI soạn lại."
+              : "Yêu cầu AI đề xuất đơn thuốc cho bệnh nhân"
+          }
+          className="inline-flex shrink-0 items-center gap-1 rounded-md bg-teal-50 px-1.5 py-0.5 text-[10px] font-bold uppercase text-teal-700 transition-colors hover:bg-teal-100 disabled:cursor-not-allowed disabled:opacity-70"
+        >
+          {isSubmittingAi ? (
+            <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+          ) : (
+            <Sparkles className="h-3 w-3" aria-hidden="true" />
+          )}
           Đề xuất AI
-        </span>
+        </button>
       </div>
 
       {showConflictWarning && (

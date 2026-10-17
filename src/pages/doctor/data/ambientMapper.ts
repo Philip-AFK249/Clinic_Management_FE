@@ -1,6 +1,9 @@
 import type {
+  DiagnosisItem,
   DiarizedMessage,
   Icd10Suggestion,
+  PrescriptionDraftItem,
+  PrescriptionDraftWire,
   SoapNote,
 } from "../../../services/clinicalApi";
 import type { IcdCode, SoapDraft, TranscriptLine } from "./doctorMockData";
@@ -59,6 +62,64 @@ export function icdSuggestionsToCodes(
       label: item.disease_name?.trim() || item.icd10_code.trim(),
       confidence: Math.max(0, Math.min(100, Math.round(item.ai_confidence ?? 0))),
     }));
+}
+
+/**
+ * The copilot turn's `diagnoses` - camelCase `icd10Code` on the gateway, with
+ * the snake_case `icd10_code` spelling accepted too - onto the selector's
+ * `IcdCode` list, primary first so the first chip stays the main diagnosis.
+ */
+export function diagnosesToCodes(
+  diagnoses:
+    | (Partial<DiagnosisItem> & Partial<Icd10Suggestion>)[]
+    | null
+    | undefined,
+): IcdCode[] {
+  if (!Array.isArray(diagnoses)) return [];
+  return diagnoses
+    .map((item) => {
+      const code = (item.icd10Code ?? item.icd10_code ?? "").trim();
+      const confidence = Math.round(
+        Number(item.aiConfidence ?? item.ai_confidence ?? 0) || 0,
+      );
+      return {
+        code,
+        label: (item.diseaseName ?? item.disease_name ?? "").trim() || code,
+        confidence: Math.max(0, Math.min(100, confidence)),
+        isPrimary: (item.isPrimary ?? item.is_primary) === true,
+      };
+    })
+    .filter((item) => item.code)
+    .sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary))
+    .map(({ code, label, confidence }) => ({ code, label, confidence }));
+}
+
+/**
+ * The gateway writes its prescription draft camelCase (`drugName`,
+ * `routeFrequency`) while the prescribing table reads snake_case - bind the
+ * two here so an AI proposal lands as real rows instead of an empty table.
+ */
+export function normalizePrescriptionDraft(
+  items: PrescriptionDraftWire[] | null | undefined,
+): PrescriptionDraftItem[] {
+  if (!Array.isArray(items)) return [];
+  return items
+    .map((item) => {
+      const quantity = Number(item.quantity);
+      return {
+        drug_name: (item.drugName ?? item.drug_name ?? "").trim(),
+        drug_id: item.drugId ?? item.drug_id,
+        concentration: item.concentration ?? "",
+        dosage_form: item.dosageForm ?? item.dosage_form ?? "",
+        route_frequency: item.routeFrequency ?? item.route_frequency ?? "",
+        duration: item.duration ?? "",
+        quantity:
+          Number.isFinite(quantity) && quantity > 0 ? Math.trunc(quantity) : 1,
+        current_stock: item.currentStock ?? item.current_stock ?? 0,
+        bhyt_coverage: item.bhytCoverage ?? item.bhyt_coverage ?? "",
+      };
+    })
+    .filter((item) => Boolean(item.drug_name));
 }
 
 /**

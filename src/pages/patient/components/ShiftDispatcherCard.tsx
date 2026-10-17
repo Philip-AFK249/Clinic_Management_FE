@@ -12,6 +12,7 @@ import {
   Users,
 } from "lucide-react";
 import { ticketPrefixFor } from "../data/clinicContent";
+import { formatDoctorName, formatRoom } from "../data/bookingDisplay";
 import { sessionScheduleFor } from "../../../services/voiceTriageApi";
 import type {
   DoctorShiftInfo,
@@ -370,6 +371,12 @@ function SessionPanel({
   const meta = SESSION_META[session.session];
   const Icon = meta.icon;
   const full = session.is_full;
+  /**
+   * The outline follows the patient's own pick, not the recommendation: a
+   * doctor + slot chosen in this half of the day is what lights the card, so
+   * moving to the afternoon must move the highlight with it.
+   */
+  const isActive = selected?.session === session.session;
   const free = session.doctors
     .filter((doctor) => !doctor.is_full)
     .reduce((sum, doctor) => sum + doctor.available_capacity, 0);
@@ -411,11 +418,13 @@ function SessionPanel({
   return (
     <div
       className={`rounded-xl border p-4 transition-shadow ${
-        isRecommended
-          ? "border-clinical-500 bg-clinical-50/60 ring-2 ring-clinical-500"
+        isActive
+          ? "border-clinical-600 bg-white shadow-md ring-2 ring-clinical-500/20"
           : full
             ? "border-slate-200 bg-slate-50 opacity-70"
-            : "border-slate-200 bg-white"
+            : isRecommended
+              ? "border-clinical-300 bg-clinical-50/60"
+              : "border-slate-200 bg-white"
       }`}
     >
       <div className="flex items-start justify-between gap-2">
@@ -442,7 +451,7 @@ function SessionPanel({
       {isRecommended && (
         <span className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-clinical-600 px-2.5 py-1 text-xs font-bold text-white">
           <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
-          Khuyên chọn (Ít chờ đợi nhất)
+          Khuyến chọn (Ít chờ đợi nhất)
         </span>
       )}
 
@@ -457,7 +466,10 @@ function SessionPanel({
               <DoctorRow
                 key={doctor.doctor_id}
                 doctor={doctor}
-                isSelected={selected?.doctorId === doctor.doctor_id}
+                isSelected={
+                  selected?.session === session.session &&
+                  selected?.doctorId === doctor.doctor_id
+                }
                 onSelect={() => handleDoctorPick(doctor.doctor_id)}
               />
             ))}
@@ -515,11 +527,11 @@ function DoctorRow({
     >
       <span className="min-w-0 flex-1">
         <span className="block text-sm font-semibold text-slate-900">
-          {doctor.title} {doctor.doctor_name}
+          {formatDoctorName(doctor.title, doctor.doctor_name)}
         </span>
         <span className="mt-0.5 flex items-center gap-1.5 text-xs text-slate-500">
           <MapPin className="h-3 w-3 shrink-0" aria-hidden="true" />
-          Phòng {doctor.room_number}
+          {formatRoom(doctor.room_number)}
         </span>
       </span>
       {isSelected ? (

@@ -19,6 +19,9 @@ interface SoapNoteEditorProps {
   rxLines: RxLine[];
   setRxLines: React.Dispatch<React.SetStateAction<RxLine[]>>;
   allergies: Allergy[];
+  /** One copilot turn; the answer lands as ICD-10 codes + prescription lines. */
+  onSubmitAiProposal: (prompt: string) => void;
+  isSubmittingAi: boolean;
 }
 
 const SOAP_FIELDS: {
@@ -58,6 +61,8 @@ export default function SoapNoteEditor({
   rxLines,
   setRxLines,
   allergies,
+  onSubmitAiProposal,
+  isSubmittingAi,
 }: SoapNoteEditorProps) {
   const [expanded, setExpanded] = useState<keyof SoapDraft | null>(null);
 
@@ -129,6 +134,8 @@ export default function SoapNoteEditor({
         onToggle={toggleIcd}
         onAdd={addIcd}
         onRemove={removeIcd}
+        onSubmitAiProposal={onSubmitAiProposal}
+        isSubmittingAi={isSubmittingAi}
       />
 
       {/* Prescription */}
@@ -136,6 +143,8 @@ export default function SoapNoteEditor({
         rxLines={rxLines}
         setRxLines={setRxLines}
         allergies={allergies}
+        onSubmitAiProposal={onSubmitAiProposal}
+        isSubmittingAi={isSubmittingAi}
       />
     </div>
   );

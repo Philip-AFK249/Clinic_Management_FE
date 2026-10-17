@@ -142,6 +142,33 @@ export function resolvePrescriptionDraft(
 }
 
 /**
+ * The prescribing table's lines -> the copilot request's `prescription_draft`.
+ *
+ * The gateway's `PrescriptionItemDraft` requires `drugId` and `drugName` on
+ * every row, so a line without a usable catalog id is dropped rather than sent
+ * and rejected (one bad row would 422 the whole proposal).
+ */
+export function rxLinesToDraft(lines: RxLine[]): PrescriptionDraftItem[] {
+  return lines
+    .filter(
+      (line) =>
+        Number.isInteger(line.drugId) &&
+        line.drugId > 0 &&
+        Boolean(line.medication.trim()),
+    )
+    .map((line) => ({
+      drug_id: line.drugId,
+      drug_name: line.medication,
+      dosage_form: line.dosageForm,
+      route_frequency: line.routeFrequency,
+      duration: line.duration,
+      quantity: Math.max(1, Math.trunc(line.quantity) || 1),
+      current_stock: line.stockUnits,
+      bhyt_coverage: line.bhytCoverage,
+    }));
+}
+
+/**
  * The wire payload for `POST /clinical/encounters/{id}/complete`. Lines whose
  * drug id is unusable are skipped rather than sent as `drugId: 0`, which the
  * backend would reject with a 400 for the entire prescription.

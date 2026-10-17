@@ -9,7 +9,7 @@ import type {
   PrescriptionDraftItem,
   SoapNote,
 } from "../../../services/clinicalApi";
-import { icdSuggestionsToCodes, soapDraftToNote } from "../data/ambientMapper";
+import { diagnosesToCodes, normalizePrescriptionDraft, soapDraftToNote } from "../data/ambientMapper";
 import type { IcdCode, SoapDraft } from "../data/doctorMockData";
 
 /** A refined record the doctor can accept back into the workspace. */
@@ -63,12 +63,11 @@ function toChartUpdate(response: CopilotChatResponse): CopilotChartUpdate | null
   const update: CopilotChartUpdate = {};
   if (response.soap_note) update.soapNote = response.soap_note;
 
-  const icdCodes = icdSuggestionsToCodes(response.icd10_suggestions);
+  const icdCodes = diagnosesToCodes(response.diagnoses);
   if (icdCodes.length > 0) update.icdCodes = icdCodes;
 
-  if (response.prescription_draft?.length) {
-    update.prescriptionDraft = response.prescription_draft;
-  }
+  const prescriptionDraft = normalizePrescriptionDraft(response.prescription_draft);
+  if (prescriptionDraft.length > 0) update.prescriptionDraft = prescriptionDraft;
 
   return Object.keys(update).length > 0 ? update : null;
 }
@@ -123,9 +122,13 @@ export default function DoctorAiChatDrawer({
     try {
       const response = await sendCopilotChatApi({
         message,
-        currentSoap: soapDraftToNote(currentSoap),
-        currentDiagnoses,
-        patientContext,
+        soapNote: soapDraftToNote(currentSoap),
+        diagnoses: currentDiagnoses,
+        departmentId: patientContext.departmentId,
+        doctorId: patientContext.doctorId,
+        patientId: patientContext.patientId,
+        allergies: patientContext.allergies?.join(", "),
+        patientHistory: patientContext.pastDiagnoses?.join("; "),
       });
 
       setMessages((prev) => [
@@ -134,7 +137,7 @@ export default function DoctorAiChatDrawer({
           id: nextMessageId("assistant"),
           role: "assistant",
           content:
-            response.reply?.trim() ||
+            response.assistant_message?.trim() ||
             "Trợ lý AI chưa có đề xuất nào cho thông tin vừa bổ sung.",
           isRedFlag: response.has_red_flags === true,
         },

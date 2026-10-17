@@ -14,12 +14,18 @@ import type { CopilotChartUpdate } from "./components/DoctorAiChatDrawer";
 import { useDoctorQueue, todayIso } from "./hooks/useDoctorQueue";
 import { useAmbientConsultation } from "./hooks/useAmbientConsultation";
 import { useDoctorSession } from "./hooks/useDoctorSession";
-import { toDiagnoses, toPrescriptionItems } from "./data/rxMapper";
+import { toDiagnoses, toPrescriptionItems, rxLinesToDraft } from "./data/rxMapper";
+import {
+  diagnosesToCodes,
+  normalizePrescriptionDraft,
+  soapDraftToNote,
+} from "./data/ambientMapper";
 import {
   AI_GATEWAY_BASE_URL,
   AI_GATEWAY_START_HINT,
   completeEncounterApi,
   sendAmbientConsultationApi,
+  sendCopilotChatApi,
   startEncounterApi,
 } from "../../services/clinicalApi";
 import type {
@@ -52,6 +58,8 @@ export default function DoctorEHRPage() {
   );
   const [isStartingEncounter, setIsStartingEncounter] = useState(false);
   const [isSubmittingEncounter, setIsSubmittingEncounter] = useState(false);
+  /** One copilot turn ("Gửi AI" / "Đề xuất AI") is on the wire. */
+  const [isSubmittingAi, setIsSubmittingAi] = useState(false);
   /**
    * Which slice of the queue the drawer is looking at.
    *
@@ -292,6 +300,86 @@ export default function DoctorEHRPage() {
     [applyCopilotUpdate],
   );
 
+  /**
+   * The workspace's own copilot action: the clinical note the doctor typed
+   * goes to `POST /clinical/copilot-chat` with the current SOAP, diagnoses and
+   * prescription draft, and whatever comes back binds straight into the ICD-10
+   * selector and the prescribing table.
+   *
+   * The SOAP note is sent as context but never overwritten here - the gateway
+   * always answers with a full note of its own, and silently replacing the one
+   * the doctor is editing would discard their wording.
+   */
+  const handleAiProposal = useCallback(
+    async (promptText: string) => {
+      const message = promptText.trim();
+      if (!message || isSubmittingAi) return;
+
+      setIsSubmittingAi(true);
+      try {
+        const response = await sendCopilotChatApi({
+          message,
+          soapNote: soapDraftToNote(soapDraft),
+          diagnoses: toDiagnoses(icdAccepted),
+          prescriptionDraft: rxLinesToDraft(rxLines),
+          departmentId: session.profile.departmentId,
+          doctorId: session.doctorId,
+          patientId,
+          allergies: patient?.allergies.map((allergy) => allergy.name).join(", "),
+          patientHistory: patient?.pastEncounters
+            .map(
+              (encounter) =>
+                `${encounter.date} - ${encounter.department}: ${encounter.complaint} (${encounter.diagnosis})`,
+            )
+            .join("; "),
+        });
+
+        const icdCodes = diagnosesToCodes(response.diagnoses);
+        const prescriptionDraft = normalizePrescriptionDraft(
+          response.prescription_draft,
+        );
+
+        if (icdCodes.length === 0 && prescriptionDraft.length === 0) {
+          toast.info(
+            response.assistant_message?.trim() ||
+              "AI chưa có đề xuất nào cho ghi chú này.",
+            { duration: 5000 },
+          );
+          return;
+        }
+
+        applyCopilotUpdate({
+          ...(icdCodes.length > 0 ? { icdCodes } : {}),
+          ...(prescriptionDraft.length > 0 ? { prescriptionDraft } : {}),
+        });
+        toast.success(
+          "AI đã cập nhật mã chẩn đoán ICD-10 và bảng kê đơn thuốc. Bác sĩ đối soát trước khi ký duyệt.",
+          { duration: 4000 },
+        );
+      } catch (cause) {
+        toast.error(
+          cause instanceof Error
+            ? cause.message
+            : `Không gửi được ghi chú đến Trợ lý AI (${AI_GATEWAY_BASE_URL}). ${AI_GATEWAY_START_HINT}`,
+          { duration: 6000 },
+        );
+      } finally {
+        setIsSubmittingAi(false);
+      }
+    },
+    [
+      applyCopilotUpdate,
+      icdAccepted,
+      isSubmittingAi,
+      patient,
+      patientId,
+      rxLines,
+      session.doctorId,
+      session.profile.departmentId,
+      soapDraft,
+    ],
+  );
+
   const handleApprove = useCallback(async () => {
     if (status !== "DRAFT_READY" || !patient) return;
 
@@ -435,6 +523,8 @@ export default function DoctorEHRPage() {
                     rxLines={rxLines}
                     setRxLines={setRxLines}
                     allergies={queue.activePatient.allergies}
+                    onSubmitAiProposal={handleAiProposal}
+                    isSubmittingAi={isSubmittingAi}
                   />
                 }
               />
