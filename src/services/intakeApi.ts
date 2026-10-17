@@ -152,6 +152,18 @@ export interface QueueTicketDetailResponse {
   phone: string | null;
   address: string | null;
   isOcrVerified: boolean | null;
+  /**
+   * Dấu hiệu sinh tử recorded at the nurse station (`PUT .../vitals`). Null
+   * until an điều dưỡng measures them, which is why every field is optional
+   * here: an unmeasured vital must render as "--" rather than as 0.
+   */
+  bloodPressure?: string | null; // "120/80"
+  heartRate?: number | null; // lần/phút
+  temperature?: string | null; // "36.7"
+  spo2?: number | null; // %
+  weightKg?: number | null;
+  heightCm?: number | null;
+  nurseNotes?: string | null;
 }
 
 /**
@@ -175,6 +187,20 @@ export interface QueueTicket {
   chiefComplaint: string | null;
   checkInTime: string | null;
   calledAt: string | null;
+  /** Last write on the ticket - what a saved vitals reading stamps. */
+  updatedAt?: string | null;
+  /**
+   * Nurse-recorded vitals, carried on the entity the queue endpoints serialize
+   * directly, so `/nurse` and the doctor's EHR read the same values with no
+   * extra request.
+   */
+  bloodPressure?: string | null; // "120/80"
+  heartRate?: number | null; // lần/phút
+  temperature?: string | null; // "36.7"
+  spo2?: number | null; // %
+  weightKg?: number | null;
+  heightCm?: number | null;
+  nurseNotes?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -545,6 +571,49 @@ export async function updateTicketStatus(
       `/v1/queue/tickets/${encodeURIComponent(ticketNumber)}/status`,
       undefined,
       { params: { status }, signal },
+    );
+    return data;
+  } catch (error) {
+    if (axios.isCancel(error)) throw error;
+    throw toApiError(error);
+  }
+}
+
+/**
+ * What the điều dưỡng writes at the bedside. `bloodPressure` is the only
+ * column the service insists on (`@NotBlank` on `UpdateVitalsRequest`); the
+ * rest land as they are measured and stay null when they are not.
+ */
+export interface UpdateVitalsPayload {
+  bloodPressure: string; // "120/80"
+  heartRate?: number; // lần/phút
+  temperature?: string; // "36.7"
+  spo2?: number; // %
+  weightKg?: number;
+  heightCm?: number;
+  nurseNotes?: string;
+}
+
+/**
+ * `PUT /api/v1/queue/tickets/{ticketNumber}/vitals` - save the vitals measured
+ * at the nurse station onto the ticket itself (PatientIntakeService).
+ *
+ * This is the hand-over path from `/nurse` to the doctor's EHR: the same
+ * columns come back on `getDoctorQueue` and `getTicketDetails`, so a reading
+ * taken at the station shows on the consultation screen - and rides into the
+ * encounter - with no reload and no second system. Ticket numbers contain "#",
+ * so the path segment is percent-encoded exactly like the status PATCH.
+ */
+export async function updateTicketVitalsApi(
+  ticketNumber: string,
+  payload: UpdateVitalsPayload,
+  signal?: AbortSignal,
+): Promise<QueueTicket> {
+  try {
+    const { data } = await intakeApi.put<QueueTicket>(
+      `/v1/queue/tickets/${encodeURIComponent(ticketNumber)}/vitals`,
+      payload,
+      { signal },
     );
     return data;
   } catch (error) {

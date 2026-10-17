@@ -92,6 +92,14 @@ export interface StartEncounterPayload {
   doctorName: string;
   departmentId: number;
   insuranceCode?: string;
+  /**
+   * Dấu hiệu sinh tồn the nurse station recorded on the ticket. Optional, and
+   * omitted rather than sent as 0 when the patient has not been measured yet.
+   */
+  bloodPressure?: string;
+  heartRate?: number;
+  temperature?: string;
+  spo2?: number;
 }
 
 export interface CompleteEncounterPayload {

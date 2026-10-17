@@ -1,4 +1,7 @@
-import type { QueueTicket } from "../../../services/intakeApi";
+import type {
+  QueueTicket,
+  QueueTicketDetailResponse,
+} from "../../../services/intakeApi";
 import type {
   BookingSource,
   Gender,
@@ -7,9 +10,62 @@ import type {
   Vitals,
 } from "./doctorMockData";
 
-/** Unmeasured placeholder. The queue API carries no vitals, and 0 must never
- *  be rendered as a real reading in a clinical UI. */
+/** Unmeasured placeholder. 0 must never be rendered as a real reading. */
 const NOT_MEASURED: Vitals = { bp: "", hr: 0, temp: "", spo2: 0 };
+
+/**
+ * The ticket's nurse-recorded vitals, in the presentation shape the banner and
+ * the copilot context render. `recorded` is false while nothing has been
+ * measured, so the UI says "unknown" instead of showing zeros.
+ */
+function vitalsFromTicket(ticket: QueueTicket): { vitals: Vitals; recorded: boolean } {
+  const bp = ticket.bloodPressure?.trim() ?? "";
+  const hr = ticket.heartRate ?? 0;
+  const rawTemp = ticket.temperature?.trim() ?? "";
+  const spo2 = ticket.spo2 ?? 0;
+  const recorded = Boolean(bp || hr > 0 || rawTemp || spo2 > 0);
+  if (!recorded) return { vitals: NOT_MEASURED, recorded: false };
+  return {
+    vitals: {
+      bp,
+      hr,
+      // The banner prints the unit as a suffix; the mock records bake "°C"
+      // into the string, so normalise to that convention here.
+      temp: rawTemp && !rawTemp.includes("°") ? `${rawTemp}°C` : rawTemp,
+      spo2,
+    },
+    recorded: true,
+  };
+}
+
+/**
+ * The Objective-section line a doctor should not have to retype: what the
+ * điều dưỡng measured at the station, in one sentence. Empty when the ticket
+ * carries no vitals at all, so a blank O section is never seeded with
+ * placeholders.
+ */
+export function vitalsObjectiveLine(detail: QueueTicketDetailResponse): string {
+  const bp = detail.bloodPressure?.trim() ?? "";
+  const hr = detail.heartRate ?? 0;
+  const temp = detail.temperature?.trim() ?? "";
+  const spo2 = detail.spo2 ?? 0;
+  if (!bp && hr <= 0 && !temp && spo2 <= 0) return "";
+
+  const physique = [
+    detail.weightKg ? `${detail.weightKg}kg` : "",
+    detail.heightCm ? `${detail.heightCm}cm` : "",
+  ]
+    .filter(Boolean)
+    .join(", ");
+
+  return [
+    `Dấu hiệu sinh tồn: Huyết áp ${bp || "--"} mmHg, Mạch ${hr > 0 ? hr : "--"} ck/phút, SpO2 ${spo2 > 0 ? spo2 : "--"}%, Thân nhiệt ${temp || "--"}°C.`,
+    physique ? `Thể trạng: ${physique}.` : "",
+    `Ghi chú ĐD: ${detail.nurseNotes?.trim() || "Không có"}`,
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
 
 const PRIORITY_SCORE: Record<TriageLevel, number> = { P1: 150, P2: 95, P3: 60 };
 
@@ -54,11 +110,13 @@ function waitingMinutesFrom(iso: string | null): number {
 
 /**
  * Projects a queue ticket onto the richer `PatientRecord` shape the EHR
- * components render. The intake API only carries administrative data, so the
- * clinical history sections stay empty and are explicitly flagged as unknown
- * rather than fabricated.
+ * components render. The intake API carries the administrative data plus the
+ * vitals an điều dưỡng recorded on the ticket, so those are mapped straight
+ * through; the clinical history sections stay empty and are explicitly flagged
+ * as unknown rather than fabricated.
  */
 export function ticketToPatientRecord(ticket: QueueTicket): PatientRecord {
+  const { vitals, recorded } = vitalsFromTicket(ticket);
   return {
     ticketNumber: ticket.ticketNumber,
     name: ticket.patient?.fullName ?? "Không rõ họ tên",
@@ -80,8 +138,8 @@ export function ticketToPatientRecord(ticket: QueueTicket): PatientRecord {
     allergies: [],
     // Flagged so the UI says "unknown" instead of "no known allergies".
     allergiesKnown: false,
-    vitals: NOT_MEASURED,
-    vitalsRecorded: false,
+    vitals,
+    vitalsRecorded: recorded,
     pastEncounters: [],
     labReports: [],
     scannedOldPrescriptions: [],

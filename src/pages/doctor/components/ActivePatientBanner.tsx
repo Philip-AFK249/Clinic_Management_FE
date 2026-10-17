@@ -1,8 +1,16 @@
 import { AlertTriangle, FileText } from "lucide-react";
+import type { QueueTicketDetailResponse } from "../../../services/intakeApi";
 import type { Allergy, PatientRecord } from "../data/doctorMockData";
 
 interface ActivePatientBannerProps {
   patient: PatientRecord;
+  /**
+   * The ticket as PatientIntakeService holds it, including the vitals the
+   * nurse station recorded. Preferred over `patient.vitals`: it is pulled the
+   * moment the patient is called and re-pulled on every queue poll, so it is
+   * the freshest copy in the room.
+   */
+  ticketDetail?: QueueTicketDetailResponse | null;
   onOpenHistory: () => void;
 }
 
@@ -24,6 +32,7 @@ function AllergyBadge({ allergy }: { allergy: Allergy }) {
 
 export default function ActivePatientBanner({
   patient,
+  ticketDetail,
   onOpenHistory,
 }: ActivePatientBannerProps) {
   return (
@@ -81,7 +90,32 @@ export default function ActivePatientBanner({
 
       {/* Vitals */}
       <div className="col-span-4 flex items-center gap-5 border-x border-slate-200/80 px-4">
-        {patient.vitalsRecorded === false ? (
+        {ticketDetail ? (
+          // The nurse station's own reading. Placeholders, not zeros: an
+          // unmeasured vital is "unknown", never "0".
+          <>
+            <Vital
+              label="Huyết áp"
+              value={ticketDetail.bloodPressure || "--/--"}
+              unit="mmHg"
+            />
+            <Vital
+              label="Mạch"
+              value={ticketDetail.heartRate ? String(ticketDetail.heartRate) : "--"}
+              unit="bpm"
+            />
+            <Vital
+              label="SpO2"
+              value={ticketDetail.spo2 ? String(ticketDetail.spo2) : "--"}
+              unit="%"
+            />
+            <Vital
+              label="Nhiệt độ"
+              value={ticketDetail.temperature || "--"}
+              unit="°C"
+            />
+          </>
+        ) : patient.vitalsRecorded === false ? (
           <span className="text-xs text-slate-400">
             Chưa đo sinh hiệu tại phòng tiếp đón
           </span>

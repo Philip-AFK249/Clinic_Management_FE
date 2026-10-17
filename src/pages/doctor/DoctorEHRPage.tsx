@@ -15,11 +15,14 @@ import { useDoctorQueue, todayIso } from "./hooks/useDoctorQueue";
 import { useAmbientConsultation } from "./hooks/useAmbientConsultation";
 import { useDoctorSession } from "./hooks/useDoctorSession";
 import { toDiagnoses, toPrescriptionItems, rxLinesToDraft } from "./data/rxMapper";
+import { vitalsObjectiveLine } from "./data/ticketMapper";
 import {
   diagnosesToCodes,
   normalizePrescriptionDraft,
   soapDraftToNote,
 } from "./data/ambientMapper";
+import { getTicketDetails } from "../../services/intakeApi";
+import type { QueueTicketDetailResponse } from "../../services/intakeApi";
 import {
   AI_GATEWAY_BASE_URL,
   AI_GATEWAY_START_HINT,
@@ -116,6 +119,59 @@ export default function DoctorEHRPage() {
   const patientId = patient ? parsePatientId(patient.patientId) : 1;
   const insuranceCode = patient?.insuranceCode ?? "";
 
+  /**
+   * The ticket as PatientIntakeService holds it, including the vitals the
+   * điều dưỡng recorded. Pulled the moment a patient lands in the room and
+   * re-pulled on every queue poll, so a reading taken after the patient was
+   * called still shows on the banner and rides into the encounter. Keyed by
+   * ticket so a newly called patient can never display the previous one's
+   * numbers while their own pull is in flight.
+   */
+  const [ticketDetailState, setTicketDetailState] = useState<{
+    ticket: string;
+    detail: QueueTicketDetailResponse | null;
+  } | null>(null);
+  const ticketDetail =
+    ticketDetailState?.ticket === ticketNumber ? ticketDetailState.detail : null;
+  /** True once this ticket's detail pull has settled (loaded *or* failed). */
+  const vitalsReady = ticketDetailState?.ticket === ticketNumber;
+
+  useEffect(() => {
+    if (!ticketNumber) return undefined;
+    let cancelled = false;
+    const controller = new AbortController();
+
+    // The abort below cancels an in-flight pull when the patient changes; the
+    // `cancelled` flag keeps a response that settled in the same tick from
+    // being written. A failed pull still settles the ticket, letting the
+    // encounter below open without vitals instead of waiting forever.
+    void getTicketDetails(ticketNumber, controller.signal).then(
+      (detail) => {
+        if (!cancelled) setTicketDetailState({ ticket: ticketNumber, detail });
+      },
+      () => {
+        if (!cancelled) setTicketDetailState({ ticket: ticketNumber, detail: null });
+      },
+    );
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [ticketNumber, queue.lastUpdatedAt]);
+
+  /**
+   * What the SOAP Objective section is seeded with while it is still empty, so
+   * the doctor starts from the numbers the điều dưỡng measured instead of
+   * retyping them. Keyed by ticket: the editor seeds once per patient and
+   * never rewrites a section the doctor has edited (or deliberately erased).
+   */
+  const objectiveSeed = useMemo(() => {
+    if (!ticketDetail || !ticketNumber) return null;
+    const text = vitalsObjectiveLine(ticketDetail);
+    return text ? { key: ticketNumber, text } : null;
+  }, [ticketDetail, ticketNumber]);
+
   /** Everything the copilot needs to reason about the person in the room. */
   const patientContext = useMemo<AmbientPatientContext>(() => {
     const context: AmbientPatientContext = {
@@ -179,6 +235,9 @@ export default function DoctorEHRPage() {
       warnedTicketRef.current = null;
       return;
     }
+    // Wait for the nurse-vitals pull to settle, so the readings the điều dưỡng
+    // took are stored on the encounter instead of arriving after it opened.
+    if (!vitalsReady) return;
     if (currentEncounterId !== null) return;
     if (startedTicketRef.current === ticketNumber) return;
 
@@ -198,6 +257,15 @@ export default function DoctorEHRPage() {
       ...(insuranceCode && insuranceCode !== "Chưa cập nhật"
         ? { insuranceCode }
         : {}),
+      // Unmeasured vitals stay off the record rather than being sent as 0.
+      ...(ticketDetail?.bloodPressure
+        ? { bloodPressure: ticketDetail.bloodPressure }
+        : {}),
+      ...(ticketDetail?.heartRate ? { heartRate: ticketDetail.heartRate } : {}),
+      ...(ticketDetail?.temperature
+        ? { temperature: ticketDetail.temperature }
+        : {}),
+      ...(ticketDetail?.spo2 ? { spo2: ticketDetail.spo2 } : {}),
     }).then(
       (encounter) => {
         setIsStartingEncounter(false);
@@ -226,7 +294,9 @@ export default function DoctorEHRPage() {
     session.doctorId,
     session.profile.departmentId,
     session.profile.fullName,
+    ticketDetail,
     ticketNumber,
+    vitalsReady,
   ]);
 
   /**
@@ -496,6 +566,7 @@ export default function DoctorEHRPage() {
             <>
               <ActivePatientBanner
                 patient={queue.activePatient}
+                ticketDetail={ticketDetail}
                 onOpenHistory={() => setHistoryOpen(true)}
               />
               <AmbientRecordingBar
@@ -517,6 +588,7 @@ export default function DoctorEHRPage() {
                     status={status}
                     soapDraft={soapDraft}
                     setSoapDraft={setSoapDraft}
+                    objectiveSeed={objectiveSeed}
                     icdSuggestions={icdSuggestions}
                     icdAccepted={icdAccepted}
                     setIcdAccepted={setIcdAccepted}

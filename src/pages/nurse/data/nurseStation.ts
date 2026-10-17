@@ -81,6 +81,32 @@ export interface VitalsRecord {
   recordedBy: string;
 }
 
+/**
+ * The reading the station already saved for this ticket, as the queue
+ * endpoints return it, shaped for the capture form and the queue badge.
+ *
+ * `undefined` while nothing has been measured. `recordedBy` credits the
+ * station rather than a person: PatientIntakeService stores the values but not
+ * which điều dưỡng entered them.
+ */
+export function vitalsRecordFromTicket(ticket: QueueTicket): VitalsRecord | undefined {
+  const bloodPressure = ticket.bloodPressure?.trim() ?? "";
+  const temperature = ticket.temperature?.trim() ?? "";
+  const heartRate = ticket.heartRate ?? 0;
+  const spo2 = ticket.spo2 ?? 0;
+  if (!bloodPressure && !temperature && heartRate <= 0 && spo2 <= 0) return undefined;
+  return {
+    ticketNumber: ticket.ticketNumber,
+    patientName: ticket.patient?.fullName ?? "Không rõ họ tên",
+    bloodPressure,
+    heartRate,
+    temperature,
+    spo2,
+    recordedAt: ticket.updatedAt ?? ticket.checkInTime ?? "",
+    recordedBy: "Trạm điều dưỡng",
+  };
+}
+
 /** Human-readable lines for a saved reading; empty entries are dropped. */
 export function vitalsSummary(record: VitalsRecord | undefined): string[] {
   if (!record) return [];

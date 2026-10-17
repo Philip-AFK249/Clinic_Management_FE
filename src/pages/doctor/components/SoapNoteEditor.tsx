@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Icd10Selector from "./Icd10Selector";
 import PrescriptionDraftTable from "./PrescriptionDraftTable";
 import type {
@@ -8,6 +8,15 @@ import type {
   SoapDraft,
 } from "../data/doctorMockData";
 import type { ConsultationStatus } from "../hooks/useAmbientConsultation";
+
+/**
+ * A line to seed the Objective section with while it is still empty, tagged
+ * with the ticket it came from so it is applied at most once per patient.
+ */
+export interface SoapObjectiveSeed {
+  key: string;
+  text: string;
+}
 
 interface SoapNoteEditorProps {
   status: ConsultationStatus;
@@ -19,6 +28,8 @@ interface SoapNoteEditorProps {
   rxLines: RxLine[];
   setRxLines: React.Dispatch<React.SetStateAction<RxLine[]>>;
   allergies: Allergy[];
+  /** Nurse-recorded vitals, dropped into "O" only while that section is empty. */
+  objectiveSeed?: SoapObjectiveSeed | null;
   /** One copilot turn; the answer lands as ICD-10 codes + prescription lines. */
   onSubmitAiProposal: (prompt: string) => void;
   isSubmittingAi: boolean;
@@ -61,10 +72,27 @@ export default function SoapNoteEditor({
   rxLines,
   setRxLines,
   allergies,
+  objectiveSeed,
   onSubmitAiProposal,
   isSubmittingAi,
 }: SoapNoteEditorProps) {
   const [expanded, setExpanded] = useState<keyof SoapDraft | null>(null);
+
+  /**
+   * Seed "O" with the nurse station's readings, once per ticket and only while
+   * the section is untouched. The ref keeps a section the doctor edited - or
+   * deliberately cleared - from being rewritten by the next queue poll.
+   */
+  const seededObjectiveFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (!objectiveSeed) return;
+    if (seededObjectiveFor.current === objectiveSeed.key) return;
+    if (soapDraft.objective.trim()) return;
+    seededObjectiveFor.current = objectiveSeed.key;
+    setSoapDraft((prev) =>
+      prev.objective.trim() ? prev : { ...prev, objective: objectiveSeed.text },
+    );
+  }, [objectiveSeed, setSoapDraft, soapDraft.objective]);
 
   const showBanner = status === "DRAFT_READY" || status === "APPROVED";
 

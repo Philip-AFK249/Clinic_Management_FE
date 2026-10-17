@@ -341,9 +341,36 @@ function NurseTicketCard({
         </p>
       )}
 
-      {/* Vitals readout */}
+      {/* Vitals readout - the ticket's own reading wins over the session copy */}
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
-        {summary.length > 0 ? (
+        {ticket.bloodPressure ? (
+          <>
+            <span className="inline-flex items-center gap-1 rounded border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700">
+              <HeartPulse className="h-3 w-3" aria-hidden="true" />
+              Đã đo SH: {ticket.bloodPressure} mmHg
+            </span>
+            {ticket.heartRate ? (
+              <span className="rounded border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[10px] font-semibold text-violet-700">
+                Mạch {ticket.heartRate} lần/phút
+              </span>
+            ) : null}
+            {ticket.temperature ? (
+              <span className="rounded border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[10px] font-semibold text-violet-700">
+                Nhiệt độ {ticket.temperature} °C
+              </span>
+            ) : null}
+            {ticket.spo2 ? (
+              <span className="rounded border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[10px] font-semibold text-violet-700">
+                SpO₂ {ticket.spo2}%
+              </span>
+            ) : null}
+            {record && (
+              <span className="text-[10px] text-slate-400">
+                {clockLabel(record.recordedAt)} &middot; {record.recordedBy}
+              </span>
+            )}
+          </>
+        ) : summary.length > 0 ? (
           <>
             {summary.map((line) => (
               <span

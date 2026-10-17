@@ -1,6 +1,8 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { Activity, HeartPulse, Loader2, Thermometer, Wind, X } from "lucide-react";
-import type { QueueTicket } from "../../../services/intakeApi";
+import { toast } from "sonner";
+import { updateTicketVitalsApi } from "../../../services/intakeApi";
+import type { QueueTicket, UpdateVitalsPayload } from "../../../services/intakeApi";
 import type { VitalsRecord } from "../data/nurseStation";
 
 interface VitalsCaptureModalProps {
@@ -8,6 +10,7 @@ interface VitalsCaptureModalProps {
   existing?: VitalsRecord;
   nurseName: string;
   onClose: () => void;
+  /** Called once the reading is safely on the ticket. */
   onSave: (record: VitalsRecord) => void;
 }
 
@@ -16,23 +19,55 @@ type VitalsForm = {
   heartRate: string;
   temperature: string;
   spo2: string;
+  weightKg: string;
+  heightCm: string;
+  nurseNotes: string;
 };
 
 type VitalsErrors = Partial<Record<keyof VitalsForm, string>>;
 
-function formFrom(record: VitalsRecord | undefined): VitalsForm {
+/** Prefill from this session's record first, then from what the ticket holds. */
+function formFrom(ticket: QueueTicket, existing?: VitalsRecord): VitalsForm {
   return {
-    bloodPressure: record?.bloodPressure ?? "",
-    heartRate: record?.heartRate ? String(record.heartRate) : "",
-    temperature: record?.temperature ?? "",
-    spo2: record?.spo2 ? String(record.spo2) : "",
+    bloodPressure: existing?.bloodPressure ?? ticket.bloodPressure ?? "",
+    heartRate: existing?.heartRate
+      ? String(existing.heartRate)
+      : ticket.heartRate != null
+        ? String(ticket.heartRate)
+        : "",
+    temperature: existing?.temperature ?? ticket.temperature ?? "",
+    spo2: existing?.spo2
+      ? String(existing.spo2)
+      : ticket.spo2 != null
+        ? String(ticket.spo2)
+        : "",
+    weightKg: ticket.weightKg != null ? String(ticket.weightKg) : "",
+    heightCm: ticket.heightCm != null ? String(ticket.heightCm) : "",
+    nurseNotes: ticket.nurseNotes ?? "",
   };
 }
 
+/** Optional measurements: blank is legal, a present value must be plausible. */
+function checkOptionalNumber(
+  value: string,
+  min: number,
+  max: number,
+  label: string,
+  unit: string,
+): string | undefined {
+  if (!value.trim()) return undefined;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < min || parsed > max) {
+    return `${label} phải trong khoảng ${min} - ${max} ${unit}.`;
+  }
+  return undefined;
+}
+
 /**
- * Bedside vitals capture. There is no write endpoint for these yet, so the
- * reading is held on the nurse's session (pre-filled on a re-open) and the UI
- * says so rather than implying it reached the bệnh án.
+ * Bedside vitals capture. Saving writes to the ticket
+ * (`PUT /v1/queue/tickets/{ticketNumber}/vitals`), which is what makes the
+ * reading show up on the doctor's EHR workspace the moment it lands - the
+ * local session copy here only keeps the form convenient to re-open.
  */
 export default function VitalsCaptureModal({
   ticket,
@@ -41,7 +76,7 @@ export default function VitalsCaptureModal({
   onClose,
   onSave,
 }: VitalsCaptureModalProps) {
-  const [form, setForm] = useState<VitalsForm>(() => formFrom(existing));
+  const [form, setForm] = useState<VitalsForm>(() => formFrom(ticket, existing));
   const [errors, setErrors] = useState<VitalsErrors>({});
   const [saving, setSaving] = useState(false);
 
@@ -85,27 +120,54 @@ export default function VitalsCaptureModal({
       next.spo2 = "SpO2 phải trong khoảng 50 - 100%.";
     }
 
+    next.weightKg = checkOptionalNumber(form.weightKg, 1, 400, "Cân nặng", "kg");
+    next.heightCm = checkOptionalNumber(form.heightCm, 30, 250, "Chiều cao", "cm");
+
     return next;
   }
 
-  function handleSubmit(event: FormEvent) {
+  async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     const validation = validate();
     setErrors(validation);
-    if (Object.keys(validation).length > 0) return;
+    if (Object.values(validation).some(Boolean)) return;
+
+    const weightKg = form.weightKg.trim();
+    const heightCm = form.heightCm.trim();
+    const nurseNotes = form.nurseNotes.trim();
+    const payload: UpdateVitalsPayload = {
+      bloodPressure: form.bloodPressure.trim().replace(/\s+/g, ""),
+      heartRate: Number(form.heartRate),
+      temperature: form.temperature.trim(),
+      spo2: Number(form.spo2),
+      ...(weightKg ? { weightKg: Number(weightKg) } : {}),
+      ...(heightCm ? { heightCm: Number(heightCm) } : {}),
+      ...(nurseNotes ? { nurseNotes } : {}),
+    };
 
     setSaving(true);
     try {
+      await updateTicketVitalsApi(ticket.ticketNumber, payload);
+      toast.success(`Đã cập nhật sinh hiệu cho phiếu ${ticket.ticketNumber}`, {
+        duration: 4000,
+      });
       onSave({
         ticketNumber: ticket.ticketNumber,
         patientName,
-        bloodPressure: form.bloodPressure.trim().replace(/\s+/g, ""),
-        heartRate: Number(form.heartRate),
-        temperature: form.temperature.trim(),
-        spo2: Number(form.spo2),
+        bloodPressure: payload.bloodPressure,
+        heartRate: payload.heartRate ?? 0,
+        temperature: payload.temperature ?? "",
+        spo2: payload.spo2 ?? 0,
         recordedAt: new Date().toISOString(),
         recordedBy: nurseName,
       });
+    } catch (cause) {
+      toast.error(
+        cause instanceof Error
+          ? cause.message
+          : "Không lưu được sinh hiệu. Vui lòng thử lại.",
+        { duration: 6000 },
+      );
     } finally {
       setSaving(false);
     }
@@ -123,6 +185,8 @@ export default function VitalsCaptureModal({
     { key: "heartRate", label: "Mạch", unit: "lần/phút", placeholder: "78", icon: HeartPulse, type: "number" },
     { key: "temperature", label: "Nhiệt độ", unit: "°C", placeholder: "36.7", icon: Thermometer, type: "number" },
     { key: "spo2", label: "SpO2", unit: "%", placeholder: "98", icon: Wind, type: "number" },
+    { key: "weightKg", label: "Cân nặng", unit: "kg", placeholder: "62", icon: Activity, type: "number" },
+    { key: "heightCm", label: "Chiều cao", unit: "cm", placeholder: "168", icon: Activity, type: "number" },
   ];
 
   return (
@@ -188,9 +252,27 @@ export default function VitalsCaptureModal({
             })}
           </div>
 
+          <div>
+            <label
+              htmlFor="vitals-nurseNotes"
+              className="mb-1 block text-xs font-semibold text-slate-700"
+            >
+              Ghi chú điều dưỡng
+            </label>
+            <textarea
+              id="vitals-nurseNotes"
+              rows={2}
+              value={form.nurseNotes}
+              onChange={(e) => update("nurseNotes", e.target.value)}
+              placeholder="Bệnh nhân chóng mặt khi đứng dậy, đã đo lại lần 2..."
+              disabled={saving}
+              className="w-full resize-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:border-violet-600 focus:outline-none focus:ring-2 focus:ring-violet-500/20 disabled:bg-slate-50"
+            />
+          </div>
+
           <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] leading-relaxed text-slate-500">
-            Chỉ số được lưu trên phiên làm việc của điều dưỡng để bàn trực theo
-            dõi; bệnh án chỉ ghi nhận sau khi bác sĩ hoàn tất khám.
+            Sinh hiệu được lưu ngay trên phiếu khám và hiển thị trên màn hình
+            EHR của bác sĩ - không cần đo lại ở phòng khám.
           </p>
 
           <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
@@ -212,7 +294,7 @@ export default function VitalsCaptureModal({
               ) : (
                 <HeartPulse size={16} aria-hidden="true" />
               )}
-              {saving ? "Đang lưu..." : existing ? "Cập nhật chỉ số" : "Lưu chỉ số"}
+              {saving ? "Đang lưu..." : "Lưu sinh hiệu"}
             </button>
           </div>
         </form>
