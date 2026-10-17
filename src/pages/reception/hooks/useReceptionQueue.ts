@@ -20,7 +20,13 @@ export interface ReceptionQueueState {
   error: string;
   lastUpdatedAt: Date | null;
   refresh: () => void;
-  changeStatus: (ticketNumber: string, status: QueueStatus) => Promise<void>;
+  /**
+   * Applies a status transition and reloads the queue. Resolves `true` when the
+   * backend accepted it, `false` when it failed (the error is already toasted),
+   * so a caller that has side effects of its own - releasing a slot and
+   * reloading the grid after a cancellation - can tell the two apart.
+   */
+  changeStatus: (ticketNumber: string, status: QueueStatus) => Promise<boolean>;
 }
 
 const PRIORITY_RANK: Record<string, number> = { P1: 0, P2: 1, P3: 2 };
@@ -140,11 +146,12 @@ export function useReceptionQueue(date: string): ReceptionQueueState {
   const refresh = useCallback(() => setReloadToken((token) => token + 1), []);
 
   const changeStatus = useCallback(
-    async (ticketNumber: string, status: QueueStatus) => {
+    async (ticketNumber: string, status: QueueStatus): Promise<boolean> => {
       setIsMutating(true);
       try {
         await updateTicketStatus(ticketNumber, status);
         setReloadToken((token) => token + 1);
+        return true;
       } catch (cause) {
         toast.error(
           cause instanceof Error
@@ -152,6 +159,7 @@ export function useReceptionQueue(date: string): ReceptionQueueState {
             : "Không cập nhật được trạng thái phiếu.",
           { duration: 5000 },
         );
+        return false;
       } finally {
         setIsMutating(false);
       }

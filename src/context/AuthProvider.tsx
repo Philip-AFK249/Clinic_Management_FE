@@ -223,12 +223,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const logout = useCallback(() => {
-    // Drop this account's cached appointment (and sweep the legacy shared
-    // keys) so the next account signed in on this browser never inherits it.
-    clearActiveBooking(user?.email);
+    // Sweep only the legacy shared keys. The account's own cached appointment
+    // (`patient_active_booking_<email>`) is deliberately kept: it is scoped to
+    // this email and re-verified against the account (printed name or contact
+    // phone) on every read, so the next account signed in here can never
+    // inherit it - while the patient who booked a future visit still finds
+    // their ticket card after signing back in.
+    clearActiveBooking();
     setUser(null);
     clearStoredSession();
-  }, [user]);
+  }, []);
 
   /**
    * Apply a self-service edit to the live session.

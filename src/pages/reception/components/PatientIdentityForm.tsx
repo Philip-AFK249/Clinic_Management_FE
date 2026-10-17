@@ -1,4 +1,4 @@
-import { UserRound } from "lucide-react";
+import { AlertTriangle, UserRound } from "lucide-react";
 import FormField from "./FormField";
 import { controlClass } from "../formStyles";
 import type {
@@ -8,9 +8,31 @@ import type {
 } from "../hooks/useIntakeForm";
 import { GENDER_OPTIONS } from "../data/receptionMockData";
 
+/**
+ * Raised by `POST /v1/intake/check-in` when the patient already holds an active
+ * ticket for the chosen day. Carries whatever the desk needs to point at the
+ * existing booking rather than issuing a second one.
+ */
+export interface DuplicateBookingNotice {
+  /** `YYYY-MM-DD` the check-in was refused for. */
+  date: string;
+  /** Ticket already on file, when the queue could still see it. */
+  existingTicketNumber?: string;
+  /** Its khung giờ, `HH:mm:ss` as the intake service stores it. */
+  existingSlot?: string;
+}
+
+function dateLabelFrom(iso: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : iso;
+}
+
 interface PatientIdentityFormProps {
   form: IntakeFormState;
   errors: IntakeErrors;
+  /** Set when the last check-in was refused as a same-day duplicate. */
+  notice?: DuplicateBookingNotice | null;
+  onDismissNotice?: () => void;
   onChange: <K extends keyof IntakeFormState>(
     field: K,
     value: IntakeFormState[K],
@@ -22,6 +44,8 @@ interface PatientIdentityFormProps {
 export default function PatientIdentityForm({
   form,
   errors,
+  notice,
+  onDismissNotice,
   onChange,
   onFieldBlur,
 }: PatientIdentityFormProps) {
@@ -42,6 +66,44 @@ export default function PatientIdentityForm({
           </span>
         )}
       </div>
+
+      {/* Duplicate-appointment refusal: sits above the fields so it cannot be
+          mistaken for a validation message on any single one of them. */}
+      {notice && (
+        <div className="mb-3 flex items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 p-3">
+          <AlertTriangle
+            className="mt-0.5 h-4 w-4 shrink-0 text-amber-600"
+            aria-hidden="true"
+          />
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-bold text-amber-900">
+              Bệnh nhân đã có phiếu khám đang chờ trong ngày{" "}
+              {dateLabelFrom(notice.date)}
+            </p>
+            <p className="mt-1 text-xs leading-relaxed text-amber-800">
+              Vui lòng hoàn tất hoặc hủy phiếu hiện tại trước khi cấp số mới.
+              Hủy phiếu sẽ trả lại khung giờ khám ngay lập tức.
+            </p>
+            {notice.existingTicketNumber && (
+              <p className="mt-1 font-mono text-xs font-semibold text-amber-900">
+                Phiếu hiện tại: {notice.existingTicketNumber}
+                {notice.existingSlot
+                  ? ` - Khung ${notice.existingSlot.slice(0, 5)}`
+                  : ""}
+              </p>
+            )}
+            {onDismissNotice && (
+              <button
+                type="button"
+                onClick={onDismissNotice}
+                className="mt-2 inline-flex h-8 items-center justify-center rounded-md border border-amber-300 bg-white px-3 text-xs font-semibold text-amber-800 transition-colors hover:bg-amber-100"
+              >
+                Đóng cảnh báo
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="grid gap-x-3 sm:grid-cols-2">
         <FormField

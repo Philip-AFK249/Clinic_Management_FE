@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { Calendar, ChevronLeft, Check, PhoneCall } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
+import { AlertTriangle, Calendar, ChevronLeft, Check, PhoneCall } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "../../context/useAuth";
 import { updateMyProfileApi } from "../../services/authApi";
@@ -8,6 +9,8 @@ import {
   checkInPatient,
   getAvailableSlots,
   IntakeApiError,
+  isDuplicateBookingError,
+  DUPLICATE_BOOKING_GUIDANCE,
 } from "../../services/intakeApi";
 import type {
   AdministrativeIntakeRequest,
@@ -164,6 +167,7 @@ function formFromSession(user: User | null): BookingFormData {
 
 export default function BookingPage() {
   const { user, updateUser } = useAuth();
+  const navigate = useNavigate();
   const [step, setStep] = useState(0);
   const [symptoms, setSymptoms] = useState("");
   const [deptIdx, setDeptIdx] = useState<number | null>(null);
@@ -180,6 +184,15 @@ export default function BookingPage() {
    * for the whole round-trip, not just the first frame.
    */
   const [isSubmitting, setIsSubmitting] = useState(false);
+  /**
+   * The appointment date the backend refused, when it refused the check-in
+   * because this patient already has an active ticket for that day (HTTP 409).
+   *
+   * Held as the date rather than a boolean so the banner can say which day is
+   * blocked, and so it stays up while the patient reads it - a toast alone
+   * would expire before they found the way to their dashboard.
+   */
+  const [duplicateDate, setDuplicateDate] = useState<string | null>(null);
   /**
    * Set when a patient with a card on file asks to replace it.
    *
@@ -592,6 +605,7 @@ export default function BookingPage() {
     setTriageSourceText("");
     setScheduleUnavailable(false);
     setTriageDate(getInitialDate());
+    setDuplicateDate(null);
   }
 
   function validateStep(): boolean {
@@ -686,6 +700,8 @@ export default function BookingPage() {
     };
 
     setIsSubmitting(true);
+    // A banner from an earlier attempt must not outlive this one.
+    setDuplicateDate(null);
     try {
       const response = await checkInPatient(payload);
       const confirmed: ActiveAppointment = {
@@ -715,13 +731,29 @@ export default function BookingPage() {
           "Đặt lịch khám thành công. Phiếu của bạn đã vào hàng đợi tiếp đón.",
       );
     } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : "Không đặt được lịch khám. Vui lòng thử lại.";
-      toast.error(message, { duration: 8000 });
-      if (!(error instanceof IntakeApiError)) {
-        console.warn("Booking: check-in failed unexpectedly.", error);
+      if (isDuplicateBookingError(error)) {
+        // This patient already holds an active ticket for the chosen day
+        // (HTTP 409, or 400 on the older path). Everything they typed stays on
+        // the confirmation step - the fix is to deal with the existing booking,
+        // not to retype this one - so the guided copy and a way straight to the
+        // dashboard replace the generic conflict error.
+        setDuplicateDate(triageDate);
+        toast.warning(DUPLICATE_BOOKING_GUIDANCE, {
+          duration: 10000,
+          action: {
+            label: "Xem lịch hẹn",
+            onClick: () => navigate("/patient/dashboard"),
+          },
+        });
+      } else {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Không đặt được lịch khám. Vui lòng thử lại.";
+        toast.error(message, { duration: 8000 });
+        if (!(error instanceof IntakeApiError)) {
+          console.warn("Booking: check-in failed unexpectedly.", error);
+        }
       }
     } finally {
       setIsSubmitting(false);
@@ -792,6 +824,44 @@ export default function BookingPage() {
               );
             })}
           </ol>
+
+          {/* The backend refused this day because an appointment is already
+              active on it: keep the warning on screen (a toast expires) with
+              the one action that unblocks the booking. */}
+          {duplicateDate && (
+            <div className="mt-6 rounded-xl border border-amber-300 bg-amber-50 p-4 shadow-card">
+              <div className="flex items-start gap-3">
+                <AlertTriangle
+                  className="mt-0.5 h-5 w-5 shrink-0 text-amber-600"
+                  aria-hidden="true"
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-bold text-amber-900">
+                    Đã có lịch hẹn khám đang chờ vào ngày{" "}
+                    {dateLabelFrom(duplicateDate)}
+                  </p>
+                  <p className="mt-1 text-sm leading-relaxed text-amber-800">
+                    {DUPLICATE_BOOKING_GUIDANCE}
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Link
+                      to="/patient/dashboard"
+                      className="inline-flex h-10 items-center justify-center rounded-lg bg-amber-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-amber-700"
+                    >
+                      Mở Bảng điều khiển bệnh nhân
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={() => setDuplicateDate(null)}
+                      className="inline-flex h-10 items-center justify-center rounded-lg border border-amber-300 bg-white px-4 text-sm font-semibold text-amber-800 transition-colors hover:bg-amber-100"
+                    >
+                      Đóng cảnh báo
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Step card */}
           <div className="mt-8 rounded-xl border border-slate-200/80 bg-white p-6 shadow-card sm:p-8">

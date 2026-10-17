@@ -59,7 +59,10 @@ export default function MedicalCatalogTab() {
   };
 
   useEffect(() => {
-    fetchDrugs();
+    // Deferred one microtask: `fetchDrugs` flips its own loading flag, and
+    // calling it synchronously from the effect body is the cascading render
+    // `react-hooks/set-state-in-effect` rejects.
+    void Promise.resolve().then(() => fetchDrugs());
   }, []);
 
   const filteredDrugs = drugs.filter((drug) => {

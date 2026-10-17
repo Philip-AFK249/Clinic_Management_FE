@@ -65,7 +65,33 @@ export interface TimeSlotResponse {
   totalCapacity: number;
   bookedCount: number;
   availableCapacity: number;
+  /** Always filled in by `getAvailableSlots`' normalisation. */
   isAvailable: boolean;
+  /**
+   * The raw alias some service builds emit instead of `isAvailable`; kept on
+   * the shape so a slot rendered straight from a hand-built payload can still
+   * be told apart from a closed one.
+   */
+  available?: boolean;
+}
+
+/**
+ * What DoctorScheduleService's `/available-slots` actually serializes.
+ *
+ * Lombok's `boolean isAvailable` getter makes Jackson emit either `available`
+ * or `isAvailable` depending on the compiler/lombok version, so both keys are
+ * accepted and normalised by `getAvailableSlots`. Older builds send neither
+ * when the slot is open, leaving only the capacity columns - hence the
+ * capacity fallback in `normalizeSlot`.
+ */
+interface RawTimeSlotResponse {
+  startTime: string; // "HH:mm:ss"
+  endTime: string; // "HH:mm:ss"
+  totalCapacity: number;
+  bookedCount: number;
+  availableCapacity: number;
+  available?: boolean;
+  isAvailable?: boolean;
 }
 
 export interface CreateShiftPayload {
@@ -254,19 +280,39 @@ export async function validateRoster(
   }
 }
 
+/**
+ * Today's slot grid for one department, always with a definite
+ * `isAvailable`.
+ *
+ * The raw payload is normalised rather than passed through: a slot whose JSON
+ * carries `available` instead of `isAvailable` (or neither, on older builds)
+ * would otherwise render as "Đã khóa / Hết chỗ" on the monitor even though
+ * `availableCapacity > 0` says there is room to receive patients.
+ */
 export async function getAvailableSlots(
   departmentId: number | string,
   shiftDate: string,
   signal?: AbortSignal,
 ): Promise<TimeSlotResponse[]> {
   try {
-    const { data } = await scheduleApi.get<TimeSlotResponse[]>(
+    const { data } = await scheduleApi.get<RawTimeSlotResponse[]>(
       "/available-slots",
       { params: { departmentId, date: shiftDate }, signal },
     );
-    return data;
+    return data.map(normalizeSlot);
   } catch (error) {
     if (axios.isCancel(error)) throw error;
     throw toApiError(error);
   }
+}
+
+function normalizeSlot(raw: RawTimeSlotResponse): TimeSlotResponse {
+  return {
+    startTime: raw.startTime,
+    endTime: raw.endTime,
+    totalCapacity: raw.totalCapacity,
+    bookedCount: raw.bookedCount,
+    availableCapacity: raw.availableCapacity,
+    isAvailable: raw.isAvailable ?? raw.available ?? raw.availableCapacity > 0,
+  };
 }

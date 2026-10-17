@@ -365,68 +365,70 @@ export async function getTicketDetails(
 }
 
 /**
+ * Which patient to look an active ticket up by.
+ *
+ * `patientId` is PatientIntakeService's own `Patient.id` (stamped on the
+ * booking confirmation) - exact, and immune to how a phone or BHYT number is
+ * formatted. `identifier` is any of the patient's phone, CCCD or BHYT number,
+ * matched by the service against its own columns; AuthService's `users.id` must
+ * never be passed here, as it belongs to a different database.
+ */
+export interface ActiveTicketLookup {
+  identifier?: string;
+  patientId?: number;
+}
+
+/**
  * The patient's most recent still-active ticket (WAITING/CALLED/
- * IN_CONSULTATION). The service answers 400 - not 404 - when they have none,
- * which is an expected state rather than a failure; use
- * `isNoActiveTicketError` to tell it apart from a real fault.
+ * IN_CONSULTATION), for a future date included - the service matches
+ * `appointmentDate >= today`.
+ *
+ * "No active ticket" is an ordinary answer, not a fault: the current service
+ * replies **204 No Content** (older builds: 400 / 404), and both that and an
+ * empty body resolve to `null` here so a polling loop never shows an error for
+ * a patient who simply has nothing booked. Anything else is rethrown as
+ * `IntakeApiError` so the caller can tell an outage from an empty queue.
+ */
+export async function getActivePatientTicketApi(
+  lookup: ActiveTicketLookup,
+  signal?: AbortSignal,
+): Promise<QueueTicketDetailResponse | null> {
+  const identifier = lookup.identifier?.trim();
+  const { patientId } = lookup;
+  if (!identifier && typeof patientId !== "number") return null;
+
+  try {
+    const { data } = await intakeApi.get<QueueTicketDetailResponse | "">(
+      identifier
+        ? "/v1/queue/patient/active"
+        : `/v1/queue/patient/${patientId}/active`,
+      { params: identifier ? { identifier } : undefined, signal },
+    );
+    // A 204 lands here as an empty body rather than as `null`; treat anything
+    // that is not a payload as "nothing active".
+    if (!data || typeof data !== "object") return null;
+    return data;
+  } catch (error) {
+    if (axios.isCancel(error)) throw error;
+    const status = axios.isAxiosError(error) ? error.response?.status : undefined;
+    // 204: no active ticket (defensive, some proxies surface it as an error).
+    // 400: older builds raised IllegalArgumentException for the same answer.
+    // 404: the route is not deployed on the running jar.
+    if (status === 204 || status === 400 || status === 404) return null;
+    throw toApiError(error);
+  }
+}
+
+/**
+ * The same lookup addressed by PatientIntakeService's `Patient.id` alone.
+ * Thin wrapper over {@link getActivePatientTicketApi} kept for callers that
+ * only ever have the intake id.
  */
 export async function getActivePatientTicket(
   patientId: number,
   signal?: AbortSignal,
-): Promise<QueueTicketDetailResponse> {
-  try {
-    const { data } = await intakeApi.get<QueueTicketDetailResponse>(
-      `/v1/queue/patient/${patientId}/active`,
-      { signal },
-    );
-    return data;
-  } catch (error) {
-    if (axios.isCancel(error)) throw error;
-    throw toApiError(error);
-  }
-}
-
-/**
- * The same "most recent active ticket" lookup, addressed by patient identifier
- * (phone, CCCD or BHYT number) instead of `Patient.id`.
- *
- * The patient portal must not pass AuthService's `users.id` here: that primary
- * key belongs to a different database and does not correspond to
- * `PatientIntakeService`'s `Patient.id`, so the id-based route answers 400 for
- * a perfectly real patient. The identifier is matched against the intake
- * record's own columns, which the check-in flow populates from the same values
- * the AuthService session holds.
- *
- * A 400 ("no such patient / no active ticket") or 404 (endpoint not deployed)
- * is an ordinary answer for the portal's polling loop - use
- * `isNoActiveTicketError` / `isUnknownTicketError` to treat it as "no ticket"
- * rather than as a fault.
- */
-export async function getActivePatientTicketByIdentifier(
-  identifier: string,
-  signal?: AbortSignal,
-): Promise<QueueTicketDetailResponse> {
-  try {
-    const { data } = await intakeApi.get<QueueTicketDetailResponse>(
-      "/v1/queue/patient/active",
-      { params: { identifier }, signal },
-    );
-    return data;
-  } catch (error) {
-    if (axios.isCancel(error)) throw error;
-    throw toApiError(error);
-  }
-}
-
-/**
- * True when the active-ticket lookup said "this patient has no active ticket".
- *
- * The backend raises IllegalArgumentException (-> 400) for that case, so a
- * caller polling on a timer can stop or fall back to the stored ticket instead
- * of surfacing an error toast for a perfectly ordinary "already finished".
- */
-export function isNoActiveTicketError(error: unknown): boolean {
-  return error instanceof IntakeApiError && error.status === 400;
+): Promise<QueueTicketDetailResponse | null> {
+  return getActivePatientTicketApi({ patientId }, signal);
 }
 
 /**
@@ -451,8 +453,9 @@ export function isValidTicketNumber(ticketNumber: string): boolean {
  * True when a ticket lookup said "no such ticket" (400 from the
  * IllegalArgumentException handler, or a 404 route miss).
  *
- * Unlike `isNoActiveTicketError`, this means the *number itself* is unknown to
- * the backend - the signal to stop polling and drop the stored booking.
+ * The signal to stop polling and drop a stored booking: unlike a blank
+ * active-ticket answer, this means the *number itself* is unknown to the
+ * backend.
  */
 export function isUnknownTicketError(error: unknown): boolean {
   return (
@@ -548,6 +551,60 @@ export async function updateTicketStatus(
     if (axios.isCancel(error)) throw error;
     throw toApiError(error);
   }
+}
+
+/**
+ * Cancel one ticket - `PATCH /api/v1/queue/tickets/{ticketNumber}/status?status=CANCELLED`
+ * against PatientIntakeService (:8082).
+ *
+ * Cancellation is the only status change that gives a slot back: the backend
+ * flips the ticket to CANCELLED and releases the seat it held in
+ * DoctorScheduleService, so the caller must re-fetch the slot grid
+ * (`getAvailableSlots` / `useAvailableSlots.refresh`) for the freed capacity
+ * to show up without a full page reload.
+ */
+export async function cancelTicketApi(
+  ticketNumber: string,
+  signal?: AbortSignal,
+): Promise<QueueTicket> {
+  return updateTicketStatus(ticketNumber, "CANCELLED", signal);
+}
+
+/**
+ * Patient-facing wording for the 409/400 check-in conflict, shared by the
+ * booking flow and the reception desk so both say the same thing.
+ */
+export const DUPLICATE_BOOKING_GUIDANCE =
+  "Bạn đã có lịch hẹn khám đang chờ trong ngày này. Vui lòng kiểm tra Bảng điều khiển bệnh nhân để xem vé hoặc hủy lịch hẹn cũ trước khi đặt lại.";
+
+/** Vietnamese text with diacritics folded, for tolerant phrase matching. */
+function foldAccents(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D")
+    .toLowerCase();
+}
+
+/**
+ * True when `POST /v1/intake/check-in` refused because the patient already has
+ * an active ticket for that appointment date.
+ *
+ * The backend answers 409 (or 400 on the older path) with
+ * `Bệnh nhân '...' đã có phiếu khám đang chờ hoặc đang khám vào ngày ...`.
+ * Matching on the message keeps the check working whichever status the service
+ * answers with, and the accent folding means a re-worded message still lands.
+ */
+export function isDuplicateBookingError(error: unknown): boolean {
+  if (!(error instanceof IntakeApiError)) return false;
+  if (error.status !== 409 && error.status !== 400) return false;
+  const message = foldAccents(error.message);
+  return [
+    "da co phieu kham dang cho",
+    "dang cho hoac dang kham",
+    "hoan tat hoac huy phieu",
+  ].some((marker) => message.includes(marker));
 }
 
 // ---------------------------------------------------------------------------

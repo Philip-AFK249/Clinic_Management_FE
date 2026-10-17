@@ -4,6 +4,7 @@ import { CornerDownLeft, Loader2, TicketCheck } from "lucide-react";
 import ReceptionHeader from "./components/ReceptionHeader";
 import CardScannerBar from "./components/CardScannerBar";
 import PatientIdentityForm from "./components/PatientIdentityForm";
+import type { DuplicateBookingNotice } from "./components/PatientIdentityForm";
 import SlotSelector from "./components/SlotSelector";
 import TriageSelector from "./components/TriageSelector";
 import QueueMonitorPanel from "./components/QueueMonitorPanel";
@@ -14,8 +15,8 @@ import { useIntakeForm } from "./hooks/useIntakeForm";
 import type { IntakeErrors, IntakeField } from "./hooks/useIntakeForm";
 import { useAvailableSlots } from "./hooks/useAvailableSlots";
 import { useReceptionQueue } from "./hooks/useReceptionQueue";
-import { checkInPatient } from "../../services/intakeApi";
-import type { QueueTicket } from "../../services/intakeApi";
+import { checkInPatient, isDuplicateBookingError } from "../../services/intakeApi";
+import type { QueueStatus, QueueTicket } from "../../services/intakeApi";
 import { toIsoDate } from "../../services/ocrApi";
 import type { BhytOcrData } from "../../services/ocrApi";
 import type { OcrCardSample } from "./data/receptionMockData";
@@ -55,6 +56,33 @@ const FIELD_LABELS: Record<IntakeField, string> = {
 
 const FIELD_ORDER = Object.keys(FIELD_ANCHORS) as IntakeField[];
 
+/** Statuses that still hold a slot - the ones that block a second ticket. */
+const ACTIVE_STATUSES: QueueStatus[] = ["WAITING", "CALLED", "IN_CONSULTATION"];
+
+/**
+ * Find the ticket the check-in conflict is about: same patient (phone first,
+ * which is what check-in records, then the printed name) on the same day, still
+ * in the queue. `null` when the desk cannot see it (different department's
+ * queue, or already handed off) - the warning then names the day only.
+ */
+function findActiveDuplicate(
+  tickets: QueueTicket[],
+  date: string,
+  phone: string,
+  fullName: string,
+): QueueTicket | undefined {
+  const digits = phone.replace(/\D/g, "");
+  const name = fullName.trim().toLowerCase();
+  return tickets.find(
+    (ticket) =>
+      ticket.appointmentDate === date &&
+      ACTIVE_STATUSES.includes(ticket.status) &&
+      ((digits.length >= 8 &&
+        (ticket.patient?.phone ?? "").replace(/\D/g, "").endsWith(digits)) ||
+        (name.length > 0 && (ticket.patient?.fullName ?? "").trim().toLowerCase() === name)),
+  );
+}
+
 function focusField(field: IntakeField) {
   const element = document.getElementById(FIELD_ANCHORS[field]);
   if (!element) return;
@@ -80,6 +108,9 @@ export default function ReceptionDeskPage() {
   const [printedTicket, setPrintedTicket] = useState<TicketView | null>(null);
   const [printedFromQueue, setPrintedFromQueue] = useState(false);
   const [lastScanned, setLastScanned] = useState<OcrCardSample | null>(null);
+  /** Set when check-in was refused because this patient already has a ticket. */
+  const [duplicateNotice, setDuplicateNotice] =
+    useState<DuplicateBookingNotice | null>(null);
 
   /** Errors are only revealed for fields the secretary has actually touched. */
   const visibleErrors: IntakeErrors = Object.fromEntries(
@@ -122,6 +153,7 @@ export default function ReceptionDeskPage() {
     }
 
     setIsSubmitting(true);
+    setDuplicateNotice(null);
     try {
       const response = await checkInPatient(intake.toRequest());
       setPrintedTicket(ticketViewFromIntake(response, queue.tickets));
@@ -133,16 +165,61 @@ export default function ReceptionDeskPage() {
       slots.refresh();
       queue.refresh();
     } catch (cause) {
-      toast.error(
-        cause instanceof Error
-          ? cause.message
-          : "Không thể tiếp nhận bệnh nhân. Vui lòng thử lại.",
-        { duration: 7000 },
-      );
+      if (isDuplicateBookingError(cause)) {
+        // The patient already holds an active ticket for this day. The form
+        // keeps every value the secretary typed - the fix is to deal with the
+        // ticket on file, not to retype this one - so the identity card grows
+        // a banner naming it instead of a generic conflict toast.
+        const existing = findActiveDuplicate(
+          queue.tickets,
+          form.appointmentDate,
+          form.phone,
+          form.fullName,
+        );
+        setDuplicateNotice({
+          date: form.appointmentDate,
+          existingTicketNumber: existing?.ticketNumber,
+          existingSlot: existing?.slotStartTime,
+        });
+        toast.warning(
+          cause instanceof Error
+            ? cause.message
+            : "Bệnh nhân đã có phiếu khám đang chờ trong ngày này.",
+          { duration: 8000 },
+        );
+      } else {
+        toast.error(
+          cause instanceof Error
+            ? cause.message
+            : "Không thể tiếp nhận bệnh nhân. Vui lòng thử lại.",
+          { duration: 7000 },
+        );
+      }
     } finally {
       setIsSubmitting(false);
     }
-  }, [intake, queue, slots]);
+    // The duplicate lookup reads three of the form's own fields, so they are
+    // listed below alongside the controllers that own the rest of the state.
+  }, [intake, queue, slots, form.appointmentDate, form.fullName, form.phone]);
+
+  /**
+   * Queue transition from the monitor. Cancellation gets two extra steps: the
+   * freed seat has to show up in the slot grid straight away (the backend
+   * releases it on CANCELLED), and the secretary needs confirmation that the
+   * khung giờ went back to the system.
+   */
+  const handleChangeStatus = useCallback(
+    async (ticketNumber: string, status: QueueStatus) => {
+      const applied = await queue.changeStatus(ticketNumber, status);
+      if (!applied || status !== "CANCELLED") return;
+      slots.refresh();
+      toast.success(
+        `Đã hủy phiếu ${ticketNumber}. Khung giờ khám đã được hoàn trả lại hệ thống.`,
+        { duration: 4500 },
+      );
+    },
+    [queue, slots],
+  );
 
   // Enter anywhere except a textarea or a button dispatches the ticket.
   useEffect(() => {
@@ -227,6 +304,8 @@ export default function ReceptionDeskPage() {
             <PatientIdentityForm
               form={form}
               errors={visibleErrors}
+              notice={duplicateNotice}
+              onDismissNotice={() => setDuplicateNotice(null)}
               onChange={intake.updateField}
               onFieldBlur={handleFieldBlur}
             />
@@ -308,7 +387,7 @@ export default function ReceptionDeskPage() {
             lastUpdatedAt={queue.lastUpdatedAt}
             onRefresh={queue.refresh}
             onChangeStatus={(ticketNumber, status) =>
-              void queue.changeStatus(ticketNumber, status)
+              void handleChangeStatus(ticketNumber, status)
             }
             onPrint={handleReprint}
           />

@@ -1,20 +1,25 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
+  Ban,
   CalendarX,
   CheckCircle2,
   Clock,
   FileText,
+  Loader2,
   QrCode,
   Users,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "../../context/useAuth";
+import { cancelTicketApi } from "../../services/intakeApi";
 import type { QueueStatus } from "../../services/intakeApi";
 import PatientNavbar from "./components/PatientNavbar";
 import PatientFooter from "./components/PatientFooter";
 import { PAST_ENCOUNTERS } from "./data/patientMockRecords";
-import { readOwnedActiveBooking } from "./data/activeBooking";
+import { clearActiveBooking, readOwnedActiveBooking } from "./data/activeBooking";
+import { identifierCandidates } from "./data/patientIdentifiers";
 import { usePatientTicket } from "./hooks/usePatientTicket";
 
 type DashboardTab = "queue" | "records";
@@ -89,27 +94,34 @@ export default function PatientDashboardPage() {
   // ownership check (printed name or contact phone) before it is shown -
   // anything else is purged rather than rendered. The reader itself also sweeps
   // the legacy shared keys an earlier build wrote (`clinic_active_booking`).
-  const [storedBooking] = useState(() =>
+  const [storedBooking, setStoredBooking] = useState(() =>
     readOwnedActiveBooking(
       user
         ? { email: user.email, fullName: user.fullName, phone: user.phone }
         : null,
     ),
   );
-  // Identifier for the intake service: phone first (what check-in records),
-  // then CCCD, then the BHYT number. AuthService's `users.id` must never be
-  // sent - it is a different database's primary key and does not map onto
-  // PatientIntakeService's `Patient.id`.
-  const identifier =
-    user?.phone?.trim() ||
-    user?.identityCardNumber?.trim() ||
-    user?.insuranceCode?.trim() ||
-    "";
+  // The cancel flow: a confirmation step (an appointment is not thrown away on
+  // one click) and a busy flag so the request cannot be fired twice.
+  const [confirmingCancel, setConfirmingCancel] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
+  // Identifiers for the intake service: the account's phone first (what a
+  // check-in records), then the BHYT number, then the CCCD - each in the
+  // spellings that can differ between AuthService and PatientIntakeService,
+  // plus the phone recorded on a booking made for a relative. AuthService's
+  // `users.id` must never be sent: it is a different database's primary key and
+  // does not map onto PatientIntakeService's `Patient.id`. The list is memoized
+  // because the polling hook keys its effect on it.
+  const identifierList = useMemo(
+    () => identifierCandidates(user, [storedBooking?.phone]),
+    [user, storedBooking],
+  );
   // Live view of the ticket: the verified stored booking seeds the screen
-  // immediately, and the hook overwrites it with the backend's answer (found
-  // via the identifier, so it survives the cache being cleared on logout)
+  // immediately, and the hook overwrites it with the backend's answer (found by
+  // intake patient id or by any of those identifiers, so a ticket booked on
+  // another device - or before this browser saw the booking flow - still shows)
   // as soon as one lands.
-  const ticket = usePatientTicket(storedBooking, identifier, user?.email ?? null);
+  const ticket = usePatientTicket(storedBooking, identifierList, user?.email ?? null);
   // A booking the backend rejects as unknown (400/404) is dropped by the hook;
   // from the page's point of view the patient simply has no appointment left.
   // The backend's own answer also counts as a real appointment, even when the
@@ -140,6 +152,43 @@ export default function PatientDashboardPage() {
       : ownedBooking?.timeSlot ?? "",
   };
   const statusBadge = STATUS_BADGES[ticket.status];
+
+  /**
+   * Cancel the active ticket and give its slot back.
+   *
+   * Order matters: the backend is asked first (a failure must not wipe the
+   * patient's copy of the booking), then the localStorage cache is dropped -
+   * otherwise this screen would keep rendering an appointment the clinic has
+   * already released - and finally the hook is told to re-poll instead of
+   * waiting out the 10-second interval. The success copy spells out that the
+   * khung giờ is free again, because that is what the patient is waiting to
+   * hear after cancelling.
+   */
+  async function handleCancelTicket() {
+    const ticketNumber = display.ticketCode;
+    if (!ticketNumber || isCancelling) return;
+    setIsCancelling(true);
+    try {
+      await cancelTicketApi(ticketNumber);
+      clearActiveBooking(user?.email);
+      setStoredBooking(null);
+      setConfirmingCancel(false);
+      ticket.refresh();
+      toast.success(
+        "Đã hủy lịch hẹn thành công. Khung giờ khám đã được hoàn trả lại hệ thống.",
+        { duration: 6000 },
+      );
+    } catch (cause) {
+      toast.error(
+        cause instanceof Error
+          ? cause.message
+          : "Không hủy được lịch hẹn. Vui lòng thử lại.",
+        { duration: 6000 },
+      );
+    } finally {
+      setIsCancelling(false);
+    }
+  }
 
   return (
     <div className="min-h-screen bg-surface-light text-slate-900">
@@ -239,6 +288,24 @@ export default function PatientDashboardPage() {
                       {ticket.error ||
                         "Không kết nối được dịch vụ hàng đợi. Đang hiển thị thông tin xác nhận lúc đặt lịch."}
                     </p>
+                  </div>
+                )}
+                {/* Only a ticket that still holds a slot can be given back. */}
+                {ticket.isActive && (
+                  <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
+                    <p className="max-w-[15rem] text-xs leading-relaxed text-slate-500">
+                      Không đến khám được? Hủy để hoàn trả khung giờ cho bệnh
+                      nhân khác.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmingCancel(true)}
+                      disabled={isCancelling}
+                      className="inline-flex h-10 items-center gap-2 rounded-lg border border-rose-300 bg-white px-4 text-sm font-semibold text-rose-600 transition-colors hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <Ban className="h-4 w-4" aria-hidden="true" />
+                      Hủy lịch hẹn
+                    </button>
                   </div>
                 )}
               </section>
@@ -413,6 +480,78 @@ export default function PatientDashboardPage() {
           </div>
         )}
       </main>
+
+      {/* Cancellation confirmation: destructive actions always get a second step. */}
+      {confirmingCancel && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="cancel-booking-title"
+          onClick={(event) => {
+            if (event.target === event.currentTarget && !isCancelling) {
+              setConfirmingCancel(false);
+            }
+          }}
+        >
+          <div className="w-full max-w-md rounded-xl border border-slate-200/80 bg-white p-5 shadow-elevated">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2
+                  id="cancel-booking-title"
+                  className="text-base font-bold text-slate-900"
+                >
+                  Xác nhận hủy lịch hẹn
+                </h2>
+                <p className="mt-0.5 text-xs text-slate-500">
+                  {display.ticketCode} &middot; {display.date}, {display.timeSlot}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setConfirmingCancel(false)}
+                disabled={isCancelling}
+                aria-label="Đóng"
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 disabled:opacity-40"
+              >
+                <X className="h-4 w-4" aria-hidden="true" />
+              </button>
+            </div>
+
+            <p className="mt-4 text-sm leading-relaxed text-slate-600">
+              Bạn chắc chắn muốn hủy lịch hẹn với{" "}
+              <span className="font-semibold text-slate-900">{display.doctor}</span>{" "}
+              không? Khung giờ khám sẽ được hoàn trả lại hệ thống và bạn có thể
+              đặt lại bất cứ lúc nào.
+            </p>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirmingCancel(false)}
+                disabled={isCancelling}
+                className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Giữ lịch hẹn
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleCancelTicket()}
+                disabled={isCancelling}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isCancelling ? (
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                ) : (
+                  <Ban className="h-4 w-4" aria-hidden="true" />
+                )}
+                {isCancelling ? "Đang hủy..." : "Xác nhận hủy"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <PatientFooter />
     </div>
   );

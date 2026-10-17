@@ -369,6 +369,11 @@ function SlotCard({ slot }: { slot: TimeSlotResponse }) {
       : percentage >= 50
         ? "bg-amber-500"
         : "bg-teal-500";
+  // Defensive on top of the API's own normalisation: Lombok/Jackson can emit
+  // `available` instead of `isAvailable`, and a build that sends neither would
+  // otherwise paint every open slot red. Remaining capacity is the ground
+  // truth the monitor exists to show.
+  const isSlotOpen = slot.isAvailable ?? slot.available ?? slot.availableCapacity > 0;
 
   return (
     <div className="rounded-lg border border-slate-100 bg-white p-3 shadow-card">
@@ -377,7 +382,7 @@ function SlotCard({ slot }: { slot: TimeSlotResponse }) {
           <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-bold text-slate-700">
             {toShortTime(slot.startTime)} - {toShortTime(slot.endTime)}
           </span>
-          {slot.isAvailable ? (
+          {isSlotOpen ? (
             <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
               Mở nhận bệnh

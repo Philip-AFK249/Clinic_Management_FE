@@ -1,6 +1,6 @@
 import type { ActiveAppointment } from "./patientMockRecords";
 import { isValidTicketNumber } from "../../../services/intakeApi";
-import type { QueueStatus } from "../../../services/intakeApi";
+import type { QueueStatus, QueueTicketDetailResponse } from "../../../services/intakeApi";
 
 /**
  * Where a confirmed appointment lives between the booking flow and the
@@ -155,6 +155,40 @@ export function readOwnedActiveBooking(
     // has to read as "no booking".
     return null;
   }
+}
+
+/** `yyyy-MM-dd` as the `dd/MM/yyyy` the card prints. */
+function dateLabelFromIso(iso: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : iso;
+}
+
+/**
+ * The backend's own answer, as a cache record.
+ *
+ * Written back whenever the dashboard learns something the cache does not
+ * already hold - a ticket booked on another device, one booked before this
+ * browser ever saw the flow, or one whose localStorage copy did not survive a
+ * logout - so the card keeps rendering (and the intake `Patient.id` stays
+ * available for the next lookup) without depending on the booking page having
+ * run here.
+ */
+export function appointmentFromTicketDetail(
+  detail: QueueTicketDetailResponse,
+): ActiveAppointment {
+  return {
+    ticketCode: detail.ticketNumber,
+    patientName: detail.patientFullName,
+    phone: detail.phone ?? "",
+    department: detail.departmentName,
+    doctor: detail.doctorName,
+    room: detail.roomNumber,
+    date: dateLabelFromIso(detail.appointmentDate),
+    timeSlot: detail.slotStartTime.slice(0, 5),
+    patientId: detail.patientId,
+    doctorId: detail.doctorId,
+    status: detail.status,
+  };
 }
 
 export function writeActiveBooking(
