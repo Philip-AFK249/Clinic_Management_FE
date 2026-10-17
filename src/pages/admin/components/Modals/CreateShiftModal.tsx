@@ -18,6 +18,7 @@ import type {
   DutyType,
   ShiftSession,
 } from "../../services/scheduleApi";
+import { nursesOfDepartment } from "../../../reception/data/nurseDirectory";
 
 interface CreateShiftModalProps {
   onClose: () => void;
@@ -59,6 +60,7 @@ export default function CreateShiftModal({
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [doctorsLoading, setDoctorsLoading] = useState(Boolean(initialDepartmentId));
   const [selectedDoctorId, setSelectedDoctorId] = useState<number | "">("");
+  const [selectedNurseId, setSelectedNurseId] = useState<number | "">("");
   const [shiftDate, setShiftDate] = useState(initialDate ?? toISODate(new Date()));
   const [session, setSession] = useState<ShiftSession>(initialSession ?? "MORNING");
   const [dutyType, setDutyType] = useState<DutyType>("OUTPATIENT");
@@ -77,6 +79,11 @@ export default function CreateShiftModal({
   );
   const activeDoctors = doctors.filter((d) => d.active);
   const selectedDoctor = activeDoctors.find((d) => d.id === selectedDoctorId);
+  // The pairing roster is local: AuthService has no nurses endpoint, and the
+  // seeded điều dưỡng are the same rows `nurseDirectory` mirrors.
+  const nurses =
+    selectedDepartmentId === "" ? [] : nursesOfDepartment(selectedDepartmentId);
+  const selectedNurse = nurses.find((nurse) => nurse.id === selectedNurseId);
 
   const loadDayShifts = useCallback((departmentId: number, date: string) => {
     const seq = ++dayShiftsSeq.current;
@@ -189,9 +196,33 @@ export default function CreateShiftModal({
     confirmedDepartmentId.current = nextDepartmentId;
     setSelectedDepartmentId(nextDepartmentId);
     setSelectedDoctorId("");
+    setSelectedNurseId("");
     setDoctors([]);
     if (nextDepartmentId !== "") setDoctorsLoading(true);
   }, []);
+
+  /**
+   * Picking a bác sĩ suggests the điều dưỡng posted to the same phòng: the two
+   * rosters only share the room number ("Phòng 101" vs "Phòng khám 101"), so
+   * the digits are the join. The suggestion never overwrites a nurse the
+   * admin picked explicitly, and clearing the doctor clears it too.
+   */
+  function handleDoctorChange(next: string) {
+    const parsed = Number(next);
+    const nextDoctorId: number | "" = Number.isNaN(parsed) ? "" : parsed;
+    setSelectedDoctorId(nextDoctorId);
+    setSelectedNurseId((current) => {
+      if (current !== "") return current;
+      if (nextDoctorId === "") return "";
+      const doctor = activeDoctors.find((row) => row.id === nextDoctorId);
+      const roomDigits = doctor?.roomNumber.match(/\d+/)?.[0];
+      if (!roomDigits) return "";
+      const match = nurses.find((row) =>
+        (row.roomNumber ?? "").includes(roomDigits),
+      );
+      return match?.id ?? "";
+    });
+  }
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -220,6 +251,11 @@ export default function CreateShiftModal({
       shiftDate,
       session,
       dutyType,
+      // Omitting the pair lets DoctorScheduleService fall back to its per-khoa
+      // default nurse; sending it pins a specific người.
+      ...(selectedNurse
+        ? { nurseId: selectedNurse.id, nurseName: selectedNurse.fullName }
+        : {}),
     };
 
     setSubmitting(true);
@@ -228,7 +264,9 @@ export default function CreateShiftModal({
       toast.success(
         `Đã phân ca ${session === "MORNING" ? "Sáng" : "Chiều"} (${
           dutyType === "OUTPATIENT" ? "Ngoại trú" : "Nội trú"
-        }) cho ${created.doctor.fullName} – ${selectedDepartment.name}.`,
+        }) cho ${created.doctor.fullName}${
+          selectedNurse ? ` & ĐD. ${selectedNurse.fullName.replace(/^ĐD\.\s*/, "")}` : ""
+        } – ${selectedDepartment.name}.`,
         { duration: 4000 },
       );
       onCreated(created);
@@ -309,7 +347,7 @@ export default function CreateShiftModal({
               </label>
               <select
                 value={selectedDoctorId}
-                onChange={(e) => setSelectedDoctorId(Number(e.target.value))}
+                onChange={(e) => handleDoctorChange(e.target.value)}
                 disabled={doctorsLoading || submitting || selectedDepartmentId === ""}
                 className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-300 disabled:cursor-not-allowed disabled:bg-slate-50"
               >
@@ -345,6 +383,39 @@ export default function CreateShiftModal({
                 </p>
               )}
             </div>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-slate-700">
+              Điều dưỡng phối hợp
+            </label>
+            <select
+              value={selectedNurseId}
+              onChange={(event) =>
+                setSelectedNurseId(
+                  event.target.value === "" ? "" : Number(event.target.value),
+                )
+              }
+              disabled={submitting || selectedDepartmentId === ""}
+              className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-300 disabled:cursor-not-allowed disabled:bg-slate-50"
+            >
+              <option value="">
+                {selectedDepartmentId === ""
+                  ? "-- Chọn Khoa trước --"
+                  : "-- Để mặc định theo Khoa --"}
+              </option>
+              {nurses.map((nurse) => (
+                <option key={nurse.id} value={nurse.id}>
+                  {nurse.fullName}
+                  {nurse.roomNumber ? ` · ${nurse.roomNumber}` : ""}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-[11px] text-slate-400">
+              Gợi ý tự động theo số phòng trùng với Bác sĩ. Hiển thị trên thời
+              khoá biểu và tại trạm điều dưỡng; bỏ trống để DoctorScheduleService
+              tự chọn điều dưỡng theo Khoa.
+            </p>
           </div>
 
           <div>

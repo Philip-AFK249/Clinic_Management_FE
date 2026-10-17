@@ -17,6 +17,7 @@ import {
   Plus,
   RefreshCw,
   Stethoscope,
+  Syringe,
 } from "lucide-react";
 import { toISODate } from "../data/adminMockData";
 import {
@@ -31,7 +32,6 @@ import {
 import type {
   CreateShiftPayload,
   Department,
-  DoctorReference,
   DoctorShift,
   DutyType,
   ShiftSession,
@@ -130,6 +130,20 @@ function shortLastName(fullName: string): string {
   return tokens[tokens.length - 1] ?? "";
 }
 
+/**
+ * "ĐD. Trịnh Thu Hằng" -> "Thu Hằng": the credential prefix is redundant inside
+ * a cell that already colours the line as the paired điều dưỡng.
+ */
+function shortNurseName(fullName: string | null | undefined): string {
+  const tokens = (fullName ?? "")
+    .trim()
+    .replace(/^ĐD\.?\s*/i, "")
+    .split(/\s+/)
+    .filter(Boolean);
+  if (tokens.length <= 2) return tokens.join(" ");
+  return tokens.slice(-2).join(" ");
+}
+
 function DutyTag({ dutyType }: { dutyType: DutyType }) {
   return (
     <span
@@ -153,6 +167,11 @@ function DoctorChip({ shift }: { shift: DoctorShift }) {
           {shift.doctor.title} · {shift.doctor.roomNumber} · Tối đa{" "}
           {shift.maxPatientsPerSlot} BN/giờ
         </p>
+        <p className="truncate text-[10px] font-semibold text-violet-700">
+          {shortNurseName(shift.nurseName)
+            ? `ĐD. ${shortNurseName(shift.nurseName)}`
+            : "Chưa phân điều dưỡng"}
+        </p>
       </div>
       <DutyTag dutyType={shift.dutyType} />
     </div>
@@ -160,14 +179,14 @@ function DoctorChip({ shift }: { shift: DoctorShift }) {
 }
 
 function TimetableDoctorBadge({
-  doctor,
-  dutyType,
+  shift,
   showRoom,
 }: {
-  doctor: DoctorReference;
-  dutyType: DutyType;
+  shift: DoctorShift;
   showRoom: boolean;
 }) {
+  const doctor = shift.doctor;
+  const dutyType = shift.dutyType;
   const color =
     dutyType === "OUTPATIENT"
       ? "border-teal-200 bg-teal-50 text-teal-800"
@@ -178,13 +197,19 @@ function TimetableDoctorBadge({
         ? ` (${doctor.roomNumber})`
         : ""
       : " (Nội trú)";
+  const nurse = shortNurseName(shift.nurseName);
   return (
-    <p className={`truncate rounded-md border px-1.5 py-0.5 text-[10px] font-semibold ${color}`}>
-      {doctor.title}
-      {doctor.title ? " " : ""}
-      {shortLastName(doctor.fullName)}
-      {suffix}
-    </p>
+    <div className="space-y-0.5">
+      <p className={`truncate rounded-md border px-1.5 py-0.5 text-[10px] font-semibold ${color}`}>
+        {doctor.title}
+        {doctor.title ? " " : ""}
+        {shortLastName(doctor.fullName)}
+        {suffix}
+      </p>
+      <p className="truncate px-0.5 text-[9px] font-semibold text-violet-600">
+        {nurse ? `ĐD. ${nurse}` : "Chưa phân ĐD"}
+      </p>
+    </div>
   );
 }
 
@@ -239,12 +264,7 @@ function TimetableCell({
         {outpatientShifts.length > 0 && (
           <div className="space-y-0.5">
             {outpatientShifts.slice(0, 2).map((shift) => (
-              <TimetableDoctorBadge
-                key={shift.id}
-                doctor={shift.doctor}
-                dutyType="OUTPATIENT"
-                showRoom
-              />
+              <TimetableDoctorBadge key={shift.id} shift={shift} showRoom />
             ))}
             {outpatientShifts.length > 2 && (
               <p className="text-[9px] font-medium text-slate-400">
@@ -256,12 +276,7 @@ function TimetableCell({
         {inpatientShifts.length > 0 && (
           <div className="space-y-0.5">
             {inpatientShifts.slice(0, 2).map((shift) => (
-              <TimetableDoctorBadge
-                key={shift.id}
-                doctor={shift.doctor}
-                dutyType="INPATIENT"
-                showRoom={false}
-              />
+              <TimetableDoctorBadge key={shift.id} shift={shift} showRoom={false} />
             ))}
             {inpatientShifts.length > 2 && (
               <p className="text-[9px] font-medium text-slate-400">
@@ -633,10 +648,18 @@ export default function DoctorRosterTab() {
         const inpatientShifts = sessionShifts.filter(
           (s) => s.dutyType === "INPATIENT",
         );
+        // Unique paired điều dưỡng, in first-seen order - the matrix lists them
+        // once each rather than once per shift.
+        const nurseNames = Array.from(
+          new Set(
+            sessionShifts.map((s) => (s.nurseName ?? "").trim()).filter(Boolean),
+          ),
+        );
         return {
           session,
           outpatientShifts,
           inpatientShifts,
+          nurseNames,
           totalDoctors: sessionShifts.length,
           outpatientCount: outpatientShifts.length,
           inpatientCount: inpatientShifts.length,
@@ -698,6 +721,10 @@ export default function DoctorRosterTab() {
       shiftDate: toISODate(addDays(parseISODate(shift.shiftDate), 7)),
       session: shift.session,
       dutyType: shift.dutyType,
+      // Carry the paired điều dưỡng across: a copy that silently dropped it
+      // would fall back to the per-khoa default nurse.
+      ...(typeof shift.nurseId === "number" ? { nurseId: shift.nurseId } : {}),
+      ...(shift.nurseName ? { nurseName: shift.nurseName } : {}),
     }));
 
     setIsCopying(true);
@@ -1032,6 +1059,10 @@ export default function DoctorRosterTab() {
                   <CheckCircle2 size={12} aria-hidden="true" />
                   Đạt chuẩn: đủ ≥ 1 BS Ngoại trú &amp; ≥ 1 BS Nội trú
                 </span>
+                <span className="inline-flex items-center gap-1.5 text-violet-700">
+                  <Syringe size={12} aria-hidden="true" />
+                  ĐD. = điều dưỡng phối hợp với ca trực
+                </span>
                 <span className="text-slate-400">
                   Nhấn "+" tại ô khung giờ để phân ca nhanh cho ngày / buổi đó.
                 </span>
@@ -1104,6 +1135,12 @@ export default function DoctorRosterTab() {
                             BS Nội trú (Thủ thuật / Trực)
                           </span>
                         </th>
+                        <th className="w-48 px-4 py-3 font-semibold text-slate-600">
+                          <span className="inline-flex items-center gap-1.5">
+                            <Syringe size={13} className="text-violet-500" aria-hidden="true" />
+                            ĐD Phối Hợp
+                          </span>
+                        </th>
                         <th className="w-56 px-4 py-3 font-semibold text-slate-600">
                           Kiểm soát tuân thủ
                         </th>
@@ -1156,6 +1193,24 @@ export default function DoctorRosterTab() {
                             )}
                           </td>
                           <td className="px-4 py-3">
+                            {plan.nurseNames.length === 0 ? (
+                              <span className="text-[11px] italic text-slate-300">
+                                Chưa phân điều dưỡng
+                              </span>
+                            ) : (
+                              <div className="flex flex-wrap gap-1.5">
+                                {plan.nurseNames.map((name) => (
+                                  <span
+                                    key={name}
+                                    className="rounded-full border border-violet-200 bg-violet-50 px-2 py-1 text-[10px] font-semibold text-violet-700"
+                                  >
+                                    {name}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-4 py-3">
                             <ComplianceBadge compliant={compliance[plan.session]} />
                           </td>
                         </tr>
@@ -1178,6 +1233,10 @@ export default function DoctorRosterTab() {
                     Nội trú
                   </span>
                   Trực buồng bệnh / thủ thuật
+                </span>
+                <span className="inline-flex items-center gap-1.5 text-violet-700">
+                  <Syringe size={12} aria-hidden="true" />
+                  ĐD phối hợp do quản trị viên chọn lúc phân ca
                 </span>
                 <span>•</span>
                 <span className="text-slate-400">

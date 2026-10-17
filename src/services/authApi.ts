@@ -375,6 +375,34 @@ export async function getAllStaffApi(
 }
 
 /**
+ * `GET /auth/staff-directory` - the quick-login roster.
+ *
+ * Returns every *active* staff account (DOCTOR, NURSE, PHARMACIST,
+ * RECEPTIONIST, ADMIN) with no token required, which is what the login screen
+ * needs before a session exists. `token` stays optional so a signed-in caller
+ * can refresh it too; the bearer interceptor already stamps whatever session is
+ * current.
+ *
+ * The response carries no room number or academic title, so callers enrich the
+ * rows from the local directories (see `pages/auth/data/staffRoster.ts`).
+ */
+export async function getStaffDirectoryApi(
+  token?: string,
+  signal?: AbortSignal,
+): Promise<AuthResponseDto[]> {
+  try {
+    const { data } = await authApi.get<AuthResponseDto[]>("/auth/staff-directory", {
+      ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}),
+      signal,
+    });
+    return Array.isArray(data) ? data : [];
+  } catch (error) {
+    if (axios.isCancel(error)) throw error;
+    throw toApiError(error);
+  }
+}
+
+/**
  * `GET /auth/admin/patients` - every PATIENT account with its BHYT / CCCD
  * columns.
  *

@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link, useNavigate, useOutletContext } from "react-router-dom";
 import {
   Mail,
@@ -7,7 +7,10 @@ import {
   EyeOff,
   Stethoscope,
   Building2,
-  UserRound,
+  UsersRound,
+  Search,
+  ChevronDown,
+  Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "../../context/useAuth";
@@ -26,10 +29,14 @@ import {
   initialsOf,
 } from "../doctor/data/doctorDirectory";
 import type { DoctorProfile } from "../doctor/data/doctorDirectory";
+import { getStaffDirectoryApi } from "../../services/authApi";
 import {
-  NURSE_DIRECTORY,
-  nurseDepartmentName,
-} from "../reception/data/nurseDirectory";
+  LOCAL_STAFF_ROSTER,
+  mergeStaffDirectory,
+  staffInitials,
+  staffRosterSections,
+} from "./data/staffRoster";
+import type { StaffRosterEntry } from "./data/staffRoster";
 
 interface PickedIdentity {
   email: string;
@@ -114,6 +121,44 @@ export default function LoginPage() {
     () => identityFor(activeRole, FALLBACK_DEPARTMENT_ID).doctorId,
   );
 
+  // Quick-login roster: live AuthService directory when it answers, the seeded
+  // local one otherwise, so the picker is on screen before the first request.
+  const [staffRoster, setStaffRoster] = useState<StaffRosterEntry[]>(
+    LOCAL_STAFF_ROSTER,
+  );
+  const [staffLoading, setStaffLoading] = useState(true);
+  const [staffIsLive, setStaffIsLive] = useState(false);
+  const [staffQuery, setStaffQuery] = useState("");
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickedStaff, setPickedStaff] = useState<StaffRosterEntry | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    getStaffDirectoryApi(undefined, controller.signal)
+      .then((rows) => {
+        if (controller.signal.aborted) return;
+        const merged = mergeStaffDirectory(rows);
+        setStaffRoster(merged);
+        setStaffIsLive(rows.length > 0);
+      })
+      .catch(() => {
+        // AuthService unreachable or the endpoint is missing on the deployed
+        // jar: the local roster is already rendered, so there is nothing to do.
+        if (controller.signal.aborted) return;
+        setStaffRoster(LOCAL_STAFF_ROSTER);
+        setStaffIsLive(false);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setStaffLoading(false);
+      });
+    return () => controller.abort();
+  }, []);
+
+  const staffSections = useMemo(
+    () => staffRosterSections(staffRoster, staffQuery, activeRole),
+    [staffRoster, staffQuery, activeRole],
+  );
+
   const selectedDoctors = doctorsOfDepartment(selectedDepartmentId);
 
   function applyIdentity(identity: PickedIdentity) {
@@ -122,6 +167,27 @@ export default function LoginPage() {
     setSelectedDepartmentId(identity.departmentId);
     setSelectedDoctorId(identity.doctorId);
     setErrors({});
+    // Any identity change invalidates the roster banner; `handlePickStaff`
+    // re-applies it straight after, so a picked row still wins.
+    setPickedStaff(null);
+  }
+
+  /**
+   * A roster row is the account, so picking one replaces the whole identity:
+   * email, demo password, khoa (which also scopes the doctor chips below) and
+   * the role chip the sign-in will be attempted as.
+   */
+  function handlePickStaff(entry: StaffRosterEntry) {
+    setActiveRole(entry.role);
+    applyIdentity({
+      email: entry.email,
+      password: DEMO_PASSWORD,
+      departmentId: entry.departmentId ?? FALLBACK_DEPARTMENT_ID,
+      doctorId: entry.doctorId ?? null,
+    });
+    setPickedStaff(entry);
+    setPickerOpen(false);
+    setStaffQuery("");
   }
 
   function validate(): boolean {
@@ -288,6 +354,175 @@ export default function LoginPage() {
         </div>
       </div>
 
+      {/* Quick staff login */}
+      <section className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-card">
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
+            <UsersRound className="h-4 w-4 text-slate-400" aria-hidden="true" />
+            Chọn nhân sự đăng nhập nhanh
+          </div>
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-500">
+            {staffLoading ? (
+              <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+            ) : (
+              <span
+                className={`h-1.5 w-1.5 rounded-full ${staffIsLive ? "bg-emerald-500" : "bg-slate-400"}`}
+                aria-hidden="true"
+              />
+            )}
+            {staffLoading
+              ? "Đang tải danh bạ..."
+              : staffIsLive
+                ? "AuthService :8085"
+                : "Danh bạ dự phòng"}
+          </span>
+        </div>
+
+        <div className="relative">
+          <Search
+            className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
+            aria-hidden="true"
+          />
+          <input
+            id="staff-quick-login"
+            type="search"
+            autoComplete="off"
+            role="combobox"
+            aria-expanded={pickerOpen}
+            aria-controls="staff-quick-login-list"
+            aria-label="Tìm nhân sự đăng nhập nhanh"
+            placeholder="Tìm theo họ tên, email, khoa, phòng trực..."
+            value={staffQuery}
+            onFocus={() => setPickerOpen(true)}
+            onChange={(event) => {
+              setStaffQuery(event.target.value);
+              setPickerOpen(true);
+            }}
+            className="h-11 w-full rounded-lg border border-slate-200 bg-white py-2.5 pl-10 pr-10 text-sm text-slate-900 placeholder-slate-400 focus:border-violet-600 focus:outline-none focus:ring-2 focus:ring-violet-500/20"
+          />
+          <button
+            type="button"
+            onClick={() => setPickerOpen((open) => !open)}
+            aria-label={pickerOpen ? "Đóng danh sách nhân sự" : "Mở danh sách nhân sự"}
+            className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-clinical-600"
+          >
+            <ChevronDown
+              className={`h-4 w-4 transition-transform duration-300 ${pickerOpen ? "rotate-180" : ""}`}
+              aria-hidden="true"
+            />
+          </button>
+
+          {pickerOpen && (
+            <>
+              <button
+                type="button"
+                aria-label="Đóng danh sách nhân sự"
+                onClick={() => setPickerOpen(false)}
+                className="fixed inset-0 z-30 cursor-default"
+              />
+              <div
+                id="staff-quick-login-list"
+                role="listbox"
+                aria-label="Danh sách nhân sự"
+                className="absolute left-0 right-0 top-12 z-40 max-h-72 overflow-y-auto rounded-xl border border-slate-200 bg-white p-1.5 shadow-elevated"
+              >
+                {staffSections.length === 0 ? (
+                  <div className="px-3 py-6 text-center">
+                    <p className="text-xs font-semibold text-slate-600">
+                      Không tìm thấy nhân sự nào khớp
+                    </p>
+                    <p className="mt-1 text-[11px] text-slate-400">
+                      Thử tìm theo họ tên, email hoặc tên khoa.
+                    </p>
+                  </div>
+                ) : (
+                  staffSections.map((section) => (
+                    <div key={section.key} className="pb-1 last:pb-0">
+                      <p className="flex items-center justify-between gap-2 px-2.5 pb-1 pt-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                        <span>{section.label}</span>
+                        <span className="truncate font-medium normal-case tracking-normal">
+                          {section.caption}
+                        </span>
+                      </p>
+                      {section.entries.map((entry) => {
+                        const isActive = pickedStaff?.email === entry.email;
+                        return (
+                          <button
+                            key={entry.email}
+                            type="button"
+                            role="option"
+                            aria-selected={isActive}
+                            disabled={loading}
+                            onClick={() => handlePickStaff(entry)}
+                            className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-clinical-600 disabled:opacity-50 ${
+                              isActive
+                                ? "bg-violet-50 ring-1 ring-violet-300"
+                                : "hover:bg-slate-50"
+                            }`}
+                          >
+                            <span
+                              aria-hidden="true"
+                              className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${
+                                isActive
+                                  ? "bg-violet-600 text-white"
+                                  : "bg-slate-100 text-slate-600"
+                              }`}
+                            >
+                              {staffInitials(entry.fullName)}
+                            </span>
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate text-xs font-semibold text-slate-800">
+                                {entry.fullName}
+                              </span>
+                              <span className="block truncate text-[11px] text-slate-500">
+                                {[entry.title, entry.roomNumber]
+                                  .filter(Boolean)
+                                  .join(" · ") || entry.departmentName || entry.email}
+                              </span>
+                            </span>
+                            <span className="hidden max-w-[42%] shrink-0 truncate text-[10px] font-medium text-slate-400 sm:block">
+                              {entry.email}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ))
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      </section>
+
+      {/* Chosen staff banner */}
+      {pickedStaff && (
+        <section className="animate-fade-rise flex items-start gap-3 rounded-xl border border-violet-200/70 bg-violet-50/60 p-4 shadow-card motion-reduce:animate-none">
+          <span
+            aria-hidden="true"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-violet-600 text-sm font-bold text-white"
+          >
+            {staffInitials(pickedStaff.fullName)}
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-bold text-slate-900">
+              {pickedStaff.fullName}
+            </p>
+            <p className="mt-0.5 truncate text-xs text-slate-600">
+              {[pickedStaff.title, pickedStaff.roomNumber]
+                .filter(Boolean)
+                .join(" · ") || pickedStaff.email}
+            </p>
+            <p className="mt-0.5 truncate text-[11px] text-slate-500">
+              {pickedStaff.departmentName ?? "Không gắn với khoa chuyên môn"}
+            </p>
+          </div>
+          <span className="shrink-0 rounded-full border border-violet-200 bg-white px-2 py-0.5 text-[10px] font-bold text-violet-700">
+            Đăng nhập nhanh
+          </span>
+        </section>
+      )}
+
       {/* Role-specific pickers */}
       <div
         key={activeRole}
@@ -385,26 +620,6 @@ export default function LoginPage() {
             </section>
           </>
         )}
-
-        {activeRole === "NURSE" && (
-          <section className="flex items-start gap-3 rounded-xl border border-slate-200/80 bg-white p-4 shadow-card">
-            <span
-              aria-hidden="true"
-              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${theme.badge}`}
-            >
-              <UserRound className="h-4 w-4" />
-            </span>
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-slate-900">
-                {NURSE_DIRECTORY[0].fullName}
-              </p>
-              <p className="mt-0.5 text-xs text-slate-500">
-                Bàn tiếp đón & sàng lọc sinh hiệu —{" "}
-                {nurseDepartmentName(NURSE_DIRECTORY[0])}
-              </p>
-            </div>
-          </section>
-        )}
       </div>
 
       {/* Continue with Google */}
@@ -445,7 +660,15 @@ export default function LoginPage() {
               autoComplete="email"
               placeholder="bacsi@smartclinic.vn"
               value={email}
-              onChange={(e) => { setEmail(e.target.value); setErrors((p) => ({ ...p, email: undefined })); }}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                // Typing over the picked address means the roster row no longer
+                // describes the form, so its banner must go with it.
+                setPickedStaff((current) =>
+                  current && current.email !== e.target.value ? null : current,
+                );
+                setErrors((p) => ({ ...p, email: undefined }));
+              }}
               className={`${inputBase} ${errors.email ? inputError : inputNormal}`}
             />
           </div>

@@ -8,6 +8,7 @@ import BookingPage from "./pages/patient/BookingPage";
 import PatientDashboardPage from "./pages/patient/PatientDashboardPage";
 import PatientProfilePage from "./pages/patient/PatientProfilePage";
 import DoctorEHRPage from "./pages/doctor/DoctorEHRPage";
+import NurseStationPage from "./pages/nurse/NurseStationPage";
 import ReceptionDeskPage from "./pages/reception/ReceptionDeskPage";
 import PharmacyPage from "./pages/pharmacy/PharmacyPage";
 import KioskPage from "./pages/kiosk/KioskPage";
@@ -53,6 +54,14 @@ export default function App() {
         element={
           <ProtectedRoute>
             <DoctorEHRPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/nurse"
+        element={
+          <ProtectedRoute>
+            <NurseStationPage />
           </ProtectedRoute>
         }
       />

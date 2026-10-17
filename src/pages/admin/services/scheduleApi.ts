@@ -49,6 +49,14 @@ export interface DoctorShift {
   dutyType: DutyType;
   maxPatientsPerSlot: number;
   roomNumber?: string;
+  /**
+   * Paired điều dưỡng. Optional because the column is nullable and a shift
+   * created before the pairing landed comes back without one; `nurseName` is
+   * back-filled department-side by DoctorScheduleService when the column is
+   * null, so consumers render `nurseName ?? "Chưa phân điều dưỡng"`.
+   */
+  nurseId?: number | null;
+  nurseName?: string | null;
 }
 
 export interface TimeSlotResponse {
@@ -66,6 +74,12 @@ export interface CreateShiftPayload {
   shiftDate: string; // YYYY-MM-DD
   session: ShiftSession;
   dutyType: DutyType;
+  /**
+   * Optional pairing with an điều dưỡng. Omit both to let the service fall
+   * back to its per-khoa default nurse; send them to pin a specific person.
+   */
+  nurseId?: number | null;
+  nurseName?: string | null;
 }
 
 export class ScheduleApiError extends Error {

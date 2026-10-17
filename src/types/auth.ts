@@ -171,7 +171,7 @@ export interface DemoAccount {
 export const ROLE_HOME: Record<UserRole, string> = {
   PATIENT: "/patient/dashboard",
   DOCTOR: "/doctor/ehr",
-  NURSE: "/reception",
+  NURSE: "/nurse",
   RECEPTIONIST: "/reception",
   PHARMACIST: "/pharmacy/queue",
   ADMIN: "/admin/overview",
@@ -197,7 +197,7 @@ export const DEMO_ACCOUNTS: DemoAccount[] = [
     role: "NURSE",
     email: "hang.trinh@smartclinic.vn",
     password: DEMO_PASSWORD,
-    redirectPath: "/reception",
+    redirectPath: "/nurse",
     departmentId: 1,
   },
   // One preset per khoa, taken from the seeded `doctors` rows. The login screen
