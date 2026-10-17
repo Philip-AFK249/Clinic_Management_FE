@@ -178,25 +178,9 @@ export default function DoctorAiChatDrawer({
     );
   }
 
-  if (!open) {
-    return (
-      <button
-        type="button"
-        onClick={() => onOpenChange(true)}
-        className="fixed bottom-20 right-6 z-40 inline-flex h-12 items-center gap-2 rounded-full bg-teal-600 px-5 text-sm font-bold text-white shadow-lg transition-colors hover:bg-teal-700"
-      >
-        <span className="relative flex h-5 w-5 items-center justify-center">
-          <Bot className="h-5 w-5" aria-hidden="true" />
-          {alertCount > 0 && (
-            <span className="absolute -right-2 -top-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white ring-2 ring-white">
-              {alertCount}
-            </span>
-          )}
-        </span>
-        Trợ lý AI Copilot
-      </button>
-    );
-  }
+  // No floating "Trợ lý AI Copilot" toggle: the workspace keeps its own space
+  // and the panel only shows up when a clinical red flag opens it.
+  if (!open) return null;
 
   return (
     <aside
