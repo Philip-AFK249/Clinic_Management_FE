@@ -14,6 +14,7 @@ import type { CopilotChartUpdate } from "./components/DoctorAiChatDrawer";
 import { useDoctorQueue, todayIso } from "./hooks/useDoctorQueue";
 import { useAmbientConsultation } from "./hooks/useAmbientConsultation";
 import { useDoctorSession } from "./hooks/useDoctorSession";
+import { useDrugCatalog } from "../../hooks/useDrugCatalog";
 import { toDiagnoses, toPrescriptionItems, rxLinesToDraft } from "./data/rxMapper";
 import { vitalsObjectiveLine } from "./data/ticketMapper";
 import {
@@ -79,6 +80,10 @@ export default function DoctorEHRPage() {
     isUpcomingView ? "upcoming" : "date",
   );
   const session = useDoctorSession();
+  // Same session-wide formulary the prescribing table reads (the request is
+  // de-duplicated in the hook), reused here so the sign-off guard judges stock
+  // and the penicillin class against the live drugs row.
+  const catalog = useDrugCatalog();
   const {
     status,
     revealedLines,
@@ -118,6 +123,36 @@ export default function DoctorEHRPage() {
   const patientName = patient?.name ?? "";
   const patientId = patient ? parsePatientId(patient.patientId) : 1;
   const insuranceCode = patient?.insuranceCode ?? "";
+  // The active patient's allergies as plain strings - the shape both the
+  // penicillin cross-check in the prescribing table and the sign-off guard
+  // below compare against.
+  const patientAllergies = useMemo(
+    () => patient?.allergies.map((allergy) => allergy.name) ?? [],
+    [patient],
+  );
+
+  /**
+   * The sign-off backstop for the prescription.
+   *
+   * The table already paints each offending row red the moment it happens, but
+   * a doctor can still click through: this computed state keeps the whole
+   * request off the wire when any line would be rejected - a penicillin-class
+   * drug for a penicillin-allergic patient, a quantity above what the kho
+   * holds, or a drug with nothing left in stock.
+   */
+  const hasPrescriptionErrors = rxLines.some((item) => {
+    const drug = catalog.byId.get(item.drugId);
+    const availableStock = drug?.stockQuantity ?? item.stockUnits;
+    const isAllergic = Boolean(
+      drug?.isPenicillinClass &&
+        patientAllergies.some((allergy) =>
+          allergy.toLowerCase().includes("penicillin"),
+        ),
+    );
+    const isExceeding = item.quantity > availableStock;
+    const isOut = availableStock <= 0;
+    return isAllergic || isExceeding || isOut;
+  });
 
   /**
    * The ticket as PatientIntakeService holds it, including the vitals the
@@ -472,6 +507,18 @@ export default function DoctorEHRPage() {
       return;
     }
 
+    // Same rules the table paints red, enforced here so a doctor who clicks
+    // through anyway never sends a prescription the backend would reject: a
+    // penicillin-class drug for a penicillin-allergic patient, or a quantity
+    // above what the kho actually holds.
+    if (hasPrescriptionErrors) {
+      toast.error(
+        "Không thể ký duyệt: Đơn thuốc có thuốc vi phạm dị ứng hoặc không đủ số lượng tồn kho. Vui lòng kiểm tra các dòng đánh dấu đỏ.",
+        { duration: 6000 },
+      );
+      return;
+    }
+
     const vitals = patient.vitals;
     const vitalsRecorded = patient.vitalsRecorded !== false;
     const payload: CompleteEncounterPayload = {
@@ -486,7 +533,7 @@ export default function DoctorEHRPage() {
       ...(vitalsRecorded && vitals.spo2 > 0 ? { spo2: vitals.spo2 } : {}),
       diagnoses,
       prescriptionItems: toPrescriptionItems(rxLines),
-      patientAllergies: patient.allergies.map((allergy) => allergy.name),
+      patientAllergies,
     };
 
     setIsSubmittingEncounter(true);
@@ -514,9 +561,11 @@ export default function DoctorEHRPage() {
   }, [
     approve,
     currentEncounterId,
+    hasPrescriptionErrors,
     icdAccepted,
     isStartingEncounter,
     patient,
+    patientAllergies,
     queue,
     rxLines,
     soapDraft,
@@ -633,6 +682,14 @@ export default function DoctorEHRPage() {
                         ? "Ca khám đã hoàn tất"
                         : "Đang chờ bệnh án AI"}
                   </span>
+                  {/* The button stays clickable so a doctor who clicks through
+                      anyway gets the explanation from the toast, but the
+                      violation is spelled out here first. */}
+                  {hasPrescriptionErrors && (
+                    <span className="inline-flex items-center gap-1 rounded-full border border-red-200 bg-red-50 px-2.5 py-1 text-[11px] font-semibold text-red-700">
+                      ⚠️ Đơn thuốc có thuốc vi phạm dị ứng / tồn kho
+                    </span>
+                  )}
                   <button
                     type="button"
                     onClick={() => void handleApprove()}

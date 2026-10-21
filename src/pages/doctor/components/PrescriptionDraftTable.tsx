@@ -30,6 +30,10 @@ export default function PrescriptionDraftTable({
   const [selectedDrugId, setSelectedDrugId] = useState<number | null>(null);
   const selectedDrug =
     catalog.drugs.find((drug) => drug.id === selectedDrugId) ??
+    // Default to the first drug the doctor can actually prescribe: an
+    // out-of-stock line turns red the moment it lands, so never seed one by
+    // accident when nothing has been picked yet.
+    catalog.drugs.find((drug) => drug.stockQuantity > 0) ??
     catalog.drugs[0] ??
     null;
 
@@ -45,14 +49,22 @@ export default function PrescriptionDraftTable({
     );
   }
 
-  const hasPenicillinAllergy = allergies.some((a) =>
-    a.name.toLowerCase().includes("penicillin"),
+  // The active patient's allergy list as plain strings - the shape the
+  // penicillin cross-check needs. Matched as a substring so both the English
+  // "Penicillin allergy" and the Vietnamese "Dị ứng Penicillin" trip it.
+  const patientAllergies = allergies.map((allergy) => allergy.name);
+  const hasPenicillinAllergy = patientAllergies.some((allergy) =>
+    allergy.toLowerCase().includes("penicillin"),
   );
   const hasPenicillinRx = rxLines.some((line) => line.isPenicillinClass);
   const showConflictWarning = hasPenicillinAllergy && hasPenicillinRx;
-  const lowStockLines = rxLines.filter(
-    (line) => line.quantity > line.stockUnits,
-  );
+  // Stock judged against the live catalog (falling back to the stock frozen on
+  // the line while the formulary is still loading), so the summary agrees with
+  // the per-row badges below.
+  const lowStockLines = rxLines.filter((line) => {
+    const drug = catalog.byId.get(line.drugId);
+    return line.quantity > (drug?.stockQuantity ?? line.stockUnits);
+  });
 
   return (
     <div className="rounded-lg border border-slate-200/80 bg-white p-3 shadow-card">
@@ -110,32 +122,74 @@ export default function PrescriptionDraftTable({
         </thead>
         <tbody>
           {rxLines.map((line) => {
-            // Under 100 units the kho is one restock away from running dry.
-            const lowStock = line.stockUnits < 100;
-            const outOfStock = line.quantity > line.stockUnits;
+            // Live catalog first: the kho moves while the doctor writes, so a
+            // line added minutes ago still has to be judged against today's
+            // stock and the penicillin flag of the real drugs row. `stockUnits`
+            // frozen on the line is the fallback while the formulary loads.
+            const drug = catalog.byId.get(line.drugId);
+            const availableStock = drug?.stockQuantity ?? line.stockUnits;
+            const isAllergic = Boolean(
+              drug?.isPenicillinClass &&
+                patientAllergies.some((allergy) =>
+                  allergy.toLowerCase().includes("penicillin"),
+                ),
+            );
+            const isOutOfStock = availableStock <= 0;
+            const isExceedingStock = line.quantity > availableStock;
+            const isLowStock =
+              availableStock > 0 && availableStock < 100 && !isExceedingStock;
             return (
-              <tr key={line.id} className="border-b border-slate-100 align-top">
+              <tr
+                key={line.id}
+                className={`border-b align-top ${
+                  isAllergic
+                    ? "border-red-300 bg-red-50/80"
+                    : "border-slate-100"
+                }`}
+              >
                 <td className="py-2 pr-2">
                   <p className="font-semibold text-slate-900">
                     {line.medication}
+                    {isAllergic && (
+                      <span className="ml-1.5 inline-block rounded bg-red-100 px-2 py-0.5 align-middle text-[10px] font-bold text-red-700">
+                        ⚠️ DỊ ỨNG: Bệnh nhân dị ứng Penicillin!
+                      </span>
+                    )}
+                    {isOutOfStock && (
+                      <span className="ml-1.5 inline-block rounded bg-red-100 px-2 py-0.5 align-middle text-[10px] font-semibold text-red-700">
+                        ❌ HẾT HÀNG (Tồn: 0)
+                      </span>
+                    )}
+                    {isExceedingStock && (
+                      <span className="ml-1.5 inline-block rounded bg-amber-100 px-2 py-0.5 align-middle text-[10px] font-semibold text-amber-800">
+                        ⚠️ Vượt tồn kho
+                      </span>
+                    )}
                   </p>
                   <span
                     className={`mt-0.5 inline-block rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
-                      outOfStock
+                      isOutOfStock || isExceedingStock
                         ? "border border-red-200 bg-red-50 text-red-700"
-                        : lowStock
+                        : isLowStock
                           ? "border border-amber-200 bg-amber-50 text-amber-700"
                           : "border border-teal-200 bg-teal-50 text-teal-700"
                     }`}
                   >
                     ●{" "}
-                    {outOfStock
-                      ? "Không đủ tồn kho"
-                      : lowStock
-                        ? "Sắp hết kho"
-                        : "Còn hàng"}
-                    : {line.stockUnits} đơn vị
+                    {isOutOfStock
+                      ? "Hết hàng"
+                      : isExceedingStock
+                        ? "Không đủ tồn kho"
+                        : isLowStock
+                          ? "Sắp hết kho"
+                          : "Còn hàng"}
+                    : {availableStock} đơn vị
                   </span>
+                  {isLowStock && (
+                    <span className="mt-0.5 ml-1 inline-block rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
+                      Tồn kho ít ({availableStock})
+                    </span>
+                  )}
                   <span className="mt-0.5 ml-1 inline-block rounded-full border border-teal-200 bg-teal-50 px-1.5 py-0.5 text-[10px] font-semibold text-teal-700">
                     ● {line.bhytCoverage}
                   </span>
@@ -163,8 +217,17 @@ export default function PrescriptionDraftTable({
                         quantity: Math.max(1, Number(e.target.value) || 1),
                       })
                     }
-                    className="h-8 w-16 rounded border border-slate-200 px-2 text-xs text-slate-700 focus:border-teal-500 focus:outline-none"
+                    className={`h-8 w-16 rounded border px-2 text-xs text-slate-700 focus:outline-none ${
+                      isExceedingStock
+                        ? "border-red-500 focus:border-red-500 focus:ring-2 focus:ring-red-300"
+                        : "border-slate-200 focus:border-teal-500"
+                    }`}
                   />
+                  {isExceedingStock && (
+                    <p className="mt-0.5 text-[10px] font-semibold text-red-600">
+                      Kho chỉ còn {availableStock}
+                    </p>
+                  )}
                 </td>
                 <td className="py-2 text-right">
                   <button
@@ -202,12 +265,25 @@ export default function PrescriptionDraftTable({
           aria-label="Chọn thuốc trong danh mục kho"
           className="h-9 flex-1 rounded-lg border border-slate-200 bg-white px-2 text-xs text-slate-700 focus:border-teal-500 focus:outline-none disabled:bg-slate-50 disabled:text-slate-400"
         >
-          {catalog.drugs.map((drug) => (
-            <option key={drug.id} value={drug.id}>
-              {drug.name} {drug.concentration} ({drug.dosageForm}) — Còn{" "}
-              {drug.stockQuantity} đơn vị
-            </option>
-          ))}
+          {catalog.drugs.map((drug) => {
+            // Flag the two reasons a pick is unsafe before it is made: the
+            // penicillin class this patient is allergic to, and a drug the kho
+            // has none of left (disabled so it cannot be chosen at all).
+            const isAllergicPick = hasPenicillinAllergy && drug.isPenicillinClass;
+            const isOutOfStockPick = drug.stockQuantity <= 0;
+            return (
+              <option
+                key={drug.id}
+                value={drug.id}
+                disabled={isOutOfStockPick}
+              >
+                {isAllergicPick ? "[Dị ứng] " : ""}
+                {isOutOfStockPick ? "[Hết hàng] " : ""}
+                {drug.name} {drug.concentration} ({drug.dosageForm}) — Còn{" "}
+                {drug.stockQuantity} đơn vị
+              </option>
+            );
+          })}
         </select>
         <button
           type="button"
