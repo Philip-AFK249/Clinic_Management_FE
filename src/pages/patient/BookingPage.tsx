@@ -697,6 +697,17 @@ export default function BookingPage() {
         voiceTriage?.priority_level ?? triageSymptoms(symptoms)?.priority ?? "P3",
       intakeSource: "ONLINE_BOOKING",
       chiefComplaint: symptoms.trim() || undefined,
+      // Multi-organ verdict: the co-consult routing rides along so reception,
+      // the printed ticket and the doctor's EHR can all flag the second clinic
+      // the patient has to visit after the primary exam.
+      ...(voiceTriage?.secondary_department_id
+        ? {
+            secondaryDepartmentId: voiceTriage.secondary_department_id,
+            secondaryDepartmentName:
+              voiceTriage.secondary_department_name ?? undefined,
+            multiSpecialtyNote: voiceTriage.multi_specialty_note,
+          }
+        : {}),
     };
 
     setIsSubmitting(true);
@@ -714,6 +725,9 @@ export default function BookingPage() {
         doctor: response.doctorName || chosen?.name || doctor.name,
         room: response.roomNumber || chosen?.room || doctor.roomNumber,
         date: dateLabelFrom(response.appointmentDate || triageDate),
+        // The raw `yyyy-MM-dd` day, so the cache reader can tell a visit that
+        // is still upcoming from one whose date has already passed.
+        appointmentDate: response.appointmentDate || triageDate,
         timeSlot: (response.slotStartTime || slotStartTime).slice(0, 5),
         // Stamped so the dashboard can poll the live queue by patient, with
         // the doctor queue as the second key for "who is ahead of me".

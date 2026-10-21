@@ -12,6 +12,7 @@ import type { QueueStatus, QueueTicket, QueueTicketDetailResponse } from "../../
 import {
   appointmentFromTicketDetail,
   clearActiveBooking,
+  isAppointmentDateExpired,
   writeActiveBooking,
 } from "../data/activeBooking";
 import type { ActiveAppointment } from "../data/patientMockRecords";
@@ -40,10 +41,12 @@ export interface PatientTicketState {
   /** False once the visit is finished (or cancelled) and no longer in a queue. */
   isActive: boolean;
   /**
-   * The stored booking turned out to be unknown to the backend (legacy mock
-   * such as `#APT-2026-8821`, or a purged record). It has been removed from
-   * localStorage and polling has stopped - the dashboard should render its
-   * empty state, silently.
+   * The stored booking must not be shown: either the backend rejected the
+   * number (legacy mock such as `#APT-2026-8821`, or a purged record), or the
+   * whole lookup came back empty (204 No Content) or handed back a ticket whose
+   * day has already passed. In every one of those cases localStorage has been
+   * purged and polling has stopped - the dashboard should render its empty
+   * state, silently, instead of resurrecting a finished visit.
    */
   invalidTicket: boolean;
   /** PatientIntakeService could not be reached or answered with a fault. */
@@ -82,6 +85,19 @@ export interface PatientTicketState {
  * reload - or from another device - even when localStorage never saw the
  * booking flow.
  *
+ * The cache is only ever a mirror of the backend, so two answers are treated as
+ * "this patient has no appointment" and purge it on the spot:
+ *
+ * - the exact `patientId` lookup coming back empty (204 / `null`) - the local
+ *   copy must not outlive the service that owns the ticket;
+ * - any lookup returning a ticket whose `appointmentDate` is already in the
+ *   past - a finished day is history, never an active appointment, and the
+ *   `WAITING` row some builds leave behind is what used to render under
+ *   "Lịch hẹn đang hoạt động" weeks after the visit.
+ *
+ * In both cases `ticket.detail` is set to `null` and `invalidTicket` goes
+ * true, so the dashboard falls straight through to its empty state.
+ *
  * Lifecycle rules:
  *
  * - Poll only while the ticket is WAITING/CALLED/IN_CONSULTATION; once it is
@@ -102,6 +118,13 @@ export function usePatientTicket(
   const [detail, setDetail] = useState<QueueTicketDetailResponse | null>(null);
   const [queue, setQueue] = useState<QueueTicket[]>([]);
   const [isUnknownNumber, setIsUnknownNumber] = useState(false);
+  /**
+   * The backend answered "nothing active" (204 / `null`) or named a day that
+   * has already passed, and localStorage has been purged to agree with it.
+   * Drives `invalidTicket` below: the dashboard's own copy of the booking is
+   * state it holds, so it has to be told the cache no longer backs it.
+   */
+  const [staleBooking, setStaleBooking] = useState(false);
   const [isOffline, setIsOffline] = useState(false);
   const [error, setError] = useState("");
   const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
@@ -167,12 +190,37 @@ export function usePatientTicket(
     async function load() {
       try {
         let next: QueueTicketDetailResponse | null = null;
+        // True when this cycle already dropped the local copy: a later lookup
+        // in the same cycle may still find the very same ticket (by number),
+        // and the cache then has to be written back instead of staying empty.
+        let cachePurgedThisCycle = false;
+
+        /** The local mirror is wrong: drop it and stop claiming a booking. */
+        function purgeStaleBooking() {
+          clearActiveBooking(ownerEmail);
+          cachePurgedThisCycle = true;
+          setDetail(null);
+          setQueue([]);
+          setStaleBooking(true);
+          setLastUpdatedAt(new Date());
+          stopPolling();
+        }
 
         // 1. The intake patient id is exact; ask it first when the booking
         //    carried one from the check-in response.
         if (patientId !== null) {
           next = await getActivePatientTicketApi({ patientId }, signal);
           if (signal.aborted) return;
+          if (next === null) {
+            // 204 No Content (or a blank body): PatientIntakeService holds no
+            // active ticket for this patient, so the stored booking is stale by
+            // definition. Purge it at once rather than waiting for a later
+            // lookup to agree - the fallbacks below still run, so a ticket this
+            // exact id somehow missed is still found and re-cached.
+            clearActiveBooking(ownerEmail);
+            cachePurgedThisCycle = true;
+            setStaleBooking(true);
+          }
         }
 
         // 2. Every identifier spelling in turn - a phone stored with a country
@@ -201,23 +249,32 @@ export function usePatientTicket(
         if (signal.aborted) return;
         if (next === null) {
           // Nothing active, and no stored number to fall back on: the patient
-          // simply has no appointment.
-          setDetail(null);
-          setQueue([]);
-          setLastUpdatedAt(new Date());
-          stopPolling();
+          // simply has no appointment - and whatever this browser had cached
+          // cannot be right either, so it goes with the answer.
+          purgeStaleBooking();
+          return;
+        }
+        // A day that has already rolled over is history, not an appointment:
+        // the backend's own `/active` filter would never hand it back, so a
+        // WAITING row dated 18/10 must not stand in for a live booking on
+        // 21/10 either. Purged, shown as nothing, never polled again.
+        if (isAppointmentDateExpired(next.appointmentDate)) {
+          purgeStaleBooking();
           return;
         }
         setDetail(next);
         setIsUnknownNumber(false);
+        setStaleBooking(false);
         setIsOffline(false);
         setError("");
 
         // The backend's copy wins over whatever this browser had cached - a
         // ticket booked elsewhere, or one whose cache did not survive a
-        // logout. Only written when it actually differs, so the 10-second poll
-        // does not rewrite localStorage every cycle.
-        if (ownerEmail && cachedTicketCode !== next.ticketNumber) {
+        // logout. Written when it differs from what was there, and always when
+        // this cycle purged the entry first, so the card keeps rendering after
+        // a reload. Not on every tick, so the 10-second poll does not rewrite
+        // localStorage each cycle.
+        if (ownerEmail && (cachePurgedThisCycle || cachedTicketCode !== next.ticketNumber)) {
           writeActiveBooking(appointmentFromTicketDetail(next), ownerEmail);
         }
 
@@ -291,7 +348,7 @@ export function usePatientTicket(
     currentServing,
     yourTurn,
     isActive,
-    invalidTicket: malformed || isUnknownNumber,
+    invalidTicket: malformed || isUnknownNumber || staleBooking,
     isOffline,
     error,
     lastUpdatedAt,

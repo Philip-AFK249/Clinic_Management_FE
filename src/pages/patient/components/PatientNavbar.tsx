@@ -6,12 +6,14 @@ import {
   Clock,
   CreditCard,
   FileText,
+  History,
   LogOut,
   MapPin,
   PhoneCall,
   QrCode,
 } from "lucide-react";
 import { useAuth } from "../../../context/useAuth";
+import BookingHistoryModal from "./BookingHistoryModal";
 
 const NAV_LINKS = [
   { label: "Chuyên khoa", href: "#services" },
@@ -37,6 +39,10 @@ function initialsOf(fullName: string): string {
 export default function PatientNavbar() {
   const { user, isAuthenticated, logout } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
+  // The history panel is opened from the account menu, so it lives up here
+  // rather than on any one page: a patient can ask for it from the dashboard,
+  // the booking flow or the landing page alike.
+  const [historyOpen, setHistoryOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
 
@@ -62,6 +68,11 @@ export default function PatientNavbar() {
     setMenuOpen(false);
     logout();
     navigate("/");
+  }
+
+  function openHistory() {
+    setMenuOpen(false);
+    setHistoryOpen(true);
   }
 
   return (
@@ -183,6 +194,16 @@ export default function PatientNavbar() {
                       Phiếu khám &amp; Hàng đợi của tôi
                     </Link>
 
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={openHistory}
+                      className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 hover:text-clinical-600"
+                    >
+                      <History className="h-4 w-4 text-slate-400" aria-hidden="true" />
+                      Lịch sử đặt lịch
+                    </button>
+
                     <div className="my-1 border-t border-slate-100" />
 
                     <button
@@ -214,6 +235,11 @@ export default function PatientNavbar() {
           </div>
         </div>
       </nav>
+
+      <BookingHistoryModal
+        open={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+      />
     </header>
   );
 }

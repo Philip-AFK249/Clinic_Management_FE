@@ -74,6 +74,41 @@ export default function KioskSymptomTriageStep({
         })}
       </div>
 
+      {/* Multi-organ alert - above the routing suggestion (and therefore above
+          the print action) exactly as the booking card puts it above the slot
+          selector. */}
+      {selectedSymptom?.secondaryDepartmentId && (
+        <div className="mt-6 space-y-3">
+          <div
+            role="status"
+            className="flex items-start gap-3 rounded-2xl border-2 border-amber-300 bg-gradient-to-r from-amber-50 to-sky-50 p-4 shadow-card"
+          >
+            <span className="text-2xl leading-none" aria-hidden="true">
+              ⚠️
+            </span>
+            <p className="text-base font-bold leading-relaxed text-amber-900">
+              Phát hiện triệu chứng đa cơ quan: Hệ thống đã ưu tiên xếp khám tại{" "}
+              {selectedSymptom.department} (Mức độ khẩn). Đề xuất khám kèm:{" "}
+              <span className="font-extrabold text-sky-800 underline decoration-sky-300 underline-offset-2">
+                {selectedSymptom.secondaryDepartmentName}
+              </span>
+              .
+            </p>
+          </div>
+
+          {selectedSymptom.multiSpecialtyNote && (
+            <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4">
+              <p className="text-xs font-bold uppercase tracking-wide text-sky-700">
+                Tư vấn lâm sàng đa chuyên khoa
+              </p>
+              <p className="mt-1 text-sm font-medium leading-relaxed text-sky-900">
+                {selectedSymptom.multiSpecialtyNote}
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* AI routing suggestion */}
       {selectedSymptom !== null && (
         <div

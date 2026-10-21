@@ -87,6 +87,14 @@ export interface AdministrativeIntakeRequest {
   priorityLevel: TriagePriority; // @NotNull
   intakeSource: IntakeSource; // @NotNull
   chiefComplaint?: string;
+  /**
+   * Multi-organ triage (voice or kiosk): the co-consult department the patient
+   * must visit after the primary exam. All three ride along so the reception
+   * desk, the printed ticket and the doctor's EHR can all say the same thing.
+   */
+  secondaryDepartmentId?: number;
+  secondaryDepartmentName?: string;
+  multiSpecialtyNote?: string;
 }
 
 export interface IntakeResponse {
@@ -96,6 +104,10 @@ export interface IntakeResponse {
   insuranceCode: string | null;
   departmentId: number;
   departmentName: string;
+  /** Echoed only when the intake was flagged as multi-specialty. */
+  secondaryDepartmentId?: number;
+  secondaryDepartmentName?: string;
+  multiSpecialtyNote?: string;
   doctorId: number;
   doctorName: string;
   roomNumber: string; // e.g. "Phòng 101"
@@ -131,6 +143,14 @@ export interface QueueTicketDetailResponse {
   ticketNumber: string; // "#A-001"
   departmentId: number;
   departmentName: string;
+  /**
+   * Multi-specialty routing recorded at intake: the co-consult clinic the
+   * doctor is being warned about, plus the LLM's advisory explaining why.
+   * Absent for an ordinary single-department ticket.
+   */
+  secondaryDepartmentId?: number;
+  secondaryDepartmentName?: string;
+  multiSpecialtyNote?: string;
   doctorId: number;
   doctorName: string;
   roomNumber: string; // "Phòng 101"
@@ -176,6 +196,14 @@ export interface QueueTicket {
   patient: IntakePatient;
   departmentId: number;
   departmentName: string;
+  /**
+   * The entity the queue endpoints serialize directly, so the co-consult
+   * clinic recorded at intake reaches the reception card and the queue
+   * monitor without an extra lookup. Null/absent on a normal ticket.
+   */
+  secondaryDepartmentId?: number | null;
+  secondaryDepartmentName?: string | null;
+  multiSpecialtyNote?: string | null;
   doctorId: number;
   doctorName: string;
   roomNumber: string;
@@ -455,6 +483,50 @@ export async function getActivePatientTicket(
   signal?: AbortSignal,
 ): Promise<QueueTicketDetailResponse | null> {
   return getActivePatientTicketApi({ patientId }, signal);
+}
+
+/**
+ * Every ticket this patient has ever had - past, completed and cancelled ones
+ * included - for the "Lịch sử đặt lịch" panel, newest first.
+ *
+ * Addressed the same way the active lookup is: by PatientIntakeService's own
+ * `Patient.id` when the patient carries one (from a check-in response or a
+ * previous booking), otherwise by a phone/CCCD/BHYT identifier. AuthService's
+ * `users.id` must never be passed as the id - different database, and the call
+ * would come back empty rather than fail loudly.
+ *
+ * An empty history is an ordinary answer, not a fault: a 204 / 404 / 400
+ * resolves to `[]` here, so a service that has not deployed the route yet
+ * simply shows no rows. Anything else is rethrown as `IntakeApiError`.
+ */
+export async function getPatientBookingHistoryApi(
+  patientId?: number,
+  identifier?: string,
+  signal?: AbortSignal,
+): Promise<QueueTicketDetailResponse[]> {
+  const trimmedIdentifier = identifier?.trim();
+  if (typeof patientId !== "number" && !trimmedIdentifier) return [];
+
+  try {
+    const { data } =
+      typeof patientId === "number"
+        ? await intakeApi.get<QueueTicketDetailResponse[]>(
+            `/v1/queue/tickets/patient/${patientId}/history`,
+            { signal },
+          )
+        : await intakeApi.get<QueueTicketDetailResponse[]>(
+            "/v1/queue/tickets/patient/history",
+            { params: { identifier: trimmedIdentifier }, signal },
+          );
+    return Array.isArray(data) ? data : [];
+  } catch (error) {
+    if (axios.isCancel(error)) throw error;
+    const status = axios.isAxiosError(error) ? error.response?.status : undefined;
+    // 204: no history yet. 400/404: the route is not deployed on the running
+    // jar, which reads the same way to the patient - nothing to list.
+    if (status === 204 || status === 400 || status === 404) return [];
+    throw toApiError(error);
+  }
 }
 
 /**

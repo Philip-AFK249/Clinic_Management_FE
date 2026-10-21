@@ -159,6 +159,14 @@ export interface ActiveAppointment {
   room: string;
   /** Display label, `dd/MM/yyyy` (or "Hôm nay" before the backend answers). */
   date: string;
+  /**
+   * The same day as the backend stores it, `yyyy-MM-dd`.
+   *
+   * Kept alongside the display label because expiry has to compare against
+   * *today*, and `dd/MM/yyyy` does not parse as a date. Optional: records
+   * written before this field existed fall back to the label in `date`.
+   */
+  appointmentDate?: string;
   timeSlot: string;
   /**
    * PatientIntakeService's `Patient.id`, stamped when the booking was accepted

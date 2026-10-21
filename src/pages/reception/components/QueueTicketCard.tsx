@@ -114,6 +114,25 @@ export default function QueueTicketCard({
         </p>
       )}
 
+      {/* Multi-specialty routing: the sub-badge says which clinic comes second,
+          the line under it is what the receptionist tells the patient. */}
+      {ticket.secondaryDepartmentName && (
+        <div className="mt-1.5 space-y-1 rounded-lg border border-sky-200 bg-sky-50 px-2 py-1.5">
+          <span className="inline-flex items-center rounded-full border border-sky-300 bg-white px-1.5 py-0.5 text-[10px] font-bold text-sky-800">
+            Khám kèm: {ticket.secondaryDepartmentName}
+          </span>
+          <p className="text-[11px] font-medium leading-relaxed text-slate-700">
+            Hướng dẫn: hoàn thành khám chính tại {ticket.departmentName} trước,
+            sau đó mới đến {ticket.secondaryDepartmentName}.
+          </p>
+          {ticket.multiSpecialtyNote && (
+            <p className="text-[11px] italic leading-relaxed text-slate-600">
+              {ticket.multiSpecialtyNote}
+            </p>
+          )}
+        </div>
+      )}
+
       <div className="mt-2 flex items-center gap-1.5 border-t border-slate-100 pt-2">
         <button
           type="button"

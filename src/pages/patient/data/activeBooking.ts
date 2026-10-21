@@ -125,12 +125,60 @@ export interface BookingCacheOwner {
 }
 
 /**
+ * Whether a calendar day (`yyyy-MM-dd`, or the leading part of an ISO
+ * datetime) is already behind us.
+ *
+ * The comparison is made at the *end* of that day (`T23:59:59`, local time),
+ * so a ticket booked for today never reads as expired while the clinic is
+ * still open - only a day that has actually rolled over counts. Anything that
+ * is not a parseable date returns `false`: "cannot tell" must never purge a
+ * booking the patient is about to attend.
+ */
+export function isAppointmentDateExpired(
+  appointmentDate: string | null | undefined,
+): boolean {
+  const value = appointmentDate?.trim();
+  if (!value) return false;
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
+  if (!match) return false;
+  const endOfDay = new Date(`${match[1]}-${match[2]}-${match[3]}T23:59:59`);
+  if (Number.isNaN(endOfDay.getTime())) return false;
+  return endOfDay < new Date();
+}
+
+/** `dd/MM/yyyy` (the label the card prints) as `yyyy-MM-dd`, or `null`. */
+function isoFromLabel(label: string | null | undefined): string | null {
+  const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(label?.trim() ?? "");
+  return match ? `${match[3]}-${match[2]}-${match[1]}` : null;
+}
+
+/**
+ * Whether a cached appointment belongs to a day that has already passed.
+ *
+ * Prefers `appointmentDate` (what the backend stores) and falls back to the
+ * `dd/MM/yyyy` display label, because a record written by an older build has
+ * only the label - and an 18/10 appointment must stop being "active" on
+ * 21/10 whichever of the two the cache happens to hold.
+ */
+export function isStoredBookingExpired(booking: ActiveAppointment): boolean {
+  return (
+    isAppointmentDateExpired(booking.appointmentDate) ||
+    isAppointmentDateExpired(isoFromLabel(booking.date))
+  );
+}
+
+/**
  * The stored appointment for this account, or `null`.
  *
  * Reads only the caller's own scoped key - never another user's - and verifies
  * the record against the account before handing it back. A ticket that fails
  * the ownership check (a stale write from a previous build, or data left by a
  * deleted account) is purged on the spot rather than shown.
+ *
+ * A ticket whose day has passed is expired: the cache is cleared and `null`
+ * returned, so a visit that is no longer bookable can never render under
+ * "Lịch hẹn đang hoạt động" again. The local copy outliving the backend is
+ * exactly how a stale appointment survived a reload before.
  */
 export function readOwnedActiveBooking(
   owner: BookingCacheOwner | null,
@@ -144,6 +192,10 @@ export function readOwnedActiveBooking(
     if (!raw) return null;
     const parsed: unknown = JSON.parse(raw);
     if (isActiveAppointment(parsed) && bookingMatchesUser(parsed, owner.fullName, owner.phone)) {
+      if (isStoredBookingExpired(parsed)) {
+        clearActiveBooking(owner.email);
+        return null;
+      }
       return parsed;
     }
     // Corrupted, half-written, a mock ticket, or someone else's: keep the
@@ -184,6 +236,9 @@ export function appointmentFromTicketDetail(
     doctor: detail.doctorName,
     room: detail.roomNumber,
     date: dateLabelFromIso(detail.appointmentDate),
+    // The raw day travels too: expiry compares against today's date, which the
+    // `dd/MM/yyyy` label cannot answer for.
+    appointmentDate: detail.appointmentDate,
     timeSlot: detail.slotStartTime.slice(0, 5),
     patientId: detail.patientId,
     doctorId: detail.doctorId,

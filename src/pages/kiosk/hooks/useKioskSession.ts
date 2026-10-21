@@ -208,6 +208,11 @@ export function useKioskSession() {
       priorityLevel: symptom?.triage ?? DEFAULT_PRIORITY,
       intakeSource,
       chiefComplaint: symptom?.label,
+      // Multi-organ symptom: carried so reception, the printed ticket and the
+      // consulting doctor all see the second clinic to visit after this one.
+      secondaryDepartmentId: symptom?.secondaryDepartmentId,
+      secondaryDepartmentName: symptom?.secondaryDepartmentName,
+      multiSpecialtyNote: symptom?.multiSpecialtyNote,
     };
 
     setIsIssuing(true);

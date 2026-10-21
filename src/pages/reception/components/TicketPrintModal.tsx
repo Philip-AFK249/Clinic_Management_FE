@@ -76,6 +76,13 @@ export default function TicketPrintModal({
                 {ticket.patientName}
               </p>
               <p className="text-[11px] text-slate-600">{ticket.departmentName}</p>
+              {/* Sub-badge for a multi-organ ticket: printed in bold on the
+                  thermal paper so the second clinic is unmissable. */}
+              {ticket.secondaryDepartmentName && (
+                <p className="mt-1.5 inline-block border border-slate-800 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-900">
+                  Khám kèm: {ticket.secondaryDepartmentName}
+                </p>
+              )}
             </div>
 
             <div className="space-y-1 border-t border-dashed border-slate-300 px-4 py-3 text-[11px]">
@@ -101,6 +108,26 @@ export default function TicketPrintModal({
                 value={`~${waitMinutes} phút (${ticket.patientsAhead} người trước)`}
               />
             </div>
+
+            {/* Multi-specialty routing note: reception reads it out so the
+                patient knows to finish the primary exam before the second
+                clinic, and the model's advisory travels with the paper. */}
+            {ticket.secondaryDepartmentName && (
+              <div className="border-t border-dashed border-slate-300 px-4 py-3 text-[11px]">
+                <p className="font-bold uppercase tracking-wider text-slate-800">
+                  Hướng dẫn đa chuyên khoa
+                </p>
+                <p className="mt-1 font-semibold leading-relaxed text-slate-800">
+                  Hoàn thành khám chính tại {ticket.departmentName} trước, sau
+                  đó đến khám kèm tại {ticket.secondaryDepartmentName}.
+                </p>
+                {ticket.multiSpecialtyNote && (
+                  <p className="mt-1 italic leading-relaxed text-slate-600">
+                    {ticket.multiSpecialtyNote}
+                  </p>
+                )}
+              </div>
+            )}
 
             <div className="border-t-2 border-dashed border-slate-300 px-4 py-3">
               <p

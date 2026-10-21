@@ -105,6 +105,17 @@ export interface VoiceScheduleTriageResponse {
   /** 1: Nội tổng quát, 2: Hô hấp & Dị ứng, 3: Da liễu. */
   department_id: number;
   department_name: string;
+  /**
+   * Multi-organ complaints (đau ngực + nổi mẩn ngứa, ...) get a second
+   * department so the patient is booked into the primary khoa first and told
+   * which clinic to visit alongside it. Absent/null for a single-specialty
+   * complaint - the UI must render exactly as before in that case.
+   */
+  secondary_department_id?: number | null;
+  /** Display name of the co-consult clinic, e.g. `Khoa Da liễu`. */
+  secondary_department_name?: string | null;
+  /** The LLM's clinical advisory about routing the two departments. */
+  multi_specialty_note?: string;
   priority_level: TriagePriorityLevel;
   recommended_shift: RecommendedShift;
   advice: string;

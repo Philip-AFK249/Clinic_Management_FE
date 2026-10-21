@@ -18,7 +18,12 @@ import type { QueueStatus } from "../../services/intakeApi";
 import PatientNavbar from "./components/PatientNavbar";
 import PatientFooter from "./components/PatientFooter";
 import { PAST_ENCOUNTERS } from "./data/patientMockRecords";
-import { clearActiveBooking, readOwnedActiveBooking } from "./data/activeBooking";
+import {
+  clearActiveBooking,
+  isAppointmentDateExpired,
+  isStoredBookingExpired,
+  readOwnedActiveBooking,
+} from "./data/activeBooking";
 import { identifierCandidates } from "./data/patientIdentifiers";
 import { usePatientTicket } from "./hooks/usePatientTicket";
 
@@ -127,7 +132,20 @@ export default function PatientDashboardPage() {
   // The backend's own answer also counts as a real appointment, even when the
   // cache was lost - it was found by the signed-in patient's own identifier.
   const ownedBooking = ticket.invalidTicket ? null : storedBooking;
-  const hasAppointment = ticket.detail !== null || ownedBooking !== null;
+  // A day that has already passed is not an active appointment, whatever the
+  // cache or a lagging poll may still say: that visit belongs in "Lịch sử đặt
+  // lịch", never under the live queue board. The hook already purges the
+  // stored copy for both cases - this is the belt to its braces, so a booking
+  // that expired between the last poll and this render cannot slip through.
+  const ownedBookingExpired =
+    ownedBooking !== null && isStoredBookingExpired(ownedBooking);
+  const detailExpired =
+    ticket.detail !== null &&
+    isAppointmentDateExpired(ticket.detail.appointmentDate);
+  const hasAppointment =
+    !ownedBookingExpired &&
+    !detailExpired &&
+    (ticket.detail !== null || ownedBooking !== null);
 
   function handleDownload(receipt: string) {
     toast.info(
@@ -378,11 +396,11 @@ export default function PatientDashboardPage() {
             <section className="mt-8 rounded-xl border border-slate-200/80 bg-white p-10 text-center shadow-card">
               <CalendarX size={32} className="mx-auto text-slate-300" aria-hidden="true" />
               <h2 className="mt-4 text-lg font-bold text-slate-900">
-                Bạn chưa có lịch hẹn khám nào đang hoạt động
+                Bạn hiện không có lịch hẹn khám nào sắp tới
               </h2>
               <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-slate-500">
-                Chủ động đặt lịch khám trước để chọn chuyên khoa, khung giờ phù
-                hợp và giảm thời gian chờ đợi tại phòng khám.
+                Các lịch khám trước đây đã hoàn tất hoặc hết hạn được lưu trong
+                Lịch sử đặt lịch.
               </p>
               <Link
                 to="/patient/booking"

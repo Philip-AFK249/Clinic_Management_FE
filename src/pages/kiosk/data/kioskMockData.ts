@@ -29,6 +29,14 @@ export interface SymptomOption {
    * kiosk signage; the backend row is the source of truth for routing.
    */
   departmentId: number;
+  /**
+   * Multi-organ complaint: the co-consult clinic the patient is sent to after
+   * the primary exam. Absent on ordinary symptoms, so the triage step renders
+   * its single-department layout unchanged.
+   */
+  secondaryDepartmentId?: number;
+  secondaryDepartmentName?: string;
+  multiSpecialtyNote?: string;
 }
 
 export interface RoomInfo {
@@ -80,6 +88,12 @@ export const SYMPTOM_OPTIONS: SymptomOption[] = [
     priorityLabel: "KHẨN CẤP",
     isEmergency: true,
     departmentId: 1,
+    // Đau ngực kèm nổi mẩn ngứa - the multi-organ case the triage model has
+    // to route to two clinics in one visit.
+    secondaryDepartmentId: 3,
+    secondaryDepartmentName: "Khoa Da liễu",
+    multiSpecialtyNote:
+      "Kèm nổi mẩn ngứa da toàn thân kéo dài: bệnh nhân được xếp khám ưu tiên tại Khoa Nội Tổng quát & Tim mạch trước, sau đó khám kèm Da liễu trong cùng ngày.",
   },
   {
     id: "symptom-rash",

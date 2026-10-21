@@ -8,6 +8,10 @@ export interface TicketView {
   insuranceCode: string | null;
   identityCardNumber: string | null;
   departmentName: string;
+  /** Co-consult clinic for a multi-organ ticket; absent on a normal one. */
+  secondaryDepartmentId?: number | null;
+  secondaryDepartmentName?: string | null;
+  multiSpecialtyNote?: string | null;
   doctorName: string;
   roomNumber: string;
   appointmentDate: string;
@@ -32,6 +36,9 @@ export function ticketViewFromIntake(
     insuranceCode: response.insuranceCode,
     identityCardNumber: null,
     departmentName: response.departmentName,
+    secondaryDepartmentId: response.secondaryDepartmentId,
+    secondaryDepartmentName: response.secondaryDepartmentName,
+    multiSpecialtyNote: response.multiSpecialtyNote,
     doctorName: response.doctorName,
     roomNumber: response.roomNumber,
     appointmentDate: response.appointmentDate,
@@ -52,6 +59,9 @@ export function ticketViewFromQueue(
     insuranceCode: ticket.patient?.insuranceCode ?? null,
     identityCardNumber: ticket.patient?.identityCardNumber ?? null,
     departmentName: ticket.departmentName,
+    secondaryDepartmentId: ticket.secondaryDepartmentId,
+    secondaryDepartmentName: ticket.secondaryDepartmentName,
+    multiSpecialtyNote: ticket.multiSpecialtyNote,
     doctorName: ticket.doctorName,
     roomNumber: ticket.roomNumber,
     appointmentDate: ticket.appointmentDate,

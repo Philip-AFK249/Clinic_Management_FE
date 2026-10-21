@@ -130,6 +130,22 @@ export default function SymptomsStep({
   const hasSlot = Boolean(slotStartTime);
   const canContinue = hasSymtoms && (!needsAck || triageAck) && hasSlot;
 
+  /**
+   * The co-consult half of a multi-organ verdict, lifted off the gateway
+   * response so the alert card above the slot selector stays shape-agnostic.
+   * Single-specialty verdicts have no `secondary_department_id` and produce
+   * `null`, which keeps that path rendering exactly as it did before.
+   */
+  const multiSpecialty =
+    voiceTriage && voiceTriage.secondary_department_id
+      ? {
+          primaryDepartmentName: voiceTriage.department_name,
+          secondaryDepartmentName:
+            voiceTriage.secondary_department_name ?? "Khoa khám kèm",
+          note: voiceTriage.multi_specialty_note ?? null,
+        }
+      : null;
+
   function handleChipSelect(value: string) {
     onChange(symptoms.trim() ? `${symptoms.trimEnd()}, ${value}` : value);
   }
@@ -244,22 +260,33 @@ export default function SymptomsStep({
         </p>
       )}
 
-      {/* Exactly one of these two renders; see `suggestion` above. */}
+      {/* Exactly one of these two renders; see `suggestion` above. On the voice
+          path the multi-specialty alert rides above the dispatcher, which is
+          where the booking slot selector lives - and renders nothing at all
+          when the verdict flagged no second department. */}
       {voiceTriage ? (
-        <ShiftDispatcherCard
-          triage={voiceTriage}
-          selected={shiftSelection}
-          onSelect={(session, doctorId, slot) =>
-            onSelectShift?.(session, doctorId, slot)
-          }
-          scheduleUnavailable={scheduleUnavailable}
-          targetDate={triageDate}
-          onTargetDateChange={(date) => onTriageDateChange?.(date)}
-          isRefreshing={isRefreshingSchedule}
-          slotAvailability={slotAvailability}
-          acknowledged={triageAck}
-          onAcknowledge={setTriageAck}
-        />
+        <>
+          <TriageResultCard
+            suggestion={null}
+            multiSpecialty={multiSpecialty}
+            acknowledged={triageAck}
+            onAcknowledge={setTriageAck}
+          />
+          <ShiftDispatcherCard
+            triage={voiceTriage}
+            selected={shiftSelection}
+            onSelect={(session, doctorId, slot) =>
+              onSelectShift?.(session, doctorId, slot)
+            }
+            scheduleUnavailable={scheduleUnavailable}
+            targetDate={triageDate}
+            onTargetDateChange={(date) => onTriageDateChange?.(date)}
+            isRefreshing={isRefreshingSchedule}
+            slotAvailability={slotAvailability}
+            acknowledged={triageAck}
+            onAcknowledge={setTriageAck}
+          />
+        </>
       ) : (
         <TriageResultCard
           suggestion={suggestion}

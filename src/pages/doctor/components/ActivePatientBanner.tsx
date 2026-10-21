@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { AlertTriangle, FileText } from "lucide-react";
 import type { QueueTicketDetailResponse } from "../../../services/intakeApi";
 import type { Allergy, PatientRecord } from "../data/doctorMockData";
@@ -35,6 +36,19 @@ export default function ActivePatientBanner({
   ticketDetail,
   onOpenHistory,
 }: ActivePatientBannerProps) {
+  /** Popover visibility for the multi-specialty advisory, hover *and* click. */
+  const [showMultiSpecialtyNote, setShowMultiSpecialtyNote] = useState(false);
+
+  /**
+   * The co-consult routing on the ticket, or `null` for an ordinary
+   * single-department patient - in which case nothing below renders. Keyed on
+   * the id exactly as the ticket does; a missing display name still has to be
+   * surfaced to the doctor rather than swallowed.
+   */
+  const multiSpecialty = ticketDetail?.secondaryDepartmentId
+    ? ticketDetail
+    : null;
+
   return (
     <div className="grid shrink-0 grid-cols-12 gap-3 border-b border-slate-200/80 bg-white p-3">
       {/* Demographics */}
@@ -129,24 +143,69 @@ export default function ActivePatientBanner({
         )}
       </div>
 
-      {/* Chief complaint + history trigger */}
-      <div className="col-span-4 flex items-center justify-end gap-3">
-        <div className="max-w-xs text-right">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-            Lý do vào viện (AI Triage)
-          </p>
-          <p className="mt-0.5 text-xs leading-relaxed text-slate-700">
-            {patient.chiefComplaint}
-          </p>
+      {/* Chief complaint + multi-specialty alert + history trigger */}
+      <div className="col-span-4 flex flex-col items-end justify-center gap-2">
+        {multiSpecialty && (
+          // Hover is bound to the wrapper so the pointer can travel into the
+          // popover without it closing underneath the doctor.
+          <div
+            className="relative flex justify-end"
+            onMouseEnter={() => setShowMultiSpecialtyNote(true)}
+            onMouseLeave={() => setShowMultiSpecialtyNote(false)}
+          >
+            <button
+              type="button"
+              onClick={() => setShowMultiSpecialtyNote((open) => !open)}
+              aria-expanded={showMultiSpecialtyNote}
+              aria-describedby="multi-specialty-note"
+              className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 px-3 py-1.5 text-right text-[11px] font-bold leading-tight text-amber-900 shadow-sm transition-colors hover:border-amber-400 hover:bg-amber-100"
+            >
+              🩺 Đa chuyên khoa: Bệnh nhân có triệu chứng kèm tại{" "}
+              {multiSpecialty.secondaryDepartmentName ?? "chuyên khoa khác"}
+            </button>
+
+            {showMultiSpecialtyNote && (
+              <div
+                id="multi-specialty-note"
+                role="tooltip"
+                className="absolute right-0 top-full z-30 mt-1.5 w-80 rounded-xl border border-amber-200 bg-white p-3 text-left shadow-elevated"
+              >
+                <p className="text-[11px] font-bold uppercase tracking-wide text-amber-700">
+                  Tư vấn đa chuyên khoa
+                </p>
+                <p className="mt-1 text-xs leading-relaxed text-slate-700">
+                  {multiSpecialty.multiSpecialtyNote ||
+                    "Bệnh nhân có triệu chứng kèm theo ở chuyên khoa khác."}
+                </p>
+                <p className="mt-1.5 text-xs font-medium leading-relaxed text-slate-500">
+                  Cân nhắc xử lý ngay triệu chứng kèm hoặc chỉ định hội chẩn
+                  liên khoa với{" "}
+                  {multiSpecialty.secondaryDepartmentName ?? "chuyên khoa đó"}{" "}
+                  trong lần khám này.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className="flex items-center justify-end gap-3">
+          <div className="max-w-xs text-right">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+              Lý do vào viện (AI Triage)
+            </p>
+            <p className="mt-0.5 text-xs leading-relaxed text-slate-700">
+              {patient.chiefComplaint}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onOpenHistory}
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-700 shadow-sm transition-colors hover:border-teal-300 hover:text-teal-700"
+          >
+            <FileText className="h-4 w-4 text-teal-600" aria-hidden="true" />
+            Xem Hồ sơ Bệnh án &amp; Đơn thuốc OCR ({patient.pastEncounters.length} lần khám trước)
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={onOpenHistory}
-          className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-700 shadow-sm transition-colors hover:border-teal-300 hover:text-teal-700"
-        >
-          <FileText className="h-4 w-4 text-teal-600" aria-hidden="true" />
-          Xem Hồ sơ Bệnh án &amp; Đơn thuốc OCR ({patient.pastEncounters.length} lần khám trước)
-        </button>
       </div>
     </div>
   );
