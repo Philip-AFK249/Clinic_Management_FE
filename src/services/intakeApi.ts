@@ -86,6 +86,13 @@ export interface AdministrativeIntakeRequest {
   slotStartTime: string; // "HH:mm:ss", @NotNull
   priorityLevel: TriagePriority; // @NotNull
   intakeSource: IntakeSource; // @NotNull
+  /**
+   * The duty doctor the patient explicitly tapped on the dispatcher, when they
+   * tapped one at all. Absent means "load-balance it", which is what a patient
+   * who only chose a half of the day wants - the schedule service then assigns
+   * the least-busy doctor exactly as it did before this field existed.
+   */
+  preferredDoctorId?: number;
   chiefComplaint?: string;
   /**
    * Multi-organ triage (voice or kiosk): the co-consult department the patient

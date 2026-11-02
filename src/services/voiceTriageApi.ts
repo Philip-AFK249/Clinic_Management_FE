@@ -74,6 +74,12 @@ export type SessionName = "MORNING" | "AFTERNOON";
 
 export interface DoctorShiftInfo {
   doctor_id: number;
+  /**
+   * camelCase twin some builds of the gateway serialise alongside (or instead
+   * of) `doctor_id`. Accepted here purely so the normaliser in
+   * `requireSuccess` can see both shapes; consumers should read `doctor_id`.
+   */
+  doctorId?: number;
   doctor_name: string;
   /** Vietnamese professional rank, e.g. `Tiến sĩ`, `Bác sĩ chuyên khoa II`. */
   title: string;
@@ -345,7 +351,15 @@ export async function sendVoiceScheduleTriage(
   throw classify(firstError);
 }
 
-/** `success: false` is a 200 the gateway still wants treated as a failure. */
+/**
+ * `success: false` is a 200 the gateway still wants treated as a failure.
+ *
+ * The payload is normalised on the way through: the gateway serialises the
+ * rota's doctor id as `doctor_id`, while other builds of the same contract
+ * emit the camelCase twin `doctorId`. Every consumer of this module reads
+ * `doctor_id`, so resolving it here means one mismatch can never reach the
+ * dispatcher as `undefined` and silently drop the patient's pick.
+ */
 function requireSuccess(payload: VoiceScheduleTriageResponse): VoiceScheduleTriageResponse {
   if (!payload?.success) {
     throw new VoiceTriageError(
@@ -355,7 +369,40 @@ function requireSuccess(payload: VoiceScheduleTriageResponse): VoiceScheduleTria
       detailOf(payload) || undefined,
     );
   }
-  return payload;
+  return normalizeScheduleDoctors(payload);
+}
+
+/**
+ * Fold whichever doctor-id key the gateway used onto `doctor_id`.
+ *
+ * `Number(...)` rather than a bare cast: an id that arrives as the string
+ * `"8"` still has to compare equal to the `selectedDoctorId` number the
+ * booking page holds, and a missing key both ways yields `NaN` rather than a
+ * plausible-looking `0` that could match a real doctor.
+ */
+function normalizeScheduleDoctors(
+  payload: VoiceScheduleTriageResponse,
+): VoiceScheduleTriageResponse {
+  const normalizeSession = (
+    session: SessionSchedule | null | undefined,
+  ): SessionSchedule | null | undefined =>
+    session
+      ? {
+          ...session,
+          doctors: (session.doctors ?? []).map((doc) => ({
+            ...doc,
+            doctor_id: Number(doc.doctorId ?? doc.doctor_id),
+          })),
+        }
+      : session;
+
+  return {
+    ...payload,
+    schedule: {
+      morning: normalizeSession(payload.schedule?.morning),
+      afternoon: normalizeSession(payload.schedule?.afternoon),
+    },
+  };
 }
 
 /**

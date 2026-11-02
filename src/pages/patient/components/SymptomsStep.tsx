@@ -65,6 +65,13 @@ interface SymptomsStepProps {
     doctorId: number | null,
     slotStartTime: string,
   ) => void;
+  /**
+   * The doctor the patient explicitly tapped, or `null` for automatic load
+   * balancing. Lifted here so the booking page can send it as
+   * `preferredDoctorId` instead of letting the intake service pick someone.
+   */
+  selectedDoctorId?: number | null;
+  onSelectDoctor?: (doctorId: number | null) => void;
   /** Live slot grid for the triage department/date, disabling full chips. */
   slotAvailability?: TimeSlotResponse[] | null;
   /** Keyword path: chosen department index in `CLINIC_SERVICES`, `null` = none. */
@@ -101,6 +108,8 @@ export default function SymptomsStep({
   onVoiceCancel,
   shiftSelection = null,
   onSelectShift,
+  selectedDoctorId = null,
+  onSelectDoctor,
   slotAvailability = null,
   deptIdx = null,
   onDeptIdxChange,
@@ -278,6 +287,8 @@ export default function SymptomsStep({
             onSelect={(session, doctorId, slot) =>
               onSelectShift?.(session, doctorId, slot)
             }
+            selectedDoctorId={selectedDoctorId}
+            onSelectDoctor={onSelectDoctor}
             scheduleUnavailable={scheduleUnavailable}
             targetDate={triageDate}
             onTargetDateChange={(date) => onTriageDateChange?.(date)}

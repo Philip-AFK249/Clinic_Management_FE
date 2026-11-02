@@ -38,6 +38,21 @@ interface ShiftDispatcherCardProps {
   /** What the patient has already picked, echoed back for the pressed state. */
   selected: ShiftSelection | null;
   onSelect: (session: SessionName, doctorId: number | null, slotStartTime: string) => void;
+  /**
+   * The doctor the patient explicitly tapped, or `null` for automatic load
+   * balancing.
+   *
+   * Deliberately separate from `selected.doctorId`: that one is whatever the
+   * booking will use, this one is only ever written by an actual tap on a
+   * doctor row. Sending it as `preferredDoctorId` is what stops the intake
+   * service from handing the ticket to whoever happens to be least busy.
+   */
+  selectedDoctorId?: number | null;
+  /**
+   * A doctor row was tapped - with the id of the doctor, or `null` when the
+   * already-selected row was tapped again to deselect.
+   */
+  onSelectDoctor?: (doctorId: number | null) => void;
   /** True when the schedule service could not be reached; the picker is hidden. */
   scheduleUnavailable?: boolean;
   /** `YYYY-MM-DD` the schedule below was queried for. */
@@ -139,6 +154,8 @@ export default function ShiftDispatcherCard({
   triage,
   selected,
   onSelect,
+  selectedDoctorId = null,
+  onSelectDoctor,
   scheduleUnavailable = false,
   targetDate,
   onTargetDateChange,
@@ -303,6 +320,8 @@ export default function ShiftDispatcherCard({
               isRecommended={session.session === triage.recommended_shift}
               selected={selected}
               onSelect={onSelect}
+              selectedDoctorId={selectedDoctorId}
+              onSelectDoctor={onSelectDoctor}
               slotDisabled={(slot) => slotDisabled(session, slot)}
             />
           ))}
@@ -357,6 +376,8 @@ interface SessionPanelProps {
   isRecommended: boolean;
   selected: ShiftSelection | null;
   onSelect: (session: SessionName, doctorId: number | null, slotStartTime: string) => void;
+  selectedDoctorId: number | null;
+  onSelectDoctor?: (doctorId: number | null) => void;
   /** Whether a 60-minute chip in this session must render disabled. */
   slotDisabled: (slot: string) => boolean;
 }
@@ -366,6 +387,8 @@ function SessionPanel({
   isRecommended,
   selected,
   onSelect,
+  selectedDoctorId,
+  onSelectDoctor,
   slotDisabled,
 }: SessionPanelProps) {
   const meta = SESSION_META[session.session];
@@ -382,37 +405,54 @@ function SessionPanel({
     .reduce((sum, doctor) => sum + doctor.available_capacity, 0);
   const sessionSlots = SESSION_SLOT_TIMES[session.session];
 
+  /** Whether the explicitly chosen doctor is on duty in *this* half of the day. */
+  const preferredOnDuty =
+    selectedDoctorId !== null &&
+    session.doctors.some((doctor) => doctor.doctor_id === selectedDoctorId);
+
   /**
    * A slot chip pressed.
    *
-   * Keeps the doctor already chosen in this session - the patient picked a
-   * person, not an hour - and otherwise falls back to the first doctor with
-   * room, mirroring the backend's own least-busy assignment.
+   * Keeps the doctor the patient explicitly chose while that doctor is on duty
+   * here - the patient picked a person, not an hour. Otherwise the pick is
+   * dropped rather than swapped for whoever happens to be first in the list:
+   * a doctor the patient never chose must not be pinned as `preferredDoctorId`
+   * just because they changed hour, and a doctor off duty in this session must
+   * not ride along into a booking for it.
    */
   function handleSlotPick(slot: string) {
-    const doctorId =
-      (selected?.session === session.session ? selected.doctorId : null) ??
-      session.doctors.find((doctor) => !doctor.is_full)?.doctor_id ??
-      null;
-    onSelect(session.session, doctorId, slot);
+    onSelect(session.session, preferredOnDuty ? selectedDoctorId : null, slot);
   }
 
   /**
    * A doctor row pressed.
    *
-   * Keeps the currently selected hour when it still works for this session, so
-   * choosing a person after an hour does not silently move the appointment.
+   * Tapping the row that is already chosen clears it (automatic load
+   * balancing again) and, unlike a selection, has to land even when this
+   * session has no free hour left - otherwise a patient who wants out of a
+   * doctor they picked would be stuck with them. A fresh selection still
+   * needs an hour to attach to, so with none free nothing moves: the pick
+   * would otherwise leave the booking pointing at a doctor while the hour
+   * stayed behind in the previous session.
    */
-  function handleDoctorPick(doctorId: number | null) {
-    const current = selected?.slotStartTime;
-    const slot =
-      selected?.session === session.session &&
-      current &&
-      !slotDisabled(current)
-        ? current
-        : sessionSlots.find((candidate) => !slotDisabled(candidate)) ?? null;
-    if (!slot) return;
-    onSelect(session.session, doctorId, slot);
+  function handleDoctorPick(doctorId: number) {
+    const nextDoctorId = selectedDoctorId === doctorId ? null : doctorId;
+
+    if (nextDoctorId !== null) {
+      const current = selected?.slotStartTime;
+      const slot =
+        selected?.session === session.session &&
+        current &&
+        !slotDisabled(current)
+          ? current
+          : sessionSlots.find((candidate) => !slotDisabled(candidate)) ?? null;
+      if (!slot) return;
+      onSelectDoctor?.(nextDoctorId);
+      onSelect(session.session, nextDoctorId, slot);
+      return;
+    }
+
+    onSelectDoctor?.(null);
   }
 
   return (
@@ -466,10 +506,7 @@ function SessionPanel({
               <DoctorRow
                 key={doctor.doctor_id}
                 doctor={doctor}
-                isSelected={
-                  selected?.session === session.session &&
-                  selected?.doctorId === doctor.doctor_id
-                }
+                isSelected={selectedDoctorId === doctor.doctor_id}
                 onSelect={() => handleDoctorPick(doctor.doctor_id)}
               />
             ))}
@@ -515,11 +552,18 @@ function DoctorRow({
     <button
       type="button"
       onClick={onSelect}
-      disabled={full}
+      // A doctor who fills up after being picked still has to be let go of -
+      // the row is the only way back to automatic load balancing.
+      disabled={full && !isSelected}
       aria-pressed={isSelected}
+      title={
+        isSelected
+          ? "Bấm lần nữa để bỏ chọn bác sĩ này (hệ thống sẽ tự phân bổ)"
+          : `Chọn ${formatDoctorName(doctor.title, doctor.doctor_name)}`
+      }
       className={`flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors ${
         isSelected
-          ? "border-clinical-600 bg-clinical-50"
+          ? "border-clinical-600 bg-clinical-50/50 ring-2 ring-clinical-500"
           : full
             ? "cursor-not-allowed border-slate-200 bg-slate-50"
             : "border-slate-200 bg-white hover:border-clinical-300 hover:bg-clinical-50/40"
@@ -535,7 +579,13 @@ function DoctorRow({
         </span>
       </span>
       {isSelected ? (
-        <CheckCircle2 className="h-5 w-5 shrink-0 text-clinical-600" aria-hidden="true" />
+        <span
+          className="flex shrink-0 items-center gap-1 rounded-full bg-clinical-600 px-2 py-0.5 text-xs font-bold text-white"
+          aria-hidden="true"
+        >
+          <CheckCircle2 className="h-3.5 w-3.5" />
+          Đã chọn
+        </span>
       ) : full ? (
         <span className="shrink-0 text-xs font-medium text-slate-500">Hết chỗ</span>
       ) : (

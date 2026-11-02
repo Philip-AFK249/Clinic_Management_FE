@@ -120,6 +120,30 @@ async function syncScannedCardToProfile(
 
 const STEP_LABELS = ["Triệu chứng & Chọn lịch", "Xác nhận"];
 
+/**
+ * Whether `doctorId` is on duty on `triage`'s rota.
+ *
+ * `session` narrows the check to one half of the day - what a booking for that
+ * session needs - while omitting it asks about the day as a whole, which is
+ * what re-checking a pick after a date or verdict change needs. A doctor the
+ * rota does not list must never ride along as `preferredDoctorId`: the
+ * assignment would silently fall back to load balancing while the UI kept
+ * promising someone in particular.
+ */
+function doctorOnDuty(
+  triage: VoiceScheduleTriageResponse | null,
+  doctorId: number | null,
+  session?: SessionName,
+): boolean {
+  if (!triage || doctorId === null) return false;
+  const keys: SessionName[] = session ? [session] : ["MORNING", "AFTERNOON"];
+  return keys.some((key) =>
+    sessionScheduleFor(triage, key)?.doctors.some(
+      (doctor) => doctor.doctor_id === doctorId,
+    ),
+  );
+}
+
 /** `YYYY-MM-DD` as the `dd/MM/yyyy` the ticket prints. */
 function dateLabelFrom(iso: string): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
@@ -239,6 +263,18 @@ export default function BookingPage() {
   const [shiftSelection, setShiftSelection] = useState<ShiftSelection | null>(
     null,
   );
+  /**
+   * The duty doctor the patient explicitly tapped on the dispatcher, or `null`
+   * for automatic load balancing.
+   *
+   * Held apart from `shiftSelection.doctorId` on purpose: that field is
+   * whatever the booking would use and the slot chips keep it in step on their
+   * own, whereas this one only ever changes when the patient actually picks a
+   * person - or clears one by tapping the selected row again. It is what goes
+   * out as `preferredDoctorId`, so it must not be set by a chip merely
+   * choosing an hour.
+   */
+  const [selectedDoctorId, setSelectedDoctorId] = useState<number | null>(null);
   /**
    * The gateway's `department_id` for the current verdict (1/2/3), kept apart from
    * `deptIdx`.
@@ -433,6 +469,12 @@ export default function BookingPage() {
     // Any previous pick belonged to an older rota (a re-record, another day).
     setShiftSelection(null);
     setTimeSlot(null);
+    // ...and so did any explicit doctor: a new verdict can land on another
+    // department entirely, so the pick is kept only if that rota still lists
+    // the doctor.
+    setSelectedDoctorId((previous) =>
+      doctorOnDuty(result, previous) ? previous : null,
+    );
 
     // The queried day's rota came back full: jump the booking date to tomorrow
     // (which flips the slot grid there too) and re-query the clip against that
@@ -460,6 +502,9 @@ export default function BookingPage() {
     if (voiceTriage && triageSourceText && next.trim() !== triageSourceText) {
       setVoiceTriage(null);
       setShiftSelection(null);
+      // The rota that justified an explicit doctor pick is gone with the
+      // verdict, so the pick goes too rather than outliving its own evidence.
+      setSelectedDoctorId(null);
       setSelectedDepartmentId(null);
       setTriageSourceText("");
       setVoiceClip(null);
@@ -526,10 +571,19 @@ export default function BookingPage() {
       const result = await sendVoiceScheduleTriage(clip, date);
       setVoiceTriage(result);
       setScheduleUnavailable(result.schedule_connected === false);
+      // The rota just changed underneath the pick: a doctor who is off duty
+      // on the new date cannot be held, so the booking falls back to
+      // load balancing rather than naming someone who will not be there.
+      setSelectedDoctorId((previous) =>
+        doctorOnDuty(result, previous) ? previous : null,
+      );
     } catch (error) {
       // The rota on screen belongs to the old date now, so it must stop being
       // presented as though it answers the one the patient just asked for.
       setScheduleUnavailable(true);
+      // ...and an unverifiable doctor cannot be asserted either: without a
+      // fresh rota there is no way to confirm they are on duty that day.
+      setSelectedDoctorId(null);
       handleVoiceTriageFailure(error);
     } finally {
       setIsRefreshingSchedule(false);
@@ -544,6 +598,11 @@ export default function BookingPage() {
    * 60-minute start time, but does not advance: the patient presses "Tiếp tục"
    * once they are happy with the whole pick. Full sessions and unavailable
    * hours are not clickable at all, so nothing here has to re-check them.
+   *
+   * Also the last gate on the explicit doctor pick: moving to another half of
+   * the day re-checks that doctor against that session's rota, so a morning
+   * consultant cannot be carried into an afternoon booking they are not on
+   * duty for.
    */
   function handleSelectShift(
     session: SessionName,
@@ -551,12 +610,31 @@ export default function BookingPage() {
     slotStartTime: string,
   ) {
     setShiftSelection({ session, doctorId, slotStartTime });
+    setSelectedDoctorId((previous) => {
+      if (previous === null || !voiceTriage) return previous;
+      return doctorOnDuty(voiceTriage, previous, session) ? previous : null;
+    });
     // Re-derive the service from the remembered category rather than trusting
     // `deptIdx`: it may still hold whatever the patient clicked before speaking.
     if (selectedDepartmentId !== null) {
       setDeptIdx(serviceIndexForDepartment(selectedDepartmentId));
     }
     setTimeSlot(slotStartTime);
+  }
+
+  /**
+   * A doctor row tapped, or the selected row tapped again to let go of it.
+   *
+   * `null` is the deliberate "back to automatic load balancing" answer, so it
+   * is written straight through rather than filtered - and mirrored onto the
+   * shift selection so the confirmation fallback never keeps naming a doctor
+   * the patient has already deselected.
+   */
+  function handleSelectDoctor(doctorId: number | null) {
+    setSelectedDoctorId(doctorId);
+    setShiftSelection((previous) =>
+      previous ? { ...previous, doctorId } : previous,
+    );
   }
 
   /**
@@ -601,6 +679,7 @@ export default function BookingPage() {
     setVoiceTriage(null);
     setVoiceClip(null);
     setShiftSelection(null);
+    setSelectedDoctorId(null);
     setSelectedDepartmentId(null);
     setTriageSourceText("");
     setScheduleUnavailable(false);
@@ -675,6 +754,22 @@ export default function BookingPage() {
     const chosen = dispatchedDoctor();
     const { departmentId, departmentName } = departmentForServiceIndex(deptIdx);
     const slotStartTime = `${timeSlot ?? "08:30"}:00`;
+    /**
+     * The doctor the patient tapped, sent only while that doctor is on duty
+     * for the session being booked.
+     *
+     * Omitting the field entirely (rather than sending `null`) is what keeps
+     * the intake service on its own least-busy load balancing, so a patient
+     * who picked only an hour still gets whoever is freest - and a pick that
+     * went stale between the tap and this submit cannot be asserted for a
+     * session the doctor does not work.
+     */
+    const preferredDoctorId =
+      shiftSelection &&
+      selectedDoctorId !== null &&
+      doctorOnDuty(voiceTriage, selectedDoctorId, shiftSelection.session)
+        ? selectedDoctorId
+        : undefined;
 
     const payload: AdministrativeIntakeRequest = {
       fullName: formData.fullName.trim(),
@@ -696,6 +791,7 @@ export default function BookingPage() {
       priorityLevel:
         voiceTriage?.priority_level ?? triageSymptoms(symptoms)?.priority ?? "P3",
       intakeSource: "ONLINE_BOOKING",
+      preferredDoctorId,
       chiefComplaint: symptoms.trim() || undefined,
       // Multi-organ verdict: the co-consult routing rides along so reception,
       // the printed ticket and the doctor's EHR can all flag the second clinic
@@ -897,6 +993,8 @@ export default function BookingPage() {
                   onVoiceCancel={handleVoiceCancel}
                   shiftSelection={shiftSelection}
                   onSelectShift={handleSelectShift}
+                  selectedDoctorId={selectedDoctorId}
+                  onSelectDoctor={handleSelectDoctor}
                   slotAvailability={slotAvailability}
                   deptIdx={deptIdx}
                   onDeptIdxChange={setDeptIdx}
