@@ -108,6 +108,24 @@ export interface CreateShiftPayload {
   nurseName?: string | null;
 }
 
+/**
+ * Patch payload for `PUT /shifts/{id}`. DoctorScheduleService's
+ * `updateShift` only writes the fields it receives (a `null`/missing field is
+ * skipped), so the modal sends every edited value and leaves the pairing out
+ * when the admin picks "-- Để mặc định theo Khoa --" - the service cannot
+ * un-assign an điều dưỡng that is already stored.
+ */
+export interface UpdateShiftPayload {
+  doctorId?: number;
+  departmentId?: number;
+  shiftDate?: string; // YYYY-MM-DD
+  session?: ShiftSession;
+  dutyType?: DutyType;
+  maxPatientsPerSlot?: number;
+  nurseId?: number;
+  nurseName?: string;
+}
+
 export class ScheduleApiError extends Error {
   readonly status?: number;
 
@@ -252,6 +270,36 @@ export async function createShift(
       signal,
     });
     return data;
+  } catch (error) {
+    if (axios.isCancel(error)) throw error;
+    throw toApiError(error);
+  }
+}
+
+export async function updateShift(
+  shiftId: number,
+  payload: UpdateShiftPayload,
+  signal?: AbortSignal,
+): Promise<DoctorShift> {
+  try {
+    const { data } = await scheduleApi.put<DoctorShift>(
+      `/shifts/${shiftId}`,
+      payload,
+      { signal },
+    );
+    return data;
+  } catch (error) {
+    if (axios.isCancel(error)) throw error;
+    throw toApiError(error);
+  }
+}
+
+export async function deleteShift(
+  shiftId: number,
+  signal?: AbortSignal,
+): Promise<void> {
+  try {
+    await scheduleApi.delete(`/shifts/${shiftId}`, { signal });
   } catch (error) {
     if (axios.isCancel(error)) throw error;
     throw toApiError(error);

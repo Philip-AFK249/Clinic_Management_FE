@@ -11,6 +11,7 @@ import {
   ChevronRight,
   ClipboardList,
   Copy,
+  Edit,
   Hourglass,
   LayoutGrid,
   Loader2,
@@ -38,6 +39,7 @@ import type {
   TimeSlotResponse,
 } from "../services/scheduleApi";
 import CreateShiftModal from "./Modals/CreateShiftModal";
+import EditShiftModal from "./Modals/EditShiftModal";
 
 type RosterView = "TIMETABLE" | "DAILY_MATRIX" | "SLOTS";
 
@@ -154,10 +156,20 @@ function DutyTag({ dutyType }: { dutyType: DutyType }) {
   );
 }
 
-function DoctorChip({ shift }: { shift: DoctorShift }) {
+function DoctorChip({
+  shift,
+  onEdit,
+}: {
+  shift: DoctorShift;
+  onEdit: (shift: DoctorShift) => void;
+}) {
   return (
-    <div
-      className={`flex items-center justify-between gap-2 rounded-lg border px-2.5 py-1.5 ${DUTY_CHIP_COLORS[shift.dutyType]}`}
+    <button
+      type="button"
+      onClick={() => onEdit(shift)}
+      title={`Sửa ca trực của ${shift.doctor.fullName}`}
+      aria-label={`Sửa ca trực của ${shift.doctor.fullName}`}
+      className={`group flex w-full items-center justify-between gap-2 rounded-lg border px-2.5 py-1.5 text-left transition-shadow hover:shadow-sm hover:ring-1 hover:ring-slate-300 ${DUTY_CHIP_COLORS[shift.dutyType]}`}
     >
       <div className="min-w-0">
         <p className="truncate text-[11px] font-semibold text-slate-800">
@@ -173,17 +185,26 @@ function DoctorChip({ shift }: { shift: DoctorShift }) {
             : "Chưa phân điều dưỡng"}
         </p>
       </div>
-      <DutyTag dutyType={shift.dutyType} />
-    </div>
+      <span className="flex shrink-0 items-center gap-1">
+        <DutyTag dutyType={shift.dutyType} />
+        <Edit
+          size={12}
+          className="text-slate-400 opacity-0 transition-opacity group-hover:opacity-100"
+          aria-hidden="true"
+        />
+      </span>
+    </button>
   );
 }
 
 function TimetableDoctorBadge({
   shift,
   showRoom,
+  onEdit,
 }: {
   shift: DoctorShift;
   showRoom: boolean;
+  onEdit: (shift: DoctorShift) => void;
 }) {
   const doctor = shift.doctor;
   const dutyType = shift.dutyType;
@@ -199,7 +220,13 @@ function TimetableDoctorBadge({
       : " (Nội trú)";
   const nurse = shortNurseName(shift.nurseName);
   return (
-    <div className="space-y-0.5">
+    <button
+      type="button"
+      onClick={() => onEdit(shift)}
+      title={`Sửa ca trực - ${doctor.fullName}`}
+      aria-label={`Sửa ca trực của ${doctor.fullName}`}
+      className="block w-full space-y-0.5 rounded-md text-left transition-colors hover:bg-white/80 focus:outline-none focus:ring-1 focus:ring-slate-400"
+    >
       <p className={`truncate rounded-md border px-1.5 py-0.5 text-[10px] font-semibold ${color}`}>
         {doctor.title}
         {doctor.title ? " " : ""}
@@ -209,7 +236,7 @@ function TimetableDoctorBadge({
       <p className="truncate px-0.5 text-[9px] font-semibold text-violet-600">
         {nurse ? `ĐD. ${nurse}` : "Chưa phân ĐD"}
       </p>
-    </div>
+    </button>
   );
 }
 
@@ -220,6 +247,7 @@ interface TimetableCellProps {
   session: ShiftSession;
   shifts: DoctorShift[];
   onQuickAdd: () => void;
+  onEdit: (shift: DoctorShift) => void;
 }
 
 function TimetableCell({
@@ -229,6 +257,7 @@ function TimetableCell({
   session,
   shifts,
   onQuickAdd,
+  onEdit,
 }: TimetableCellProps) {
   const outpatientShifts = shifts.filter((s) => s.dutyType === "OUTPATIENT");
   const inpatientShifts = shifts.filter((s) => s.dutyType === "INPATIENT");
@@ -264,7 +293,7 @@ function TimetableCell({
         {outpatientShifts.length > 0 && (
           <div className="space-y-0.5">
             {outpatientShifts.slice(0, 2).map((shift) => (
-              <TimetableDoctorBadge key={shift.id} shift={shift} showRoom />
+              <TimetableDoctorBadge key={shift.id} shift={shift} showRoom onEdit={onEdit} />
             ))}
             {outpatientShifts.length > 2 && (
               <p className="text-[9px] font-medium text-slate-400">
@@ -276,7 +305,12 @@ function TimetableCell({
         {inpatientShifts.length > 0 && (
           <div className="space-y-0.5">
             {inpatientShifts.slice(0, 2).map((shift) => (
-              <TimetableDoctorBadge key={shift.id} shift={shift} showRoom={false} />
+              <TimetableDoctorBadge
+                key={shift.id}
+                shift={shift}
+                showRoom={false}
+                onEdit={onEdit}
+              />
             ))}
             {inpatientShifts.length > 2 && (
               <p className="text-[9px] font-medium text-slate-400">
@@ -460,6 +494,7 @@ export default function DoctorRosterTab() {
     date?: string;
     session?: ShiftSession;
   } | null>(null);
+  const [editingShift, setEditingShift] = useState<DoctorShift | null>(null);
 
   const [shifts, setShifts] = useState<DoctorShift[]>([]);
   const [slots, setSlots] = useState<TimeSlotResponse[]>([]);
@@ -792,12 +827,12 @@ export default function DoctorRosterTab() {
     }
   }
 
-  function handleCreatedShift(createdShift?: DoctorShift) {
+  function handleShiftChanged(changedShift?: DoctorShift) {
     if (selectedDepartmentId === "") return;
     const departmentId = selectedDepartmentId;
-    const createdDate = createdShift?.shiftDate;
-    const rosterDate = createdDate ?? selectedDate;
-    if (createdDate) setSelectedDate(createdDate);
+    const changedDate = changedShift?.shiftDate;
+    const rosterDate = changedDate ?? selectedDate;
+    if (changedDate) setSelectedDate(changedDate);
     void Promise.all([
       loadWeeklyRoster(departmentId, weekStart),
       loadRoster(departmentId, rosterDate),
@@ -1038,6 +1073,7 @@ export default function DoctorRosterTab() {
                                 setSelectedDate(iso);
                                 setCreateTarget({ date: iso, session });
                               }}
+                              onEdit={setEditingShift}
                             />
                           );
                         })}
@@ -1069,7 +1105,8 @@ export default function DoctorRosterTab() {
                   ĐD. = điều dưỡng phối hợp với ca trực
                 </span>
                 <span className="text-slate-400">
-                  Nhấn "+" tại ô khung giờ để phân ca nhanh cho ngày / buổi đó.
+                  Nhấn "+" tại ô khung giờ để phân ca nhanh, hoặc nhấn vào tên bác
+                  sĩ để sửa / xóa ca trực.
                 </span>
               </div>
             </>
@@ -1179,7 +1216,11 @@ export default function DoctorRosterTab() {
                             ) : (
                               <div className="space-y-1.5">
                                 {plan.outpatientShifts.map((shift) => (
-                                  <DoctorChip key={shift.id} shift={shift} />
+                                  <DoctorChip
+                                    key={shift.id}
+                                    shift={shift}
+                                    onEdit={setEditingShift}
+                                  />
                                 ))}
                               </div>
                             )}
@@ -1192,7 +1233,11 @@ export default function DoctorRosterTab() {
                             ) : (
                               <div className="space-y-1.5">
                                 {plan.inpatientShifts.map((shift) => (
-                                  <DoctorChip key={shift.id} shift={shift} />
+                                  <DoctorChip
+                                    key={shift.id}
+                                    shift={shift}
+                                    onEdit={setEditingShift}
+                                  />
                                 ))}
                               </div>
                             )}
@@ -1247,6 +1292,9 @@ export default function DoctorRosterTab() {
                 <span className="text-slate-400">
                   Dung lượng mỗi khung 60 phút do DoctorScheduleService tính theo số BS
                   Ngoại trú đang trực.
+                </span>
+                <span className="text-slate-400">
+                  Nhấn vào một ca trực trong bảng để sửa hoặc xóa.
                 </span>
               </div>
             </>
@@ -1327,11 +1375,20 @@ export default function DoctorRosterTab() {
       {createTarget !== null && (
         <CreateShiftModal
           onClose={() => setCreateTarget(null)}
-          onCreated={handleCreatedShift}
+          onCreated={handleShiftChanged}
           initialDepartmentId={selectedDepartmentId === "" ? undefined : selectedDepartmentId}
           initialDate={createTarget.date}
           initialSession={createTarget.session}
           existingShifts={weeklyShifts}
+        />
+      )}
+
+      {editingShift !== null && (
+        <EditShiftModal
+          shift={editingShift}
+          onClose={() => setEditingShift(null)}
+          onUpdated={handleShiftChanged}
+          onDeleted={handleShiftChanged}
         />
       )}
     </div>

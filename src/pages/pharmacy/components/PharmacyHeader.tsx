@@ -1,4 +1,5 @@
-import { Bell, Camera, Pill, RefreshCw } from "lucide-react";
+import { Bell, Camera, LogOut, Pill, RefreshCw } from "lucide-react";
+import { useAuth } from "../../../context/useAuth";
 
 interface PharmacyHeaderProps {
   pendingCount: number;
@@ -22,6 +23,8 @@ export default function PharmacyHeader({
   onRefresh,
   onOpenScanner,
 }: PharmacyHeaderProps) {
+  const { logout } = useAuth();
+
   return (
     <header className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200/80 bg-white px-4">
       {/* Brand & location */}
@@ -104,6 +107,16 @@ export default function PharmacyHeader({
             </p>
           </div>
         </div>
+        <div className="h-6 w-px bg-slate-200" />
+        <button
+          type="button"
+          onClick={logout}
+          title="Đăng xuất"
+          aria-label="Đăng xuất"
+          className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-red-50 hover:text-red-600"
+        >
+          <LogOut size={16} aria-hidden="true" />
+        </button>
       </div>
     </header>
   );
