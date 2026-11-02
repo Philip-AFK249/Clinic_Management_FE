@@ -19,6 +19,8 @@ import { checkInPatient, isDuplicateBookingError } from "../../services/intakeAp
 import type { QueueStatus, QueueTicket } from "../../services/intakeApi";
 import { toIsoDate } from "../../services/ocrApi";
 import type { BhytOcrData } from "../../services/ocrApi";
+import { filterDateISO, tomorrowISO } from "./data/queueDates";
+import type { QueueDateFilter } from "./data/queueDates";
 import type { OcrCardSample } from "./data/receptionMockData";
 
 /** Maps a form field to the DOM node we focus/scroll to on a failed submit. */
@@ -100,7 +102,25 @@ export default function ReceptionDeskPage() {
   const intake = useIntakeForm();
   const { form } = intake;
   const slots = useAvailableSlots(form.departmentId, form.appointmentDate);
-  const queue = useReceptionQueue(form.appointmentDate);
+  /**
+   * Which slice of the calendar the monitor on the right is showing. It is
+   * separate from `form.appointmentDate` on purpose: the pills let the
+   * secretary look at tomorrow's advance bookings while still check-in'ing
+   * someone for today.
+   */
+  const [dateFilter, setDateFilter] = useState<QueueDateFilter>("TODAY");
+  const queueDate = filterDateISO(dateFilter);
+  const queue = useReceptionQueue(queueDate, dateFilter);
+
+  /**
+   * Moving the "Ngày khám" select moves the monitor with it - the two are the
+   * only controls that change what the desk is looking at, and the form's day
+   * is also what the duplicate check below reads. Handled here rather than in
+   * an effect so the pills follow the change in the same render it happens in.
+   */
+  const handleAppointmentDateChange = useCallback((appointmentDate: string) => {
+    setDateFilter(appointmentDate === tomorrowISO() ? "TOMORROW" : "TODAY");
+  }, []);
 
   const [errors, setErrors] = useState<IntakeErrors>({});
   const [touched, setTouched] = useState<Partial<Record<IntakeField, boolean>>>({});
@@ -318,6 +338,7 @@ export default function ReceptionDeskPage() {
               isOffline={slots.isOffline}
               loadError={slots.error}
               onChange={intake.updateField}
+              onAppointmentDateChange={handleAppointmentDateChange}
               onRefresh={slots.refresh}
               onSlotSelected={() =>
                 // A previous "slot no longer available" error must not linger
@@ -377,7 +398,9 @@ export default function ReceptionDeskPage() {
         <aside className="flex w-[40%] min-w-0 flex-col">
           <QueueMonitorPanel
             tickets={queue.tickets}
-            date={form.appointmentDate}
+            date={queueDate}
+            dateFilter={dateFilter}
+            onDateFilterChange={setDateFilter}
             waitingCount={queue.waitingCount}
             emergencyCount={queue.emergencyCount}
             isLoading={queue.isLoading}

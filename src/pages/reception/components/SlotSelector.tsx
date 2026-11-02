@@ -28,6 +28,13 @@ interface SlotSelectorProps {
     field: K,
     value: IntakeFormState[K],
   ) => void;
+  /**
+   * The day itself moved (unlike a slot within it), so the caller can take
+   * whatever else on the screen is scoped to that day with it - the queue
+   * monitor on the right is the one that has to keep answering the same date
+   * the desk is booking for.
+   */
+  onAppointmentDateChange?: (appointmentDate: string) => void;
   onRefresh: () => void;
   /** Fired whenever the secretary commits to a new slot. */
   onSlotSelected?: () => void;
@@ -57,6 +64,7 @@ export default function SlotSelector({
   isOffline,
   loadError,
   onChange,
+  onAppointmentDateChange,
   onRefresh,
   onSlotSelected,
 }: SlotSelectorProps) {
@@ -209,6 +217,7 @@ export default function SlotSelector({
                 value={form.appointmentDate}
                 onChange={(event) => {
                   onChange("appointmentDate", event.target.value);
+                  onAppointmentDateChange?.(event.target.value);
                   onChange("slotStartTime", "");
                 }}
               >

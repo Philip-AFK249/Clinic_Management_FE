@@ -126,11 +126,3 @@ export function clockLabel(iso: string | null | undefined): string {
   const match = /T(\d{2}:\d{2})/.exec(iso);
   return match ? match[1] : "--:--";
 }
-
-/** Today as the `YYYY-MM-DD` every queue/schedule API expects. */
-export function todayISO(reference: Date = new Date()): string {
-  const year = reference.getFullYear();
-  const month = String(reference.getMonth() + 1).padStart(2, "0");
-  const day = String(reference.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}

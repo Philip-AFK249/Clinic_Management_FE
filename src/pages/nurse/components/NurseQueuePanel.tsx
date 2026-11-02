@@ -18,6 +18,12 @@ import {
   triageMeta,
 } from "../../reception/data/receptionMockData";
 import {
+  QUEUE_DATE_FILTERS,
+  queueDateCaption,
+  shortDateLabel,
+} from "../../reception/data/queueDates";
+import type { QueueDateFilter } from "../../reception/data/queueDates";
+import {
   clockLabel,
   nurseQueueActions,
   vitalsSummary,
@@ -29,7 +35,11 @@ type QueueFilter = "ALL" | "WAITING" | "ACTIVE" | "DONE";
 interface NurseQueuePanelProps {
   /** Department-scoped, already ordered by `sortNurseQueue`. */
   tickets: QueueTicket[];
+  /** Day the list was loaded for, `YYYY-MM-DD` - the caption under the title. */
   date: string;
+  /** Which of the three date pills is pressed. */
+  dateFilter: QueueDateFilter;
+  onDateFilterChange: (filter: QueueDateFilter) => void;
   waitingCount: number;
   emergencyCount: number;
   vitals: Record<string, VitalsRecord>;
@@ -54,11 +64,6 @@ function isActiveStatus(status: QueueStatus): boolean {
   return status === "CALLED" || status === "IN_CONSULTATION";
 }
 
-function dateLabelFrom(iso: string): string {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
-  return match ? `${match[3]}/${match[2]}/${match[1]}` : iso;
-}
-
 const ACTION_TONES: Record<NurseQueueAction["tone"], string> = {
   primary:
     "bg-violet-600 text-white hover:bg-violet-700 disabled:bg-slate-200 disabled:text-slate-500",
@@ -76,6 +81,8 @@ const ACTION_TONES: Record<NurseQueueAction["tone"], string> = {
 export default function NurseQueuePanel({
   tickets,
   date,
+  dateFilter,
+  onDateFilterChange,
   waitingCount,
   emergencyCount,
   vitals,
@@ -122,7 +129,8 @@ export default function NurseQueuePanel({
                 Hàng Đợi Khám Của Khoa
               </h2>
               <p className="text-[11px] text-slate-500">
-                Ngày {dateLabelFrom(date)} &middot; {waitingCount} đang chờ
+                {queueDateCaption(date, dateFilter)} &middot; {waitingCount} đang
+                chờ
                 {emergencyCount > 0 && (
                   <span className="font-semibold text-red-600">
                     {" "}
@@ -172,10 +180,35 @@ export default function NurseQueuePanel({
           </div>
         </div>
 
+        {/* Day window: a ticket booked for tomorrow only shows once "Ngày mai"
+            (or the "Sắp tới" window) is selected. */}
+        <div
+          role="tablist"
+          aria-label="Lọc hàng đợi theo ngày"
+          className="mt-2.5 flex flex-wrap gap-1"
+        >
+          {QUEUE_DATE_FILTERS.map((option) => (
+            <button
+              key={option.key}
+              type="button"
+              role="tab"
+              aria-selected={dateFilter === option.key}
+              onClick={() => onDateFilterChange(option.key)}
+              className={`inline-flex h-8 items-center rounded-full px-3 text-[11px] font-semibold transition-colors ${
+                dateFilter === option.key
+                  ? "bg-teal-600 text-white"
+                  : "bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900"
+              }`}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+
         <div
           role="tablist"
           aria-label="Lọc hàng đợi theo trạng thái"
-          className="mt-2.5 flex flex-wrap gap-1"
+          className="mt-1.5 flex flex-wrap gap-1"
         >
           {FILTERS.map((option) => (
             <button
@@ -234,6 +267,8 @@ export default function NurseQueuePanel({
                 patientsAhead={patientsAhead(ticket, tickets)}
                 isMutating={isMutating}
                 record={vitals[ticket.ticketNumber]}
+                // "Sắp tới" mixes days in one list, so each card carries its own.
+                showDate={dateFilter === "UPCOMING"}
                 onChangeStatus={onChangeStatus}
                 onCaptureVitals={onCaptureVitals}
               />
@@ -262,6 +297,8 @@ interface NurseTicketCardProps {
   ticket: QueueTicket;
   patientsAhead: number;
   isMutating: boolean;
+  /** Add the booked day to the card - the "Sắp tới" list spans several. */
+  showDate?: boolean;
   record?: VitalsRecord;
   onChangeStatus: (ticketNumber: string, status: QueueStatus) => void;
   onCaptureVitals: (ticket: QueueTicket) => void;
@@ -271,6 +308,7 @@ function NurseTicketCard({
   ticket,
   patientsAhead: ahead,
   isMutating,
+  showDate = false,
   record,
   onChangeStatus,
   onCaptureVitals,
@@ -296,6 +334,14 @@ function NurseTicketCard({
           <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${status.chipClass}`}>
             {status.label}
           </span>
+          {showDate && (
+            <span
+              className="rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-bold text-sky-700"
+              title={`Ngày khám ${ticket.appointmentDate}`}
+            >
+              {shortDateLabel(ticket.appointmentDate)}
+            </span>
+          )}
         </div>
         <span className="font-mono text-sm font-bold text-slate-900">
           {ticket.ticketNumber}

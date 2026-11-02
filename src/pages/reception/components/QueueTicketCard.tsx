@@ -1,11 +1,14 @@
 import { Ban, Clock, DoorOpen, PhoneCall, Printer, SkipForward } from "lucide-react";
 import type { QueueStatus, QueueTicket } from "../../../services/intakeApi";
 import { QUEUE_STATUS_META, estimateWaitMinutes, triageMeta } from "../data/receptionMockData";
+import { dateLabel, shortDateLabel } from "../data/queueDates";
 
 interface QueueTicketCardProps {
   ticket: QueueTicket;
   patientsAhead: number;
   isMutating: boolean;
+  /** Add the booked day to the card - the "Sắp tới" list spans several. */
+  showDate?: boolean;
   onChangeStatus: (ticketNumber: string, status: QueueStatus) => void;
   onPrint: (ticket: QueueTicket) => void;
 }
@@ -20,6 +23,7 @@ export default function QueueTicketCard({
   ticket,
   patientsAhead,
   isMutating,
+  showDate = false,
   onChangeStatus,
   onPrint,
 }: QueueTicketCardProps) {
@@ -50,6 +54,14 @@ export default function QueueTicketCard({
           >
             {status.label}
           </span>
+          {showDate && (
+            <span
+              className="rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-bold text-sky-700"
+              title={`Ngày khám ${dateLabel(ticket.appointmentDate)}`}
+            >
+              {shortDateLabel(ticket.appointmentDate)}
+            </span>
+          )}
         </div>
         <span className="font-mono text-sm font-bold text-slate-900">
           {ticket.ticketNumber}

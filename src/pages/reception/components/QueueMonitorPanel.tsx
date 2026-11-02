@@ -11,12 +11,17 @@ import QueueTicketCard from "./QueueTicketCard";
 import type { QueueStatus, QueueTicket } from "../../../services/intakeApi";
 import { patientsAhead } from "../../../services/intakeApi";
 import { RECEPTION_DEPARTMENTS } from "../data/receptionMockData";
+import { QUEUE_DATE_FILTERS, queueDateCaption } from "../data/queueDates";
+import type { QueueDateFilter } from "../data/queueDates";
 import type { QueueScope } from "../hooks/useReceptionQueue";
 
 interface QueueMonitorPanelProps {
   tickets: QueueTicket[];
   /** `YYYY-MM-DD` the queue was loaded for - shown so the desk knows the filter. */
   date: string;
+  /** Which of the three date pills is pressed. */
+  dateFilter: QueueDateFilter;
+  onDateFilterChange: (filter: QueueDateFilter) => void;
   waitingCount: number;
   emergencyCount: number;
   isLoading: boolean;
@@ -29,15 +34,11 @@ interface QueueMonitorPanelProps {
   onPrint: (ticket: QueueTicket) => void;
 }
 
-/** `YYYY-MM-DD` as the `dd/MM/yyyy` the desk reads dates as. */
-function dateLabelFrom(iso: string): string {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
-  return m ? `${m[3]}/${m[2]}/${m[1]}` : iso;
-}
-
 export default function QueueMonitorPanel({
   tickets,
   date,
+  dateFilter,
+  onDateFilterChange,
   waitingCount,
   emergencyCount,
   isLoading,
@@ -73,7 +74,8 @@ export default function QueueMonitorPanel({
                 Màn Hình Hàng Đợi Trực Tiếp
               </h2>
               <p className="text-[11px] text-slate-500">
-                Ngày {dateLabelFrom(date)} &middot; {waitingCount} đang chờ
+                {queueDateCaption(date, dateFilter)} &middot; {waitingCount} đang
+                chờ
                 {emergencyCount > 0 && (
                   <span className="font-semibold text-red-600">
                     {" "}
@@ -120,11 +122,29 @@ export default function QueueMonitorPanel({
           </div>
         </div>
 
+        {/* Day window: an advance booking for tomorrow only shows once
+            "Ngày mai" (or the "Sắp tới" window) is selected. */}
+        <div
+          role="tablist"
+          aria-label="Lọc hàng đợi theo ngày"
+          className="mt-2.5 flex flex-wrap gap-1"
+        >
+          {QUEUE_DATE_FILTERS.map((option) => (
+            <FilterTab
+              key={option.key}
+              active={dateFilter === option.key}
+              label={option.label}
+              accent="teal"
+              onClick={() => onDateFilterChange(option.key)}
+            />
+          ))}
+        </div>
+
         {/* Department filter tabs */}
         <div
           role="tablist"
           aria-label="Lọc hàng đợi theo chuyên khoa"
-          className="mt-2.5 flex flex-wrap gap-1"
+          className="mt-1.5 flex flex-wrap gap-1"
         >
           <FilterTab
             active={scope === "ALL"}
@@ -180,6 +200,8 @@ export default function QueueMonitorPanel({
                 ticket={ticket}
                 patientsAhead={patientsAhead(ticket, tickets)}
                 isMutating={isMutating}
+                // "Sắp tới" mixes days in one list, so each card carries its own.
+                showDate={dateFilter === "UPCOMING"}
                 onChangeStatus={onChangeStatus}
                 onPrint={onPrint}
               />
@@ -208,10 +230,16 @@ function FilterTab({
   active,
   label,
   onClick,
+  accent = "slate",
 }: {
   active: boolean;
   label: string;
   onClick: () => void;
+  /**
+   * Day pills take the desk's teal so the two rows of tabs above the list
+   * cannot be read as one control; department pills stay slate.
+   */
+  accent?: "slate" | "teal";
 }) {
   return (
     <button
@@ -221,7 +249,9 @@ function FilterTab({
       onClick={onClick}
       className={`inline-flex h-8 items-center rounded-full px-3 text-[11px] font-semibold transition-colors ${
         active
-          ? "bg-slate-800 text-white"
+          ? accent === "teal"
+            ? "bg-teal-600 text-white"
+            : "bg-slate-800 text-white"
           : "bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900"
       }`}
     >

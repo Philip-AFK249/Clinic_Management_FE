@@ -12,8 +12,10 @@ import NurseStationHeader from "./components/NurseStationHeader";
 import NurseQueuePanel from "./components/NurseQueuePanel";
 import NurseDutyPanel from "./components/NurseDutyPanel";
 import VitalsCaptureModal from "./components/VitalsCaptureModal";
-import { sortNurseQueue, todayISO, vitalsRecordFromTicket } from "./data/nurseStation";
+import { sortNurseQueue, vitalsRecordFromTicket } from "./data/nurseStation";
 import type { VitalsRecord } from "./data/nurseStation";
+import { filterDateISO, todayISO } from "../reception/data/queueDates";
+import type { QueueDateFilter } from "../reception/data/queueDates";
 
 const ACTIVE_STATUSES: QueueStatus[] = ["WAITING", "CALLED", "IN_CONSULTATION"];
 
@@ -34,8 +36,16 @@ export default function NurseStationPage() {
   const departmentName =
     user?.departmentName ?? nurseDepartmentName(nurse) ?? departmentNameOf(departmentId);
 
+  /**
+   * The roster on the right is always today's - who is on duty *now* - while
+   * the queue on the left follows whichever day the nurse has pinned, which is
+   * the whole point of the Hôm nay / Ngày mai / Sắp tới pills: a ticket booked
+   * for tomorrow has to be triageable before the patient arrives.
+   */
   const date = todayISO();
-  const queue = useReceptionQueue(date);
+  const [dateFilter, setDateFilter] = useState<QueueDateFilter>("TODAY");
+  const queueDate = filterDateISO(dateFilter);
+  const queue = useReceptionQueue(queueDate, dateFilter);
 
   const [shifts, setShifts] = useState<DoctorShift[]>([]);
   const [shiftsLoading, setShiftsLoading] = useState(true);
@@ -177,7 +187,9 @@ export default function NurseStationPage() {
         <main className="flex w-[60%] min-w-0 flex-col overflow-hidden border-r border-slate-200/80">
           <NurseQueuePanel
             tickets={departmentTickets}
-            date={date}
+            date={queueDate}
+            dateFilter={dateFilter}
+            onDateFilterChange={setDateFilter}
             waitingCount={waitingCount}
             emergencyCount={emergencyCount}
             vitals={effectiveVitals}

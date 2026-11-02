@@ -368,6 +368,31 @@ export async function getReceptionQueue(
 }
 
 /**
+ * Waiting tickets from `fromDate` onward for one department (or the whole
+ * clinic) - the window a per-day `getReceptionQueue` misses when a ticket was
+ * pre-booked for tomorrow while the desk is still scoped to today.
+ */
+export async function getReceptionUpcomingQueue(
+  departmentId: number | null,
+  fromDate?: string,
+  signal?: AbortSignal,
+): Promise<QueueTicket[]> {
+  try {
+    const { data } = await intakeApi.get<QueueTicket[]>(
+      "/v1/queue/reception/upcoming",
+      {
+        params: { departmentId: departmentId ?? undefined, fromDate },
+        signal,
+      },
+    );
+    return data;
+  } catch (error) {
+    if (axios.isCancel(error)) throw error;
+    throw toApiError(error);
+  }
+}
+
+/**
  * 60-minute slot load balance for a department on a given day, proxied from
  * DoctorScheduleService (:8081).
  */

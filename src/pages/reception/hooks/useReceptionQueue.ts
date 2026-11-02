@@ -1,9 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { getReceptionQueue, updateTicketStatus } from "../../../services/intakeApi";
+import {
+  getReceptionQueue,
+  getReceptionUpcomingQueue,
+  updateTicketStatus,
+} from "../../../services/intakeApi";
 import { IntakeApiError } from "../../../services/intakeApi";
 import type { QueueStatus, QueueTicket } from "../../../services/intakeApi";
 import { RECEPTION_DEPARTMENTS, buildFallbackQueue } from "../data/receptionMockData";
+import type { QueueDateFilter } from "../data/queueDates";
 
 const POLL_INTERVAL_MS = 10_000;
 
@@ -56,8 +61,17 @@ function dedupe(tickets: QueueTicket[]): QueueTicket[] {
  * panel's department tabs filter the merged list client-side. Re-polls every
  * 10 seconds. Falls back to a synthesized queue (flagged via `isOffline`) so
  * the desk keeps triaging while PatientIntakeService is down.
+ *
+ * `date` is the day the view is anchored at and `filter` picks the window: a
+ * `TODAY`/`TOMORROW` view asks for that one day, while `UPCOMING` asks the
+ * backend for everything from `date` onward - so a ticket booked for tomorrow
+ * reaches the desk and the nurse station the moment either pill is pressed
+ * rather than only when the date field on the intake form is moved.
  */
-export function useReceptionQueue(date: string): ReceptionQueueState {
+export function useReceptionQueue(
+  date: string,
+  filter: QueueDateFilter = "TODAY",
+): ReceptionQueueState {
   const [tickets, setTickets] = useState<QueueTicket[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isMutating, setIsMutating] = useState(false);
@@ -66,10 +80,21 @@ export function useReceptionQueue(date: string): ReceptionQueueState {
   const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
   const activeRequest = useRef<AbortController | null>(null);
-  const isFirstLoad = useRef(true);
+  /** Day + window currently on screen, so a switch can be told from a poll. */
+  const activeWindow = useRef("");
 
   useEffect(() => {
     if (!date) return undefined;
+
+    // A day/window switch drops what is on screen first: otherwise the
+    // previous day's list would sit under the newly pressed pill until the
+    // response lands, which reads as the pill having done nothing.
+    const windowKey = `${date}|${filter}`;
+    if (activeWindow.current !== windowKey) {
+      activeWindow.current = windowKey;
+      setTickets([]);
+      setIsLoading(true);
+    }
 
     activeRequest.current?.abort();
     const controller = new AbortController();
@@ -77,11 +102,15 @@ export function useReceptionQueue(date: string): ReceptionQueueState {
     const signal = controller.signal;
 
     async function load() {
-      if (isFirstLoad.current) setIsLoading(true);
       try {
         const results = await Promise.allSettled(
           RECEPTION_DEPARTMENTS.map((department) =>
-            getReceptionQueue(department.id, date, signal),
+            // The upcoming window is a single request rather than one call per
+            // future day: the backend anchors it at `fromDate` and returns
+            // everything active from there on.
+            filter === "UPCOMING"
+              ? getReceptionUpcomingQueue(department.id, date, signal)
+              : getReceptionQueue(department.id, date, signal),
           ),
         );
         if (signal.aborted) return;
@@ -127,10 +156,7 @@ export function useReceptionQueue(date: string): ReceptionQueueState {
         );
         setLastUpdatedAt(new Date());
       } finally {
-        if (!signal.aborted) {
-          setIsLoading(false);
-          isFirstLoad.current = false;
-        }
+        if (!signal.aborted) setIsLoading(false);
       }
     }
 
@@ -141,7 +167,7 @@ export function useReceptionQueue(date: string): ReceptionQueueState {
       controller.abort();
       window.clearInterval(interval);
     };
-  }, [date, reloadToken]);
+  }, [date, filter, reloadToken]);
 
   const refresh = useCallback(() => setReloadToken((token) => token + 1), []);
 
