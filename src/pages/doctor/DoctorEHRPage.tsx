@@ -30,6 +30,7 @@ import {
   completeEncounterApi,
   sendAmbientConsultationApi,
   sendCopilotChatApi,
+  sendCopilotVoiceApi,
   startEncounterApi,
 } from "../../services/clinicalApi";
 import type {
@@ -86,6 +87,7 @@ export default function DoctorEHRPage() {
   const catalog = useDrugCatalog();
   const {
     status,
+    recordingMode,
     revealedLines,
     soapDraft,
     setSoapDraft,
@@ -94,10 +96,19 @@ export default function DoctorEHRPage() {
     icdSuggestions,
     rxLines,
     setRxLines,
+    recordingTime,
+    isProcessing: recorderProcessing,
+    isSupported: recorderSupported,
+    recorderError,
     start,
-    finish,
+    recordFollowUp,
+    reRecord,
+    stopRecording,
+    cancelRecording,
     failAnalysis,
+    failFollowUp,
     applyConsultation,
+    applyFollowUp,
     applyCopilotUpdate,
     approve,
   } = useAmbientConsultation();
@@ -335,27 +346,76 @@ export default function DoctorEHRPage() {
   ]);
 
   /**
-   * The doctor hit "Dừng & Phân Tích": the clip exists only as an in-memory
-   * Blob, is uploaded to the AI Gateway on this call and is dropped the moment
-   * the request settles - nothing is downloaded or written to disk.
+   * A clip finished. There are two consumers:
+   *
+   * - `INITIAL`: the full consultation upload, which produces the SOAP / ICD /
+   *   prescription draft from scratch.
+   * - `FOLLOW_UP`: a short dictation that revises the *current* draft, so the
+   *   encounter is not reset when the patient adds one more detail.
+   *
+   * Either way the clip exists only as an in-memory Blob and is dropped as soon
+   * as the request settles - nothing is downloaded or written to disk.
    */
-  const handleRecordingFinished = useCallback(
+  const handleRecordingReady = useCallback(
     async (audioBlob: Blob) => {
-      finish();
+      const allergies = patient?.allergies
+        .map((allergy) => allergy.name)
+        .join(", ");
+      const patientHistory = patient?.pastEncounters
+        .map(
+          (encounter) =>
+            `${encounter.date} - ${encounter.department}: ${encounter.complaint} (${encounter.diagnosis})`,
+        )
+        .join("; ");
+
+      if (recordingMode === "FOLLOW_UP") {
+        try {
+          const result = await sendCopilotVoiceApi(audioBlob, {
+            soapNote: soapDraftToNote(soapDraft),
+            diagnoses: toDiagnoses(icdAccepted),
+            prescriptionDraft: rxLinesToDraft(rxLines),
+            diarizedTranscript: revealedLines.map((line) => ({
+              speaker: line.speaker === "DOCTOR" ? "doctor" : "patient",
+              text: line.text,
+            })),
+            departmentId: session.profile.departmentId,
+            doctorId: session.doctorId,
+            patientId,
+            allergies,
+            patientHistory,
+          });
+
+          applyFollowUp(result);
+
+          if (result.has_red_flags === true) {
+            recordRedFlags(result.red_flags ?? []);
+          }
+
+          toast.success(
+            result.assistant_message?.trim() ||
+              "AI đã cập nhật phần bổ sung vào bệnh án hiện tại.",
+            { duration: 5000 },
+          );
+        } catch (cause) {
+          // Keep the draft the doctor already had: only the follow-up failed.
+          failFollowUp();
+          toast.error(
+            cause instanceof Error
+              ? cause.message
+              : `Không cập nhật được phần ghi âm bổ sung (AI Gateway: ${AI_GATEWAY_BASE_URL}). ${AI_GATEWAY_START_HINT}`,
+            { duration: 6000 },
+          );
+        }
+        return;
+      }
+
       try {
         const result = await sendAmbientConsultationApi(audioBlob, {
           departmentId: session.profile.departmentId,
           doctorId: session.doctorId,
           patientId,
-          allergies: patient?.allergies
-            .map((allergy) => allergy.name)
-            .join(", "),
-          patientHistory: patient?.pastEncounters
-            .map(
-              (encounter) =>
-                `${encounter.date} - ${encounter.department}: ${encounter.complaint} (${encounter.diagnosis})`,
-            )
-            .join("; "),
+          allergies,
+          patientHistory,
         });
 
         applyConsultation(result);
@@ -380,19 +440,21 @@ export default function DoctorEHRPage() {
     },
     [
       applyConsultation,
+      applyFollowUp,
       failAnalysis,
-      finish,
+      failFollowUp,
+      icdAccepted,
       patient,
       patientId,
       recordRedFlags,
+      recordingMode,
+      revealedLines,
+      rxLines,
       session.doctorId,
       session.profile.departmentId,
+      soapDraft,
     ],
   );
-
-  const handleRecordingAbort = useCallback(() => {
-    failAnalysis();
-  }, [failAnalysis]);
 
   const handleCopilotUpdate = useCallback(
     (update: CopilotChartUpdate) => {
@@ -622,9 +684,19 @@ export default function DoctorEHRPage() {
               />
               <AmbientRecordingBar
                 status={status}
+                recordingMode={recordingMode}
+                recordingTime={recordingTime}
+                isProcessing={recorderProcessing}
+                isSupported={recorderSupported}
+                error={recorderError}
                 onStart={start}
-                onFinish={(audioBlob) => void handleRecordingFinished(audioBlob)}
-                onAbort={handleRecordingAbort}
+                onStartFollowUp={recordFollowUp}
+                onReRecord={reRecord}
+                onStopRecording={stopRecording}
+                onRecordingReady={(audioBlob) =>
+                  void handleRecordingReady(audioBlob)
+                }
+                onCancelRecording={cancelRecording}
               />
               <WorkspaceSplitView
                 left={

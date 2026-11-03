@@ -448,6 +448,7 @@ export const AI_GATEWAY_START_HINT: string =
 
 const AMBIENT_CONSULTATION_PATH = "/api/v1/clinical/ambient-consultation";
 const COPILOT_CHAT_PATH = "/api/v1/clinical/copilot-chat";
+const COPILOT_VOICE_PATH = "/api/v1/clinical/copilot-chat/voice";
 
 /**
  * Deliberately its own axios instance rather than `clinicalApi`: a different
@@ -749,6 +750,79 @@ export async function sendCopilotChatApi(
       allergies: payload.allergies ?? "",
       patient_history: payload.patientHistory ?? "",
     });
+    return requireGatewaySuccess(data);
+  } catch (error) {
+    if (axios.isCancel(error)) throw error;
+    if (error instanceof ClinicalApiError) throw error;
+    throw toGatewayError(error);
+  }
+}
+
+/**
+ * The draft context sent alongside a voice follow-up. The gateway expects it
+ * as one JSON string in the `draft_payload` multipart field, so the current
+ * chart travels with the clip and the model revises it in place.
+ */
+export interface CopilotVoiceRequest {
+  soapNote: SoapNote;
+  diagnoses: DiagnosisItem[];
+  prescriptionDraft: PrescriptionDraftItem[];
+  diarizedTranscript?: { speaker: "doctor" | "patient"; text: string }[];
+  rawTranscript?: string;
+  departmentId?: number;
+  doctorId?: number;
+  patientId?: number | string;
+  allergies?: string;
+  patientHistory?: string;
+}
+
+/**
+ * Upload a short follow-up clip together with the current draft and get back
+ * the revised SOAP / ICD-10 / prescription. The audio never leaves RAM beyond
+ * this request, and the returned record is merged into the open chart by the
+ * caller instead of replacing the whole encounter.
+ */
+export async function sendCopilotVoiceApi(
+  audioBlob: Blob,
+  payload: CopilotVoiceRequest,
+): Promise<CopilotChatResponse> {
+  const form = new FormData();
+  const subtype = audioBlob.type.split(";")[0].trim().toLowerCase();
+  const extension =
+    subtype === "audio/mp4"
+      ? "m4a"
+      : subtype === "audio/wav"
+        ? "wav"
+        : subtype === "audio/ogg"
+          ? "ogg"
+          : "webm";
+  form.append("audio_file", audioBlob, `follow-up.${extension}`);
+  form.append(
+    "draft_payload",
+    JSON.stringify({
+      soap_note: payload.soapNote,
+      diagnoses: payload.diagnoses ?? [],
+      prescription_draft: payload.prescriptionDraft ?? [],
+      diarized_transcript: payload.diarizedTranscript ?? [],
+      raw_transcript: payload.rawTranscript ?? "",
+      allergies: payload.allergies ?? "",
+      patient_history: payload.patientHistory ?? "",
+      department_id: payload.departmentId ?? 1,
+      ...(payload.doctorId !== undefined && payload.doctorId !== null
+        ? { doctor_id: payload.doctorId }
+        : {}),
+      ...(payload.patientId !== undefined && payload.patientId !== null
+        ? { patient_id: payload.patientId }
+        : {}),
+    }),
+  );
+
+  try {
+    // No Content-Type by hand: axios has to append the multipart boundary.
+    const { data } = await ambientGatewayApi.post<CopilotChatResponse>(
+      COPILOT_VOICE_PATH,
+      form,
+    );
     return requireGatewaySuccess(data);
   } catch (error) {
     if (axios.isCancel(error)) throw error;
