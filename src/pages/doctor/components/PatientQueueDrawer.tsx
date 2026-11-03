@@ -1,16 +1,27 @@
 import {
   AlertTriangle,
   ChevronRight,
+  FileText,
+  History,
   Loader2,
   QrCode,
   RefreshCw,
+  RotateCcw,
   Users,
   WifiOff,
 } from "lucide-react";
 import { useState } from "react";
+import type { PatientEncounterDto } from "../../../services/clinicalApi";
 import type { PatientRecord, TriageLevel } from "../data/doctorMockData";
+import {
+  encounterDiagnosisLabel,
+  formatEncounterDate,
+  primaryDiagnosisOf,
+} from "../data/encounterMapper";
 import type { QueueSource } from "../hooks/useDoctorQueue";
 import { dayOffsetIso, todayIso } from "../hooks/useDoctorQueue";
+
+type SidebarTab = "QUEUE" | "HISTORY";
 
 interface PatientQueueDrawerProps {
   queue: PatientRecord[];
@@ -24,12 +35,19 @@ interface PatientQueueDrawerProps {
   selectedDate: string;
   /** True when the "from today onward" window is shown instead of one day. */
   isUpcoming: boolean;
+  /** Encounters of the current doctor, newest first. */
+  history: PatientEncounterDto[];
+  isHistoryLoading: boolean;
+  historyError: string | null;
   onSelectDate: (date: string) => void;
   onToggleUpcoming: () => void;
   onSelectTicket: (patient: PatientRecord) => void;
   onCallNext: () => void;
   onSkip: (ticketNumber: string) => void;
   onRefresh: () => void;
+  onRefreshHistory: () => void;
+  onViewEncounter: (encounter: PatientEncounterDto) => void;
+  onReExamine: (encounter: PatientEncounterDto) => void;
 }
 
 const TRIAGE_STYLES: Record<
@@ -91,18 +109,27 @@ export default function PatientQueueDrawer({
   isCalling,
   selectedDate,
   isUpcoming,
+  history,
+  isHistoryLoading,
+  historyError,
   onSelectDate,
   onToggleUpcoming,
   onSelectTicket,
   onCallNext,
   onSkip,
   onRefresh,
+  onRefreshHistory,
+  onViewEncounter,
+  onReExamine,
 }: PatientQueueDrawerProps) {
   const [collapsed, setCollapsed] = useState(false);
+  const [tab, setTab] = useState<SidebarTab>("QUEUE");
   const today = todayIso();
   const tomorrow = dayOffsetIso(1);
   /** A future day is read-only for calling: nobody is in the building yet. */
   const viewingFutureDay = !isUpcoming && selectedDate !== today;
+  const showingHistory = tab === "HISTORY";
+  const refreshing = showingHistory ? isHistoryLoading : isRefreshing;
 
   if (collapsed) {
     return (
@@ -128,42 +155,52 @@ export default function PatientQueueDrawer({
       {/* Drawer header */}
       <div className="flex items-center justify-between border-b border-slate-200/80 px-3 py-2.5">
         <div>
-          <p className="text-sm font-bold text-slate-900">Hàng đợi Bệnh nhân</p>
+          <p className="text-sm font-bold text-slate-900">
+            {showingHistory ? "Lịch sử đã khám" : "Hàng đợi Bệnh nhân"}
+          </p>
           <p className="text-xs text-slate-500">
-            Sắp xếp ưu tiên theo Triage &amp; Thời gian chờ.
+            {showingHistory
+              ? "Các ca khám của bác sĩ, mới nhất trước."
+              : "Sắp xếp ưu tiên theo Triage & Thời gian chờ."}
           </p>
         </div>
         <div className="flex items-center gap-1">
-          <span
-            title={
-              source === "live"
-                ? "Đang đồng bộ với hàng đợi thật"
-                : "Chưa kết nối được hàng đợi - đang dùng dữ liệu mô phỏng"
-            }
-            className={`inline-flex h-6 items-center gap-1 rounded-md px-1.5 text-[10px] font-semibold ${
-              source === "live"
-                ? "bg-emerald-50 text-emerald-700"
-                : "bg-amber-50 text-amber-700"
-            }`}
-          >
-            {source === "live" ? (
-              <span
-                className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse-dot"
-                aria-hidden="true"
-              />
-            ) : (
-              <WifiOff className="h-2.5 w-2.5" aria-hidden="true" />
-            )}
-            {source === "live" ? "Trực tiếp" : "Mô phỏng"}
-          </span>
+          {!showingHistory && (
+            <span
+              title={
+                source === "live"
+                  ? "Đang đồng bộ với hàng đợi thật"
+                  : "Chưa kết nối được hàng đợi - đang dùng dữ liệu mô phỏng"
+              }
+              className={`inline-flex h-6 items-center gap-1 rounded-md px-1.5 text-[10px] font-semibold ${
+                source === "live"
+                  ? "bg-emerald-50 text-emerald-700"
+                  : "bg-amber-50 text-amber-700"
+              }`}
+            >
+              {source === "live" ? (
+                <span
+                  className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse-dot"
+                  aria-hidden="true"
+                />
+              ) : (
+                <WifiOff className="h-2.5 w-2.5" aria-hidden="true" />
+              )}
+              {source === "live" ? "Trực tiếp" : "Mô phỏng"}
+            </span>
+          )}
           <button
             type="button"
-            onClick={onRefresh}
-            disabled={isRefreshing}
-            aria-label="Làm mới hàng đợi bệnh nhân"
+            onClick={showingHistory ? onRefreshHistory : onRefresh}
+            disabled={refreshing}
+            aria-label={
+              showingHistory
+                ? "Làm mới lịch sử khám"
+                : "Làm mới hàng đợi bệnh nhân"
+            }
             className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-teal-700 disabled:opacity-40"
           >
-            {isRefreshing ? (
+            {refreshing ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
               <RefreshCw className="h-4 w-4" />
@@ -180,27 +217,69 @@ export default function PatientQueueDrawer({
         </div>
       </div>
 
-      {/* Date navigation: a ticket booked for tomorrow only shows once
-          tomorrow (or the upcoming window) is selected. */}
-      <div className="flex items-center gap-1.5 border-b border-slate-200/80 px-3 py-2">
-        <DatePill
-          label="Hôm nay"
-          isActive={!isUpcoming && selectedDate === today}
-          onClick={() => onSelectDate(today)}
-        />
-        <DatePill
-          label="Ngày mai"
-          isActive={!isUpcoming && selectedDate === tomorrow}
-          onClick={() => onSelectDate(tomorrow)}
-        />
-        <DatePill label="Sắp tới" isActive={isUpcoming} onClick={onToggleUpcoming} />
-        <span className="ml-auto text-[11px] font-semibold text-slate-500">
-          {isUpcoming ? "Từ hôm nay trở đi" : isoToLabel(selectedDate)}
-        </span>
+      {/* Primary tab switcher */}
+      <div
+        role="tablist"
+        aria-label="Khu vực bên trái"
+        className="grid grid-cols-2 gap-1 border-b border-slate-200/80 bg-slate-50 p-1.5"
+      >
+        <button
+          type="button"
+          role="tab"
+          aria-selected={!showingHistory}
+          onClick={() => setTab("QUEUE")}
+          className={`inline-flex items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] font-semibold transition-colors ${
+            !showingHistory
+              ? "bg-white text-teal-700 shadow-sm"
+              : "text-slate-600 hover:bg-white/70"
+          }`}
+        >
+          <Users className="h-3.5 w-3.5" aria-hidden="true" />
+          Hàng đợi khám
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={showingHistory}
+          onClick={() => setTab("HISTORY")}
+          className={`inline-flex items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] font-semibold transition-colors ${
+            showingHistory
+              ? "bg-white text-teal-700 shadow-sm"
+              : "text-slate-600 hover:bg-white/70"
+          }`}
+        >
+          <History className="h-3.5 w-3.5" aria-hidden="true" />
+          Lịch sử đã khám
+        </button>
       </div>
 
-      {/* Call next action */}
-      <div className="border-b border-slate-200/80 p-3">
+      {!showingHistory && (
+        <>
+          {/* Date navigation: a ticket booked for tomorrow only shows once
+              tomorrow (or the upcoming window) is selected. */}
+          <div className="flex items-center gap-1.5 border-b border-slate-200/80 px-3 py-2">
+            <DatePill
+              label="Hôm nay"
+              isActive={!isUpcoming && selectedDate === today}
+              onClick={() => onSelectDate(today)}
+            />
+            <DatePill
+              label="Ngày mai"
+              isActive={!isUpcoming && selectedDate === tomorrow}
+              onClick={() => onSelectDate(tomorrow)}
+            />
+            <DatePill
+              label="Sắp tới"
+              isActive={isUpcoming}
+              onClick={onToggleUpcoming}
+            />
+            <span className="ml-auto text-[11px] font-semibold text-slate-500">
+              {isUpcoming ? "Từ hôm nay trở đi" : isoToLabel(selectedDate)}
+            </span>
+          </div>
+
+          {/* Call next action */}
+          <div className="border-b border-slate-200/80 p-3">
         <button
           type="button"
           onClick={() => {
@@ -316,6 +395,90 @@ export default function PatientQueueDrawer({
           );
         })}
       </div>
+        </>
+      )}
+
+      {showingHistory && (
+        <div className="flex-1 space-y-2 overflow-y-auto p-3">
+          {historyError && (
+            <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+              {historyError}
+            </p>
+          )}
+
+          {isHistoryLoading && history.length === 0 && (
+            <p className="flex items-center justify-center gap-2 py-6 text-center text-xs text-slate-400">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+              Đang tải lịch sử khám...
+            </p>
+          )}
+
+          {!isHistoryLoading && !historyError && history.length === 0 && (
+            <p className="py-6 text-center text-xs text-slate-400">
+              Chưa có ca khám nào.
+            </p>
+          )}
+
+          {history.map((encounter) => {
+            const diagnosis = primaryDiagnosisOf(encounter);
+            const statusLabel =
+              encounter.status === "IN_PROGRESS"
+                ? "Đang khám"
+                : encounter.status === "CANCELLED"
+                  ? "Đã hủy"
+                  : "Hoàn tất";
+            return (
+              <article
+                key={encounter.encounterId}
+                className="rounded-lg border border-slate-200/80 bg-white p-3 shadow-card"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-mono text-[11px] font-semibold text-slate-600">
+                    {encounter.ticketNumber}
+                  </span>
+                  <span className="text-[11px] font-medium text-slate-500">
+                    {formatEncounterDate(encounter)}
+                  </span>
+                </div>
+                <p className="mt-1 text-sm font-semibold text-slate-900">
+                  {encounter.patientName}
+                </p>
+                <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                  <span
+                    title={encounterDiagnosisLabel(encounter)}
+                    className="max-w-[190px] truncate rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 text-[11px] font-semibold text-teal-700"
+                  >
+                    {diagnosis
+                      ? `${diagnosis.icd10Code} - ${diagnosis.diseaseName}`
+                      : "Chưa có chẩn đoán"}
+                  </span>
+                  <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-500">
+                    {statusLabel}
+                  </span>
+                </div>
+                <div className="mt-2 grid grid-cols-2 gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => onViewEncounter(encounter)}
+                    className="inline-flex h-8 items-center justify-center gap-1 rounded-md border border-slate-200 bg-white text-[11px] font-semibold text-slate-700 transition-colors hover:border-teal-300 hover:text-teal-700"
+                  >
+                    <FileText className="h-3 w-3" aria-hidden="true" />
+                    Xem bệnh án
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onReExamine(encounter)}
+                    className="inline-flex h-8 items-center justify-center gap-1 rounded-md bg-teal-600 text-[11px] font-semibold text-white transition-colors hover:bg-teal-700"
+                  >
+                    <RotateCcw className="h-3 w-3" aria-hidden="true" />
+                    Khám lại
+                  </button>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
     </aside>
   );
 }

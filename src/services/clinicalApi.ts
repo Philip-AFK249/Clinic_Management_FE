@@ -414,6 +414,30 @@ export async function getPatientEncountersApi(
   }
 }
 
+/**
+ * `GET <base>/clinical/encounters/doctor/{doctorId}` - every encounter this
+ * doctor has signed or opened, newest first. Drives the "Lịch sử đã khám"
+ * sidebar, where a past patient can be reopened for a follow-up visit.
+ *
+ * `doctorId` is the `doctors.id` the session resolves (the same value the
+ * queue is scoped by), not an AuthService user id.
+ */
+export async function getDoctorEncountersApi(
+  doctorId: number,
+  signal?: AbortSignal,
+): Promise<PatientEncounterDto[]> {
+  try {
+    const { data } = await clinicalApi.get<PatientEncounterDto[]>(
+      clinicalPath(`/encounters/doctor/${doctorId}`),
+      { signal },
+    );
+    return Array.isArray(data) ? data : [];
+  } catch (error) {
+    if (axios.isCancel(error)) throw error;
+    throw toApiError(error);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Ambient AI Gateway (FastAPI) - thu âm hội thoại & Trợ lý AI Copilot
 // ---------------------------------------------------------------------------

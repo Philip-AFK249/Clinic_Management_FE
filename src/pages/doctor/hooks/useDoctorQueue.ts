@@ -6,7 +6,7 @@ import {
   getDoctorUpcomingQueue,
   updateTicketStatus,
 } from "../../../services/intakeApi";
-import { IntakeApiError } from "../../../services/intakeApi";
+import { IntakeApiError, isValidTicketNumber } from "../../../services/intakeApi";
 import type { QueueTicket } from "../../../services/intakeApi";
 import type { PatientRecord } from "../data/doctorMockData";
 import { useDoctorSession } from "./useDoctorSession";
@@ -257,7 +257,9 @@ export function useDoctorQueue(
       setOngoingTicket(null);
       setFinishedEncounters((prev) => [...prev, encounterId]);
 
-      if (ticketNumber && source === "live") {
+      // Re-examination tickets are minted in the UI (`#TK-RE-...`) and do not
+      // exist in PatientIntakeService, so only real queue tickets are synced.
+      if (ticketNumber && source === "live" && isValidTicketNumber(ticketNumber)) {
         void updateTicketStatus(ticketNumber, "COMPLETED")
           .then(refresh)
           .catch((cause: unknown) => {

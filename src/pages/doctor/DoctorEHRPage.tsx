@@ -14,15 +14,17 @@ import type { CopilotChartUpdate } from "./components/DoctorAiChatDrawer";
 import { useDoctorQueue, todayIso } from "./hooks/useDoctorQueue";
 import { useAmbientConsultation } from "./hooks/useAmbientConsultation";
 import { useDoctorSession } from "./hooks/useDoctorSession";
+import { useDoctorEncounterHistory } from "./hooks/useDoctorEncounterHistory";
 import { useDrugCatalog } from "../../hooks/useDrugCatalog";
 import { toDiagnoses, toPrescriptionItems, rxLinesToDraft } from "./data/rxMapper";
 import { vitalsObjectiveLine } from "./data/ticketMapper";
+import { encounterToPatientRecord } from "./data/encounterMapper";
 import {
   diagnosesToCodes,
   normalizePrescriptionDraft,
   soapDraftToNote,
 } from "./data/ambientMapper";
-import { getTicketDetails } from "../../services/intakeApi";
+import { getTicketDetails, isValidTicketNumber } from "../../services/intakeApi";
 import type { QueueTicketDetailResponse } from "../../services/intakeApi";
 import {
   AI_GATEWAY_BASE_URL,
@@ -36,6 +38,7 @@ import {
 import type {
   AmbientPatientContext,
   CompleteEncounterPayload,
+  PatientEncounterDto,
 } from "../../services/clinicalApi";
 
 /**
@@ -53,6 +56,10 @@ function parsePatientId(patientId: string | undefined): number {
 
 export default function DoctorEHRPage() {
   const [historyOpen, setHistoryOpen] = useState(false);
+  /** History-tab row opened in the slide-over; null means the active chart. */
+  const [selectedHistoryEncounter, setSelectedHistoryEncounter] =
+    useState<PatientEncounterDto | null>(null);
+  const [isReExamining, setIsReExamining] = useState(false);
   /**
    * The bệnh án opened for the patient in the room. Held in state (not a
    * module constant) because it belongs to one consultation: it is created when
@@ -81,6 +88,12 @@ export default function DoctorEHRPage() {
     isUpcomingView ? "upcoming" : "date",
   );
   const session = useDoctorSession();
+  const {
+    encounters: doctorEncounters,
+    isLoading: isHistoryLoading,
+    error: historyError,
+    refresh: refreshEncounterHistory,
+  } = useDoctorEncounterHistory();
   // Same session-wide formulary the prescribing table reads (the request is
   // de-duplicated in the hook), reused here so the sign-off guard judges stock
   // and the penicillin class against the live drugs row.
@@ -177,13 +190,24 @@ export default function DoctorEHRPage() {
     ticket: string;
     detail: QueueTicketDetailResponse | null;
   } | null>(null);
-  const ticketDetail =
-    ticketDetailState?.ticket === ticketNumber ? ticketDetailState.detail : null;
+  // Re-examination tickets are minted in the UI and have no intake row, so
+  // they always settle with no vitals instead of waiting on a fetch.
+  const isSyntheticTicket =
+    ticketNumber !== null && !isValidTicketNumber(ticketNumber);
+  const ticketDetail = isSyntheticTicket
+    ? null
+    : ticketDetailState?.ticket === ticketNumber
+      ? ticketDetailState.detail
+      : null;
   /** True once this ticket's detail pull has settled (loaded *or* failed). */
-  const vitalsReady = ticketDetailState?.ticket === ticketNumber;
+  const vitalsReady =
+    isSyntheticTicket || ticketDetailState?.ticket === ticketNumber;
 
   useEffect(() => {
     if (!ticketNumber) return undefined;
+    // Nothing to fetch for a synthetic ticket; `vitalsReady` above already
+    // treats it as settled so the encounter can open immediately.
+    if (isSyntheticTicket) return undefined;
     let cancelled = false;
     const controller = new AbortController();
 
@@ -204,7 +228,7 @@ export default function DoctorEHRPage() {
       cancelled = true;
       controller.abort();
     };
-  }, [ticketNumber, queue.lastUpdatedAt]);
+  }, [isSyntheticTicket, ticketNumber, queue.lastUpdatedAt]);
 
   /**
    * What the SOAP Objective section is seeded with while it is still empty, so
@@ -477,6 +501,96 @@ export default function DoctorEHRPage() {
    * always answers with a full note of its own, and silently replacing the one
    * the doctor is editing would discard their wording.
    */
+  const handleViewEncounter = useCallback((encounter: PatientEncounterDto) => {
+    setSelectedHistoryEncounter(encounter);
+    setHistoryOpen(true);
+  }, []);
+
+  /**
+   * Open a fresh encounter for a patient who has been seen before.
+   *
+   * The old visit cannot be resumed: ClinicalConsultationService keys encounters
+   * by today's ticket, and the previous one is already COMPLETED. We mint a
+   * local `#TK-RE-...` ticket, start a new encounter, and reopen the chart with
+   * the previous visits as context so the doctor records a normal new visit.
+   */
+  const handleReExamine = useCallback(
+    async (encounter: PatientEncounterDto) => {
+      if (queue.ongoingTicket || queue.activePatient) {
+        toast.warning(
+          "Vui lòng hoàn thành ca khám hiện tại trước khi tiếp nhận ca mới.",
+          { duration: 5000 },
+        );
+        return;
+      }
+      if (isReExamining) return;
+      if (
+        !window.confirm(
+          `Tiếp nhận khám lại cho bệnh nhân ${encounter.patientName} hôm nay?`,
+        )
+      ) {
+        return;
+      }
+
+      const ticketNumber = `#TK-RE-${encounter.patientId}-${Date.now().toString().slice(-4)}`;
+      // Fall back to the clicked row when the history list is stale/empty, so
+      // the reopened chart still carries this visit instead of no history.
+      const historySource = doctorEncounters.some(
+        (item) => item.patientId === encounter.patientId,
+      )
+        ? doctorEncounters
+        : [encounter];
+      const record = encounterToPatientRecord(
+        encounter,
+        historySource,
+        ticketNumber,
+      );
+
+      setIsReExamining(true);
+      try {
+        const started = await startEncounterApi({
+          ticketNumber,
+          patientId: encounter.patientId,
+          patientName: encounter.patientName,
+          doctorId: session.doctorId,
+          doctorName: session.profile.fullName,
+          departmentId: session.profile.departmentId,
+        });
+
+        // Mark the encounter as opened *before* selecting the ticket: the
+        // page effect must not send a second POST for the same synthetic ticket.
+        startedTicketRef.current = ticketNumber;
+        warnedTicketRef.current = null;
+        setCurrentEncounterId(started.encounterId);
+        setTicketDetailState({ ticket: ticketNumber, detail: null });
+        setSelectedHistoryEncounter(null);
+        setHistoryOpen(false);
+        queue.selectTicket(record);
+        toast.success(
+          `Đã tiếp nhận khám lại cho ${encounter.patientName}. Bắt đầu ghi âm ca mới.`,
+          { duration: 4000 },
+        );
+      } catch (cause) {
+        toast.error(
+          cause instanceof Error
+            ? `Không tiếp nhận được ca khám lại: ${cause.message}`
+            : "Không tiếp nhận được ca khám lại. Vui lòng thử lại.",
+          { duration: 6000 },
+        );
+      } finally {
+        setIsReExamining(false);
+      }
+    },
+    [
+      doctorEncounters,
+      isReExamining,
+      queue,
+      session.doctorId,
+      session.profile.departmentId,
+      session.profile.fullName,
+    ],
+  );
+
   const handleAiProposal = useCallback(
     async (promptText: string) => {
       const message = promptText.trim();
@@ -607,6 +721,8 @@ export default function DoctorEHRPage() {
       );
       approve();
       queue.finishEncounter(String(currentEncounterId));
+      // The signed encounter now belongs in the doctor's history tab.
+      refreshEncounterHistory();
       setCurrentEncounterId(null);
       startedTicketRef.current = null;
       warnedTicketRef.current = null;
@@ -629,6 +745,7 @@ export default function DoctorEHRPage() {
     patient,
     patientAllergies,
     queue,
+    refreshEncounterHistory,
     rxLines,
     soapDraft,
     status,
@@ -662,6 +779,9 @@ export default function DoctorEHRPage() {
           isCalling={queue.isCalling}
           selectedDate={selectedDate}
           isUpcoming={isUpcomingView}
+          history={doctorEncounters}
+          isHistoryLoading={isHistoryLoading}
+          historyError={historyError}
           onSelectDate={(date) => {
             setIsUpcomingView(false);
             setSelectedDate(date);
@@ -671,6 +791,9 @@ export default function DoctorEHRPage() {
           onCallNext={() => void queue.callNext()}
           onSkip={(ticketNumber) => void queue.skipPatient(ticketNumber)}
           onRefresh={queue.refresh}
+          onRefreshHistory={refreshEncounterHistory}
+          onViewEncounter={handleViewEncounter}
+          onReExamine={(encounter) => void handleReExamine(encounter)}
         />
 
         {/* Main workspace */}
@@ -680,7 +803,10 @@ export default function DoctorEHRPage() {
               <ActivePatientBanner
                 patient={queue.activePatient}
                 ticketDetail={ticketDetail}
-                onOpenHistory={() => setHistoryOpen(true)}
+                onOpenHistory={() => {
+                  setSelectedHistoryEncounter(null);
+                  setHistoryOpen(true);
+                }}
               />
               <AmbientRecordingBar
                 status={status}
@@ -801,8 +927,12 @@ export default function DoctorEHRPage() {
 
       <PatientHistoryModal
         open={historyOpen}
-        onClose={() => setHistoryOpen(false)}
+        onClose={() => {
+          setHistoryOpen(false);
+          setSelectedHistoryEncounter(null);
+        }}
         patient={queue.activePatient}
+        encounter={selectedHistoryEncounter}
       />
 
       <DoctorAiChatDrawer
