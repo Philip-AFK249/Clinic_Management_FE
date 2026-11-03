@@ -8,7 +8,6 @@ import {
 } from "../../../services/intakeApi";
 import { IntakeApiError } from "../../../services/intakeApi";
 import type { QueueTicket } from "../../../services/intakeApi";
-import { ACTIVE_PATIENT, QUEUE_PATIENTS } from "../data/doctorMockData";
 import type { PatientRecord } from "../data/doctorMockData";
 import { useDoctorSession } from "./useDoctorSession";
 import { ticketToPatientRecord } from "../data/ticketMapper";
@@ -82,22 +81,24 @@ export function useDoctorQueue(
   const doctorId = doctorIdOverride ?? sessionDoctorId;
   const date = targetDate ?? todayIso();
 
-  const [activePatient, setActivePatient] = useState<PatientRecord | null>(
-    ACTIVE_PATIENT,
-  );
-  const [queue, setQueue] = useState<PatientRecord[]>(() =>
-    sortByPriority(QUEUE_PATIENTS),
-  );
+  const [activePatient, setActivePatient] = useState<PatientRecord | null>(null);
+  const [queue, setQueue] = useState<PatientRecord[]>([]);
+  /**
+   * The ticket the backend still considers in progress (CALLED or
+   * IN_CONSULTATION). Kept separately from `activePatient` because it drives
+   * the call-next button: while one exists the doctor must resume it instead
+   * of calling another patient, which the backend would reject with a 409.
+   */
+  const [ongoingTicket, setOngoingTicket] = useState<PatientRecord | null>(null);
   const [finishedEncounters, setFinishedEncounters] = useState<string[]>([]);
-  const [source, setSource] = useState<QueueSource>("mock");
+  const [source, setSource] = useState<QueueSource>("live");
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isCalling, setIsCalling] = useState(false);
   const [isTabVisible, setIsTabVisible] = useState(tabIsVisible);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
 
-  const activeTicketRef = useRef<string | null>(ACTIVE_PATIENT.ticketNumber);
-  const hasLoadedLive = useRef(false);
+  const activeTicketRef = useRef<string | null>(null);
   const hasWarnedOffline = useRef(false);
 
   const refresh = useCallback(() => setReloadToken((token) => token + 1), []);
@@ -136,6 +137,22 @@ export function useDoctorQueue(
         if (cancelled) return;
 
         const records = tickets.map(ticketToPatientRecord);
+
+        // The backend refuses a new call while any ticket is still CALLED or
+        // IN_CONSULTATION. Restore that ticket into the consultation room so a
+        // page refresh reopens the in-progress ca instead of the idle screen.
+        const ongoing = tickets.find(
+          (ticket) =>
+            ticket.status === "IN_CONSULTATION" || ticket.status === "CALLED",
+        );
+        const ongoingRecord = ongoing ? ticketToPatientRecord(ongoing) : null;
+        setOngoingTicket(ongoingRecord);
+
+        if (!activeTicketRef.current && ongoingRecord) {
+          activeTicketRef.current = ongoingRecord.ticketNumber;
+          setActivePatient(ongoingRecord);
+        }
+
         setQueue(
           sortByPriority(
             records.filter(
@@ -145,34 +162,15 @@ export function useDoctorQueue(
         );
         setSource("live");
         setLastUpdatedAt(new Date());
-
-        if (!hasLoadedLive.current) {
-          // First real response: discard the seeded demo patient so the
-          // consultation room reflects the actual queue, not mock data.
-          hasLoadedLive.current = true;
-          const called = tickets.find((ticket) => ticket.status === "CALLED");
-          activeTicketRef.current = called?.ticketNumber ?? null;
-          setActivePatient(called ? ticketToPatientRecord(called) : null);
-        } else if (!activeTicketRef.current) {
-          // Adopt a patient who was called in from another station.
-          const called = tickets.find((ticket) => ticket.status === "CALLED");
-          if (called) {
-            const record = ticketToPatientRecord(called);
-            activeTicketRef.current = record.ticketNumber;
-            setActivePatient(record);
-          }
-        }
+        hasWarnedOffline.current = false;
       } catch (cause) {
         if (cancelled) return;
-        // Keep the previous list (live or seeded) so the EHR stays usable.
+        // Keep the previous list (live or empty) so the EHR stays usable.
         if (!hasWarnedOffline.current) {
           hasWarnedOffline.current = true;
           const detail =
             cause instanceof IntakeApiError ? cause.message : "Lỗi không xác định.";
-          toast.info(
-            `${detail} Đang hiển thị dữ liệu mô phỏng cho hàng đợi.`,
-            { duration: 6000 },
-          );
+          toast.info(detail, { duration: 6000 });
         }
         setSource("mock");
       } finally {
@@ -189,6 +187,19 @@ export function useDoctorQueue(
     };
   }, [date, doctorId, isTabVisible, reloadToken, view]);
 
+  /**
+   * Open one ticket from the left-hand list in the consultation room. Used both
+   * for an ordinary waiting ticket and for resuming the ongoing ca restored on
+   * page load.
+   */
+  const selectTicket = useCallback((record: PatientRecord) => {
+    activeTicketRef.current = record.ticketNumber;
+    setActivePatient(record);
+    setQueue((prev) =>
+      prev.filter((patient) => patient.ticketNumber !== record.ticketNumber),
+    );
+  }, []);
+
   /** Promote the head of the waiting list into the consultation room. */
   const callNext = useCallback(async () => {
     setIsCalling(true);
@@ -202,6 +213,7 @@ export function useDoctorQueue(
       const record = ticketToPatientRecord(ticket);
       activeTicketRef.current = record.ticketNumber;
       setActivePatient(record);
+      setOngoingTicket(record);
       toast.success(`Đã gọi bệnh nhân ${record.name} (${record.ticketNumber}) vào phòng.`, {
         duration: 4000,
       });
@@ -242,6 +254,7 @@ export function useDoctorQueue(
       const ticketNumber = activeTicketRef.current;
       activeTicketRef.current = null;
       setActivePatient(null);
+      setOngoingTicket(null);
       setFinishedEncounters((prev) => [...prev, encounterId]);
 
       if (ticketNumber && source === "live") {
@@ -267,6 +280,8 @@ export function useDoctorQueue(
     doctorId,
     activePatient,
     queue,
+    /** CALLED/IN_CONSULTATION ticket that must be resumed before a new call. */
+    ongoingTicket,
     waitingCount,
     emergencyCount,
     finishedEncounters,
@@ -278,6 +293,7 @@ export function useDoctorQueue(
     lastUpdatedAt,
     refresh,
     callNext,
+    selectTicket,
     skipPatient,
     finishEncounter,
   };

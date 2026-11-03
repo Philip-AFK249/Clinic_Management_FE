@@ -15,6 +15,8 @@ import { dayOffsetIso, todayIso } from "../hooks/useDoctorQueue";
 interface PatientQueueDrawerProps {
   queue: PatientRecord[];
   activePatient: PatientRecord | null;
+  /** CALLED/IN_CONSULTATION ticket that must be resumed before calling again. */
+  ongoingTicket: PatientRecord | null;
   source: QueueSource;
   isRefreshing: boolean;
   isCalling: boolean;
@@ -24,6 +26,7 @@ interface PatientQueueDrawerProps {
   isUpcoming: boolean;
   onSelectDate: (date: string) => void;
   onToggleUpcoming: () => void;
+  onSelectTicket: (patient: PatientRecord) => void;
   onCallNext: () => void;
   onSkip: (ticketNumber: string) => void;
   onRefresh: () => void;
@@ -82,6 +85,7 @@ function DatePill({
 export default function PatientQueueDrawer({
   queue,
   activePatient,
+  ongoingTicket,
   source,
   isRefreshing,
   isCalling,
@@ -89,6 +93,7 @@ export default function PatientQueueDrawer({
   isUpcoming,
   onSelectDate,
   onToggleUpcoming,
+  onSelectTicket,
   onCallNext,
   onSkip,
   onRefresh,
@@ -198,12 +203,28 @@ export default function PatientQueueDrawer({
       <div className="border-b border-slate-200/80 p-3">
         <button
           type="button"
-          onClick={onCallNext}
-          disabled={Boolean(activePatient) || isCalling || viewingFutureDay}
+          onClick={() => {
+            // An in-progress ca wins over a new call: the backend rejects
+            // call-next with a 409 while one is still open, so resume it.
+            if (ongoingTicket) onSelectTicket(ongoingTicket);
+            else onCallNext();
+          }}
+          disabled={
+            isRefreshing ||
+            isCalling ||
+            viewingFutureDay ||
+            (Boolean(activePatient) && !ongoingTicket)
+          }
           title={
-            viewingFutureDay
-              ? "Chỉ gọi bệnh nhân trong ngày hôm nay - lịch mai chưa đến ca."
-              : undefined
+            isRefreshing
+              ? "Đang tải hàng đợi, vui lòng chờ trong giây lát."
+              : viewingFutureDay
+                ? "Chỉ gọi bệnh nhân trong ngày hôm nay - lịch mai chưa đến ca."
+                : activePatient && !ongoingTicket
+                  ? "Hoàn thành hoặc bỏ qua ca hiện tại trước khi gọi số tiếp theo."
+                  : ongoingTicket
+                    ? "Mở lại ca khám đang thực hiện."
+                    : undefined
           }
           className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-teal-600 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-teal-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500"
         >
@@ -214,9 +235,11 @@ export default function PatientQueueDrawer({
           )}
           {isCalling
             ? "Đang gọi bệnh nhân..."
-            : activePatient
-              ? `Đang khám: ${activePatient.ticketNumber}`
-              : "Gọi Bệnh Nhân Tiếp Theo"}
+            : ongoingTicket
+              ? `Tiếp tục khám phiếu ${ongoingTicket.ticketNumber}`
+              : activePatient
+                ? `Đang khám: ${activePatient.ticketNumber}`
+                : "Gọi Bệnh Nhân Tiếp Theo"}
         </button>
       </div>
 
@@ -232,7 +255,17 @@ export default function PatientQueueDrawer({
           return (
             <article
               key={patient.ticketNumber}
-              className="rounded-lg border border-slate-200/80 bg-white p-3 shadow-card"
+              role="button"
+              tabIndex={0}
+              aria-label={`Mở ca khám ${patient.ticketNumber} cho ${patient.name}`}
+              onClick={() => onSelectTicket(patient)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  onSelectTicket(patient);
+                }
+              }}
+              className="rounded-lg border border-slate-200/80 bg-white p-3 shadow-card transition-colors hover:border-teal-300 hover:bg-teal-50/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-500"
             >
               <div className="flex items-center justify-between">
                 <span
@@ -270,7 +303,10 @@ export default function PatientQueueDrawer({
                 <button
                   type="button"
                   disabled={isRefreshing}
-                  onClick={() => onSkip(patient.ticketNumber)}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onSkip(patient.ticketNumber);
+                  }}
                   className="rounded-md px-2 py-1 text-[11px] font-medium text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   Bỏ qua

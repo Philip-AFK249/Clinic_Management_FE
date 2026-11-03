@@ -594,6 +594,7 @@ export default function DoctorEHRPage() {
         <PatientQueueDrawer
           queue={queue.queue}
           activePatient={queue.activePatient}
+          ongoingTicket={queue.ongoingTicket}
           source={queue.source}
           isRefreshing={queue.isRefreshing}
           isCalling={queue.isCalling}
@@ -604,6 +605,7 @@ export default function DoctorEHRPage() {
             setSelectedDate(date);
           }}
           onToggleUpcoming={() => setIsUpcomingView((prev) => !prev)}
+          onSelectTicket={queue.selectTicket}
           onCallNext={() => void queue.callNext()}
           onSkip={(ticketNumber) => void queue.skipPatient(ticketNumber)}
           onRefresh={queue.refresh}
