@@ -169,9 +169,9 @@ export default function DoctorEHRPage() {
     const availableStock = drug?.stockQuantity ?? item.stockUnits;
     const isAllergic = Boolean(
       drug?.isPenicillinClass &&
-        patientAllergies.some((allergy) =>
-          allergy.toLowerCase().includes("penicillin"),
-        ),
+      patientAllergies.some((allergy) =>
+        allergy.toLowerCase().includes("penicillin"),
+      ),
     );
     const isExceeding = item.quantity > availableStock;
     const isOut = availableStock <= 0;
@@ -398,10 +398,7 @@ export default function DoctorEHRPage() {
             soapNote: soapDraftToNote(soapDraft),
             diagnoses: toDiagnoses(icdAccepted),
             prescriptionDraft: rxLinesToDraft(rxLines),
-            diarizedTranscript: revealedLines.map((line) => ({
-              speaker: line.speaker === "DOCTOR" ? "doctor" : "patient",
-              text: line.text,
-            })),
+            rawTranscript: revealedLines.map((line) => line.text).join("\n"),
             departmentId: session.profile.departmentId,
             doctorId: session.doctorId,
             patientId,
@@ -417,7 +414,7 @@ export default function DoctorEHRPage() {
 
           toast.success(
             result.assistant_message?.trim() ||
-              "AI đã cập nhật phần bổ sung vào bệnh án hiện tại.",
+            "AI đã cập nhật phần bổ sung vào bệnh án hiện tại.",
             { duration: 5000 },
           );
         } catch (cause) {
@@ -623,7 +620,7 @@ export default function DoctorEHRPage() {
         if (icdCodes.length === 0 && prescriptionDraft.length === 0) {
           toast.info(
             response.assistant_message?.trim() ||
-              "AI chưa có đề xuất nào cho ghi chú này.",
+            "AI chưa có đề xuất nào cho ghi chú này.",
             { duration: 5000 },
           );
           return;
@@ -897,7 +894,7 @@ export default function DoctorEHRPage() {
                     className="inline-flex h-12 items-center gap-2 rounded-lg bg-teal-600 px-8 text-base font-bold text-white shadow-md transition-colors hover:bg-teal-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500"
                   >
                     <CheckCircle2 className="h-5 w-5" aria-hidden="true" />
-                    ✍️ Ký Duyệt &amp; Hoàn Tất Ca Khám (Đẩy Đơn Xuống Quầy
+                    Ký Duyệt &amp; Hoàn Tất Ca Khám (Đẩy Đơn Xuống Quầy
                     Dược)
                   </button>
                 </div>

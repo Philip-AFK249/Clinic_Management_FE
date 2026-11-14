@@ -181,7 +181,7 @@ export default function PharmacyPage() {
                     className="inline-flex h-12 items-center gap-2 rounded-lg bg-emerald-600 px-6 text-sm font-bold text-white shadow-sm transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500"
                   >
                     <PackageCheck className="h-5 w-5" aria-hidden="true" />
-                    📦 Xác Nhận Bàn Giao Thuốc Cho Người Bệnh
+                    Xác Nhận Bàn Giao Thuốc Cho Người Bệnh
                   </button>
                 </div>
               </footer>

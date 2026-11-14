@@ -72,22 +72,6 @@ function highlightEntities(text: string, entities: TranscriptEntity[]) {
 
 type TranscriptTab = "LIVE" | "PREVIOUS";
 
-/** Speaker avatar: the doctor is teal, the patient slate-blue. */
-function SpeakerAvatar({ speaker }: { speaker: TranscriptLine["speaker"] }) {
-  const isDoctor = speaker === "DOCTOR";
-  return (
-    <span
-      aria-hidden="true"
-      title={isDoctor ? "Bác sĩ" : "Bệnh nhân"}
-      className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[10px] font-bold ${
-        isDoctor ? "bg-teal-600 text-white" : "bg-slate-500 text-white"
-      }`}
-    >
-      {isDoctor ? "BS" : "BN"}
-    </span>
-  );
-}
-
 export default function LiveTranscriptPanel({
   status,
   revealedLines,
@@ -110,7 +94,7 @@ export default function LiveTranscriptPanel({
               : "text-slate-600 hover:bg-slate-100"
           }`}
         >
-          Live Audio Transcript {recording && <span className="ml-1 text-red-500">●</span>}
+          Script hội thoại {recording && <span className="ml-1 text-red-500">●</span>}
         </button>
         <button
           type="button"
@@ -131,28 +115,30 @@ export default function LiveTranscriptPanel({
           {revealedLines.length === 0 && (
             <p className="px-2 py-8 text-center text-xs text-slate-400">
               {recording
-                ? "Đang thu âm cuộc khám — hội thoại sẽ hiển thị ngay sau khi AI bóc băng."
+                ? "Đang thu âm cuộc khám — Script sẽ hiển thị ngay sau khi AI bóc băng."
                 : analyzing
-                  ? "Đang bóc băng hội thoại thành từng lời thoại có phân biệt bác sĩ / bệnh nhân..."
-                  : "Bật Ghi Âm để ghi lại cuộc đối thoại lâm sàng; biên bản sẽ hiển thị tại đây."}
+                  ? "Đang bóc băng hội thoại thành Script..."
+                  : "Bật Ghi Âm để ghi lại cuộc đối thoại lâm sàng; Script sẽ hiển thị tại đây."}
             </p>
           )}
           {revealedLines.map((line) => (
             <div key={line.id} className="flex gap-2">
-              <SpeakerAvatar speaker={line.speaker} />
+              <span
+                aria-hidden="true"
+                title="Script"
+                className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-500"
+              >
+                <FileText className="h-3.5 w-3.5" />
+              </span>
               <div className="min-w-0 flex-1">
                 <p className="flex items-center justify-between">
-                  <span
-                    className={`text-[11px] font-bold ${
-                      line.speaker === "DOCTOR"
-                        ? "text-teal-700"
-                        : "text-slate-500"
-                    }`}
-                  >
-                    {line.speaker === "DOCTOR" ? "Bác sĩ" : "Bệnh nhân"}
-                    <span className="ml-1.5 font-medium text-slate-400">
-                      {line.timeOffset}
-                    </span>
+                  <span className="text-[11px] font-bold text-slate-700">
+                    Script
+                    {line.timeOffset && (
+                      <span className="ml-1.5 font-medium text-slate-400">
+                        &middot; {line.timeOffset}
+                      </span>
+                    )}
                   </span>
                   <span className="flex flex-wrap gap-1">
                     {line.entities.map((entity, index) => {

@@ -19,11 +19,10 @@ function AllergyBadge({ allergy }: { allergy: Allergy }) {
   const severe = allergy.severity === "SEVERE";
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold ${
-        severe
+      className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold ${severe
           ? "border-red-200 bg-red-50 text-red-700"
           : "border-amber-200 bg-amber-50 text-amber-700"
-      }`}
+        }`}
     >
       <AlertTriangle className="h-3 w-3" aria-hidden="true" />
       {allergy.name} - {allergy.reaction}
@@ -75,7 +74,7 @@ export default function ActivePatientBanner({
         <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
           {patient.isOcrVerified ? (
             <span className="inline-flex items-center gap-1 rounded-md border border-teal-200 bg-teal-50 px-2 py-0.5 text-[11px] font-semibold text-teal-700">
-              ✓ Thẻ BHYT Hợp lệ (OCR) - {patient.insuranceCode}
+              Thẻ BHYT Hợp lệ (OCR) - {patient.insuranceCode}
             </span>
           ) : (
             <span className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-500">

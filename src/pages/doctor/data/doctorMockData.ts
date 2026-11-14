@@ -324,8 +324,6 @@ export const TRIAGE_LABELS: Record<TriageLevel, string> = {
   P3: "P3 - Khám thường",
 };
 
-export type SpeakerRole = "DOCTOR" | "PATIENT";
-
 export type TranscriptEntityType =
   | "SYMPTOM"
   | "DURATION"
@@ -339,7 +337,6 @@ export interface TranscriptEntity {
 
 export interface TranscriptLine {
   id: string;
-  speaker: SpeakerRole;
   timeOffset: string;
   text: string;
   entities: TranscriptEntity[];

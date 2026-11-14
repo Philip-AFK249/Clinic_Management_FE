@@ -137,20 +137,17 @@ export default function AmbientRecordingBar({
     return (
       <div className="flex shrink-0 items-center justify-between gap-4 border-b border-slate-200/80 bg-white px-4 py-2.5">
         <span
-          className={`flex items-center gap-2 text-sm font-semibold ${
-            isFollowUp ? "text-sky-700" : "text-emerald-700"
-          }`}
+          className={`flex items-center gap-2 text-sm font-semibold ${isFollowUp ? "text-sky-700" : "text-emerald-700"
+            }`}
         >
           <span className="relative flex h-2.5 w-2.5" aria-hidden="true">
             <span
-              className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-70 ${
-                isFollowUp ? "bg-sky-400" : "bg-emerald-400"
-              }`}
+              className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-70 ${isFollowUp ? "bg-sky-400" : "bg-emerald-400"
+                }`}
             />
             <span
-              className={`relative inline-flex h-2.5 w-2.5 rounded-full ${
-                isFollowUp ? "bg-sky-500" : "bg-emerald-500"
-              }`}
+              className={`relative inline-flex h-2.5 w-2.5 rounded-full ${isFollowUp ? "bg-sky-500" : "bg-emerald-500"
+                }`}
             />
           </span>
           {isFollowUp ? "ĐANG GHI ÂM BỔ SUNG" : "ĐANG THU ÂM CUỘC KHÁM"}
@@ -161,9 +158,8 @@ export default function AmbientRecordingBar({
           {WAVE_BARS.map((height, index) => (
             <span
               key={index}
-              className={`w-1.5 animate-pulse rounded-full ${
-                isFollowUp ? "bg-sky-500" : "bg-emerald-500"
-              }`}
+              className={`w-1.5 animate-pulse rounded-full ${isFollowUp ? "bg-sky-500" : "bg-emerald-500"
+                }`}
               style={{ height: `${height}px`, animationDelay: `${index * 120}ms` }}
             />
           ))}
@@ -220,7 +216,7 @@ export default function AmbientRecordingBar({
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-200/80 bg-teal-50 px-4 py-2.5">
         <MicOff className="h-4 w-4 text-teal-700" aria-hidden="true" />
         <span className="text-sm font-semibold text-teal-800">
-          🤖 Bệnh án AI đã sẵn sàng — Bác sĩ vui lòng kiểm tra và chỉnh sửa
+          Bệnh án AI đã sẵn sàng — Bác sĩ vui lòng kiểm tra và chỉnh sửa
           trước khi ký duyệt.
         </span>
 

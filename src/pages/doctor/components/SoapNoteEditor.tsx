@@ -40,27 +40,27 @@ const SOAP_FIELDS: {
   label: string;
   placeholder: string;
 }[] = [
-  {
-    key: "subjective",
-    label: "S - Lý do vào viện & Bệnh sử",
-    placeholder: "Phàn nàn của bệnh nhân, diễn tiến thời gian và triệu chứng...",
-  },
-  {
-    key: "objective",
-    label: "O - Khám lâm sàng & Dấu hiệu sinh tồn",
-    placeholder: "Kết quả thăm khám, ghi nhận họng, phổi, sinh hiệu...",
-  },
-  {
-    key: "assessment",
-    label: "A - Chẩn đoán & Đánh giá lâm sàng",
-    placeholder: "Chẩn đoán chính và lập luận lâm sàng với mã ICD-10...",
-  },
-  {
-    key: "plan",
-    label: "P - Kế hoạch điều trị & Dặn dò",
-    placeholder: "Phác đồ điều trị, y lệnh chẩn đoán và tư vấn chăm sóc tại nhà...",
-  },
-];
+    {
+      key: "subjective",
+      label: "S - Lý do vào viện & Bệnh sử",
+      placeholder: "Phàn nàn của bệnh nhân, diễn tiến thời gian và triệu chứng...",
+    },
+    {
+      key: "objective",
+      label: "O - Khám lâm sàng & Dấu hiệu sinh tồn",
+      placeholder: "Kết quả thăm khám, ghi nhận họng, phổi, sinh hiệu...",
+    },
+    {
+      key: "assessment",
+      label: "A - Chẩn đoán & Đánh giá lâm sàng",
+      placeholder: "Chẩn đoán chính và lập luận lâm sàng với mã ICD-10...",
+    },
+    {
+      key: "plan",
+      label: "P - Kế hoạch điều trị & Dặn dò",
+      placeholder: "Phác đồ điều trị, y lệnh chẩn đoán và tư vấn chăm sóc tại nhà...",
+    },
+  ];
 
 export default function SoapNoteEditor({
   status,
@@ -118,7 +118,7 @@ export default function SoapNoteEditor({
     <div className="flex-1 space-y-3 overflow-y-auto p-3">
       {showBanner && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-          <span className="font-bold">[🤖 Bệnh án Nháp sinh tự động bởi Whisper + GPT-4o]</span>{" "}
+          <span className="font-bold">[Bệnh án sinh tự động]</span>{" "}
           Vui lòng đối soát chuyên môn trước khi ký duyệt.
         </div>
       )}

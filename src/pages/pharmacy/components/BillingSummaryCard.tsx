@@ -50,7 +50,7 @@ export default function BillingSummaryCard({
           </span>
         ) : (
           <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-[11px] font-semibold text-amber-700">
-            ⏳ Chờ thanh toán tại quầy
+            Chờ thanh toán tại quầy
           </span>
         )}
       </div>
@@ -92,8 +92,8 @@ export default function BillingSummaryCard({
                   {item.name} {item.bhytCoveragePercent}% ={" "}
                   {formatMoney(
                     item.quantity *
-                      item.unitPrice *
-                      (item.bhytCoveragePercent / 100),
+                    item.unitPrice *
+                    (item.bhytCoveragePercent / 100),
                   )}
                 </span>
               </p>
@@ -120,7 +120,7 @@ export default function BillingSummaryCard({
             className="flex h-10 items-center justify-center gap-2 rounded-lg border border-emerald-600 bg-emerald-50 text-xs font-semibold text-emerald-700 transition-colors hover:bg-emerald-600 hover:text-white"
           >
             <CreditCard className="h-4 w-4" aria-hidden="true" />
-            📱 Tạo VietQR Thu Tiền ({formatMoney(coPay)})
+            Tạo VietQR Thu Tiền ({formatMoney(coPay)})
           </button>
           <button
             type="button"
@@ -128,7 +128,7 @@ export default function BillingSummaryCard({
             className="flex h-10 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50"
           >
             <Landmark className="h-4 w-4" aria-hidden="true" />
-            💵 Đã Thu Tiền Mặt Tại Quầy
+            Đã Thu Tiền Mặt Tại Quầy
           </button>
         </div>
       )}

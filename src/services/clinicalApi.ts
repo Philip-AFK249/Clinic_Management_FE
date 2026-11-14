@@ -564,6 +564,7 @@ export interface PrescriptionDraftWire {
  */
 export interface AmbientConsultationResponse {
   success: boolean;
+  raw_transcript?: string | null;
   diarized_transcript: DiarizedMessage[];
   soap_note: SoapNote;
   icd10_suggestions: Icd10Suggestion[];

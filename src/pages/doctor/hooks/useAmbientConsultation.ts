@@ -9,8 +9,8 @@ import type {
 } from "../../../services/clinicalApi";
 import { resolvePrescriptionDraft } from "../data/rxMapper";
 import {
+  ambientTranscriptToScriptLines,
   diagnosesToCodes,
-  diarizedToTranscriptLines,
   icdSuggestionsToCodes,
   isSoapNoteEmpty,
   normalizePrescriptionDraft,
@@ -60,6 +60,12 @@ function mergeSoapDraft(current: SoapDraft, note: SoapNote): SoapDraft {
     assessment: next.assessment.trim() ? next.assessment : current.assessment,
     plan: next.plan.trim() ? next.plan : current.plan,
   };
+}
+
+function followUpSpokenText(assistantMessage: string | undefined): string {
+  const message = assistantMessage?.trim() ?? "";
+  const match = /^Đã nghe:\s*"([\s\S]*?)"\.(?:\s|$)/u.exec(message);
+  return match?.[1]?.trim() ?? "";
 }
 
 /**
@@ -243,13 +249,18 @@ export function useAmbientConsultation() {
   }, []);
 
   /**
-   * Bind a successful ambient analysis onto the workspace: diarised dialogue to
-   * the transcript panel, SOAP to the note editor, ICD-10 to the selector and
-   * the in-stock draft to the prescribing table.
+   * Bind a successful ambient analysis onto the workspace: the neutral Script
+   * to the transcript panel, SOAP to the note editor, ICD-10 to the selector
+   * and the in-stock draft to the prescribing table.
    */
   const applyConsultation = useCallback(
     (result: AmbientConsultationResponse) => {
-      setRevealedLines(diarizedToTranscriptLines(result.diarized_transcript));
+      setRevealedLines(
+        ambientTranscriptToScriptLines(
+          result.diarized_transcript,
+          result.raw_transcript,
+        ),
+      );
       setSoapDraft(soapNoteToDraft(result.soap_note));
       const codes = icdSuggestionsToCodes(result.icd10_suggestions);
       setIcdSuggestions(codes);
@@ -270,6 +281,19 @@ export function useAmbientConsultation() {
    */
   const applyFollowUp = useCallback(
     (result: CopilotChatResponse) => {
+      const spokenText = followUpSpokenText(result.assistant_message);
+      if (spokenText) {
+        setRevealedLines((current) => [
+          ...current,
+          {
+            id: `F-${current.length + 1}`,
+            timeOffset: "",
+            text: spokenText,
+            entities: [],
+          },
+        ]);
+      }
+
       const note = result.soap_note;
       if (note && !isSoapNoteEmpty(note)) {
         setSoapDraft((current) => mergeSoapDraft(current, note));

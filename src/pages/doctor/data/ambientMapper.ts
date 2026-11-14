@@ -123,25 +123,47 @@ export function normalizePrescriptionDraft(
 }
 
 /**
- * Diarised dialogue -> transcript lines.
+ * Diarised dialogue or raw transcript -> neutral Script lines.
  *
- * The gateway may label a third party (`OTHER`, a nurse or a relative); the
- * panel only knows two roles, so anything that is not the doctor is shown on
- * the patient side rather than being dropped from the record.
+ * Speaker labels are intentionally dropped: the panel presents the voice
+ * transcription as one Script. When the gateway collapses the dialogue into a
+ * single turn, the raw transcript is used instead so no spoken text is hidden.
  */
-export function diarizedToTranscriptLines(
+export function ambientTranscriptToScriptLines(
   messages: DiarizedMessage[] | null | undefined,
+  rawTranscript: string | null | undefined,
 ): TranscriptLine[] {
-  if (!Array.isArray(messages)) return [];
-  return messages
-    .filter((message) => typeof message?.text === "string" && message.text.trim())
-    .map((message, index) => ({
-      id: `D-${index + 1}`,
-      speaker: message.speaker === "DOCTOR" ? "DOCTOR" : "PATIENT",
-      timeOffset:
-        message.time_offset?.trim() ||
-        clockFromSeconds(message.start_seconds ?? index * 4),
-      text: message.text.trim(),
-      entities: [],
-    }));
+  const diarized = Array.isArray(messages)
+    ? messages
+        .filter(
+          (message) => typeof message?.text === "string" && message.text.trim(),
+        )
+        .map((message, index) => ({
+          id: `S-${index + 1}`,
+          timeOffset:
+            message.time_offset?.trim() ||
+            clockFromSeconds(message.start_seconds ?? index * 4),
+          text: message.text.trim(),
+          entities: [],
+        }))
+    : [];
+
+  if (diarized.length > 1) return diarized;
+
+  const raw = typeof rawTranscript === "string" ? rawTranscript.trim() : "";
+  if (raw) {
+    const firstOffset = diarized[0]?.timeOffset ?? clockFromSeconds(0);
+    return raw
+      .split(/\n+/)
+      .map((paragraph) => paragraph.replace(/\s+/g, " ").trim())
+      .filter(Boolean)
+      .map((text, index) => ({
+        id: `S-${index + 1}`,
+        timeOffset: index === 0 ? firstOffset : "",
+        text,
+        entities: [],
+      }));
+  }
+
+  return diarized;
 }
