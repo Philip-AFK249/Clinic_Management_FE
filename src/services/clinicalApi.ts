@@ -143,11 +143,32 @@ export interface EncounterResponse {
  * documented read payload omits them, so the audit view renders a vitals row
  * only when the service actually returns one.
  */
+export interface EncounterPrescriptionItem {
+  itemId?: number;
+  drugId?: number;
+  drugCode?: string;
+  drugName: string;
+  concentration?: string;
+  dosageForm?: string;
+  routeFrequency?: string;
+  duration?: string;
+  quantity: number;
+  unitPrice: number;
+  amount: number;
+}
+
 export interface PatientEncounterDto extends EncounterResponse {
+  departmentId?: number;
   bloodPressure?: string | null;
   heartRate?: number | null;
   temperature?: string | null;
   spo2?: number | null;
+  prescriptionStatus?: PrescriptionStatus | null;
+  totalAmount?: number;
+  insurancePaidAmount?: number;
+  patientCopayAmount?: number;
+  dispensedAt?: string | null;
+  prescriptionItems?: EncounterPrescriptionItem[];
 }
 
 export interface DrugDto {
@@ -406,6 +427,36 @@ export async function getPatientEncountersApi(
     const { data } = await clinicalApi.get<PatientEncounterDto[]>(
       clinicalPath(`/encounters/patient/${patientId}`),
       { signal },
+    );
+    return Array.isArray(data) ? data : [];
+  } catch (error) {
+    if (axios.isCancel(error)) throw error;
+    throw toApiError(error);
+  }
+}
+
+/**
+ * `GET <base>/clinical/encounters/by-tickets?ticketNumbers=#C-001,#C-002` -
+ * the encounters attached to a set of intake tickets, used by the patient
+ * portal when its AuthService `user.id` is not the intake `Patient.id`.
+ *
+ * An empty list is answered locally instead of as a 400: the caller extracts
+ * the ticket numbers from whatever bookings it could resolve, and a patient
+ * with no bookings simply has no encounters to look up.
+ */
+export async function getEncountersByTicketNumbersApi(
+  ticketNumbers: string[],
+  signal?: AbortSignal,
+): Promise<PatientEncounterDto[]> {
+  const unique = [
+    ...new Set(ticketNumbers.map((ticketNumber) => ticketNumber.trim()).filter(Boolean)),
+  ];
+  if (unique.length === 0) return [];
+
+  try {
+    const { data } = await clinicalApi.get<PatientEncounterDto[]>(
+      clinicalPath("/encounters/by-tickets"),
+      { params: { ticketNumbers: unique.join(",") }, signal },
     );
     return Array.isArray(data) ? data : [];
   } catch (error) {
