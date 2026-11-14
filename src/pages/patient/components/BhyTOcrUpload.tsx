@@ -14,7 +14,7 @@ interface BhyTOcrUploadProps {
 
 const SCANNING_TEXT = "Đang bóc tách thông tin thẻ qua AI...";
 const SUCCESS_TEXT =
-  "✓ Thẻ BHYT hợp lệ. Đã tự động điền thông tin bệnh nhân.";
+  " Thẻ BHYT hợp lệ. Đã tự động điền thông tin bệnh nhân.";
 const ERROR_TEXT =
   "Không nhận diện được thẻ BHYT. Vui lòng chụp rõ nét hơn hoặc nhập tay!";
 

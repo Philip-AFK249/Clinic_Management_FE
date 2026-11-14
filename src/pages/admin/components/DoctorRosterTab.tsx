@@ -839,6 +839,16 @@ export default function DoctorRosterTab() {
     ]);
   }
 
+  function handleShiftDeleted(deletedShift: DoctorShift) {
+    // Drop it from both caches before the refetch lands so a shift deleted from
+    // the same slot can never be treated as an existing conflict.
+    setShifts((current) => current.filter((shift) => shift.id !== deletedShift.id));
+    setWeeklyShifts((current) =>
+      current.filter((shift) => shift.id !== deletedShift.id),
+    );
+    handleShiftChanged(deletedShift);
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -1388,7 +1398,7 @@ export default function DoctorRosterTab() {
           shift={editingShift}
           onClose={() => setEditingShift(null)}
           onUpdated={handleShiftChanged}
-          onDeleted={handleShiftChanged}
+          onDeleted={handleShiftDeleted}
         />
       )}
     </div>

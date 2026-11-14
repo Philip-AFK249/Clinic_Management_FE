@@ -44,6 +44,36 @@ const DUTY_TYPE_OPTIONS: { value: DutyType; label: string }[] = [
   { value: "INPATIENT", label: "Nội trú (Trực nội trú / Thủ thuật)" },
 ];
 
+/**
+ * Coerce whatever a cell click / date input hands us into the strict
+ * `YYYY-MM-DD` the service expects. Parsing "YYYY-MM-DD" through `new Date`
+ * would treat it as UTC and can shift the day in western timezones, so the
+ * ISO shape is handled directly.
+ */
+function normalizeISODate(value: string | null | undefined): string {
+  if (!value) return "";
+  const trimmed = value.trim();
+  const isoMatch = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(trimmed);
+  if (isoMatch) {
+    const year = Number(isoMatch[1]);
+    const month = Number(isoMatch[2]);
+    const day = Number(isoMatch[3]);
+    if (month < 1 || month > 12 || day < 1 || day > 31) return "";
+    return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  }
+  const vnMatch = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(trimmed);
+  if (vnMatch) {
+    return normalizeISODate(`${vnMatch[3]}-${vnMatch[2]}-${vnMatch[1]}`);
+  }
+  const parsed = new Date(trimmed);
+  return Number.isNaN(parsed.getTime()) ? "" : toISODate(parsed);
+}
+
+function formatISODateVN(value: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : value;
+}
+
 export default function CreateShiftModal({
   onClose,
   onCreated,
@@ -61,14 +91,27 @@ export default function CreateShiftModal({
   const [doctorsLoading, setDoctorsLoading] = useState(Boolean(initialDepartmentId));
   const [selectedDoctorId, setSelectedDoctorId] = useState<number | "">("");
   const [selectedNurseId, setSelectedNurseId] = useState<number | "">("");
-  const [shiftDate, setShiftDate] = useState(initialDate ?? toISODate(new Date()));
+  const [shiftDate, setShiftDate] = useState(
+    () => normalizeISODate(initialDate) || toISODate(new Date()),
+  );
   const [session, setSession] = useState<ShiftSession>(initialSession ?? "MORNING");
   const [dutyType, setDutyType] = useState<DutyType>("OUTPATIENT");
   const [submitting, setSubmitting] = useState(false);
   const [dayShifts, setDayShifts] = useState<{
     key: string;
     list: DoctorShift[];
-  }>({ key: "", list: [] });
+  }>(() => {
+    const initialISO = normalizeISODate(initialDate);
+    return {
+      key:
+        initialDepartmentId != null && initialISO
+          ? `${initialDepartmentId}|${initialISO}`
+          : "",
+      // Start empty instead of trusting the parent's possibly-stale
+      // `existingShifts`; `getShifts` repopulates it on mount.
+      list: [],
+    };
+  });
 
   const requestSeq = useRef(0);
   const dayShiftsSeq = useRef(0);
@@ -87,15 +130,21 @@ export default function CreateShiftModal({
 
   const loadDayShifts = useCallback((departmentId: number, date: string) => {
     const seq = ++dayShiftsSeq.current;
+    const key = `${departmentId}|${date}`;
     Promise.resolve()
-      .then(() => getShifts(departmentId, date))
+      .then(() => {
+        // Drop the previous day's list before awaiting the fetch so a
+        // just-deleted shift can never linger as a false conflict.
+        if (seq === dayShiftsSeq.current) setDayShifts({ key, list: [] });
+        return getShifts(departmentId, date);
+      })
       .then((list) => {
         if (seq !== dayShiftsSeq.current) return;
-        setDayShifts({ key: `${departmentId}|${date}`, list });
+        setDayShifts({ key, list });
       })
       .catch((error: unknown) => {
         if (seq !== dayShiftsSeq.current) return;
-        setDayShifts({ key: `${departmentId}|${date}`, list: [] });
+        setDayShifts({ key, list: [] });
         toast.error(
           error instanceof Error
             ? error.message
@@ -136,6 +185,11 @@ export default function CreateShiftModal({
     selectedDoctorId === ""
       ? null
       : sessionShifts.find((s) => s.doctor.id === selectedDoctorId) ?? null;
+
+  const todayISO = useMemo(() => toISODate(new Date()), []);
+  // Warning only: past dates are still submitted, in case the backend allows
+  // back-dated rosters (e.g. correcting yesterday's schedule).
+  const isPastDate = shiftDate !== "" && shiftDate < todayISO;
 
   useEffect(() => {
     let cancelled = false;
@@ -234,13 +288,14 @@ export default function CreateShiftModal({
       toast.error("Vui lòng chọn Bác sĩ trực.");
       return;
     }
-    if (!shiftDate) {
-      toast.error("Vui lòng chọn ngày trực.");
+    const shiftDateISO = normalizeISODate(shiftDate);
+    if (!shiftDateISO) {
+      toast.error("Ngày trực không hợp lệ. Vui lòng chọn lại theo định dạng YYYY-MM-DD.");
       return;
     }
     if (conflictShift) {
       toast.warning(
-        `Bác sĩ ${conflictShift.doctor.fullName} đã được phân công trực ${SESSION_LABELS[session]} ngày ${shiftDate}. Vui lòng chọn Bác sĩ khác hoặc đổi khung giờ.`,
+        `Bác sĩ ${conflictShift.doctor.fullName} đã được phân công trực ${SESSION_LABELS[session]} ngày ${shiftDateISO}. Vui lòng chọn Bác sĩ khác hoặc đổi khung giờ.`,
       );
       return;
     }
@@ -248,7 +303,7 @@ export default function CreateShiftModal({
     const payload: CreateShiftPayload = {
       doctorId: selectedDoctor.id,
       departmentId: selectedDepartment.id,
-      shiftDate,
+      shiftDate: shiftDateISO,
       session,
       dutyType,
       // Omitting the pair lets DoctorScheduleService fall back to its per-khoa
@@ -278,7 +333,7 @@ export default function CreateShiftModal({
           { duration: 4500 },
         );
         if (selectedDepartmentId !== "") {
-          void loadDayShifts(selectedDepartmentId, shiftDate);
+          void loadDayShifts(selectedDepartmentId, shiftDateISO);
         }
         return;
       }
@@ -425,10 +480,27 @@ export default function CreateShiftModal({
             <input
               type="date"
               value={shiftDate}
-              onChange={(e) => setShiftDate(e.target.value)}
+              onChange={(e) => setShiftDate(normalizeISODate(e.target.value))}
               disabled={submitting}
               className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-300 disabled:cursor-not-allowed disabled:bg-slate-50"
             />
+            {isPastDate && (
+              <p
+                role="status"
+                className="mt-1.5 flex items-start gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[11px] font-semibold text-amber-800"
+              >
+                <AlertTriangle
+                  size={13}
+                  className="mt-0.5 shrink-0"
+                  aria-hidden="true"
+                />
+                <span>
+                  Ngày trực {formatISODateVN(shiftDate)} đã ở trong quá khứ
+                  (hôm nay là {formatISODateVN(todayISO)}). Vui lòng kiểm tra
+                  lại nếu bạn định chọn ngày khác.
+                </span>
+              </p>
+            )}
           </div>
 
           <div>

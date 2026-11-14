@@ -136,6 +136,47 @@ export class ScheduleApiError extends Error {
   }
 }
 
+function firstNonEmptyString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+/**
+ * Spring Boot's validation failures put the useful text in
+ * `errors[].defaultMessage`; `message` is only a generic summary such as
+ * "Validation failed for object='createShiftRequest'. Error count: 1".
+ */
+function extractValidationMessage(
+  record: Record<string, unknown>,
+): string | undefined {
+  const errors = record.errors;
+  if (!Array.isArray(errors)) return undefined;
+  for (const entry of errors) {
+    if (typeof entry === "string") {
+      const message = firstNonEmptyString(entry);
+      if (message) return message;
+      continue;
+    }
+    if (!entry || typeof entry !== "object") continue;
+    const errorRecord = entry as Record<string, unknown>;
+    const message =
+      firstNonEmptyString(errorRecord.defaultMessage) ??
+      firstNonEmptyString(errorRecord.message);
+    if (message) return message;
+  }
+  return undefined;
+}
+
+/**
+ * Spring's default summaries are useless to an admin; treat them as absent so
+ * the caller falls through to a readable Vietnamese message.
+ */
+function isSpringValidationSummary(message: string): boolean {
+  return (
+    /validation failed for object=/i.test(message) ||
+    /error count:\s*\d+/i.test(message)
+  );
+}
+
 /**
  * Normalize any error (network failure, HTTP error, unexpected) into a
  * renderable Vietnamese message, keeping the `any` free.
@@ -145,17 +186,15 @@ function toErrorMessage(error: unknown): string {
     if (error.response) {
       const data = error.response.data as unknown;
       if (typeof data === "string" && data.trim()) {
-        return data;
+        const text = data.trim();
+        if (!isSpringValidationSummary(text)) return text;
       }
       if (data && typeof data === "object") {
         const record = data as Record<string, unknown>;
-        const message =
-          typeof record.message === "string"
-            ? record.message
-            : typeof record.error === "string"
-              ? record.error
-              : undefined;
-        if (message) return message;
+        const validationMessage = extractValidationMessage(record);
+        if (validationMessage) return validationMessage;
+        const message = firstNonEmptyString(record.message);
+        if (message && !isSpringValidationSummary(message)) return message;
       }
       if (error.response.status === 409) {
         return "Ca trực đã tồn tại cho khung giờ này. Vui lòng chọn Bác sĩ / khung khác.";
@@ -165,6 +204,12 @@ function toErrorMessage(error: unknown): string {
       }
       if (error.response.status === 404) {
         return "Endpoint của DoctorScheduleService không tồn tại. Vui lòng kiểm tra phiên bản backend.";
+      }
+      if (data && typeof data === "object") {
+        const record = data as Record<string, unknown>;
+        const fallback =
+          firstNonEmptyString(record.error) ?? firstNonEmptyString(record.message);
+        if (fallback && !isSpringValidationSummary(fallback)) return fallback;
       }
     }
     if (error.code === "ECONNABORTED") {
