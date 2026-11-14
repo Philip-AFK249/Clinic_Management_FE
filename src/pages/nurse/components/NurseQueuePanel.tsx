@@ -1,11 +1,13 @@
 import { useMemo, useState } from "react";
 import {
   Activity,
+  CalendarDays,
   ClipboardCheck,
   DoorOpen,
   HeartPulse,
   Loader2,
   RefreshCw,
+  RotateCcw,
   Stethoscope,
   Users,
   WifiOff,
@@ -19,12 +21,14 @@ import {
 } from "../../reception/data/receptionMockData";
 import {
   QUEUE_DATE_FILTERS,
+  dateLabel,
   queueDateCaption,
   shortDateLabel,
 } from "../../reception/data/queueDates";
 import type { QueueDateFilter } from "../../reception/data/queueDates";
 import {
   clockLabel,
+  hasRecordedVitals,
   nurseQueueActions,
   vitalsSummary,
 } from "../data/nurseStation";
@@ -35,6 +39,8 @@ type QueueFilter = "ALL" | "WAITING" | "ACTIVE" | "DONE";
 interface NurseQueuePanelProps {
   /** Department-scoped, already ordered by `sortNurseQueue`. */
   tickets: QueueTicket[];
+  /** Completed tickets from the last 7 days for this department. */
+  historyTickets: QueueTicket[];
   /** Day the list was loaded for, `YYYY-MM-DD` - the caption under the title. */
   date: string;
   /** Which of the three date pills is pressed. */
@@ -44,12 +50,16 @@ interface NurseQueuePanelProps {
   emergencyCount: number;
   vitals: Record<string, VitalsRecord>;
   isLoading: boolean;
+  historyLoading: boolean;
   isMutating: boolean;
   isOffline: boolean;
   error: string;
+  historyError: string;
   lastUpdatedAt: Date | null;
   onRefresh: () => void;
   onChangeStatus: (ticketNumber: string, status: QueueStatus) => void;
+  onRequestComplete: (ticket: QueueTicket) => void;
+  onRestoreTicket: (ticket: QueueTicket) => void;
   onCaptureVitals: (ticket: QueueTicket) => void;
 }
 
@@ -80,6 +90,7 @@ const ACTION_TONES: Record<NurseQueueAction["tone"], string> = {
  */
 export default function NurseQueuePanel({
   tickets,
+  historyTickets,
   date,
   dateFilter,
   onDateFilterChange,
@@ -87,12 +98,16 @@ export default function NurseQueuePanel({
   emergencyCount,
   vitals,
   isLoading,
+  historyLoading,
   isMutating,
   isOffline,
   error,
+  historyError,
   lastUpdatedAt,
   onRefresh,
   onChangeStatus,
+  onRequestComplete,
+  onRestoreTicket,
   onCaptureVitals,
 }: NurseQueuePanelProps) {
   const [filter, setFilter] = useState<QueueFilter>("ALL");
@@ -104,16 +119,11 @@ export default function NurseQueuePanel({
       case "ACTIVE":
         return tickets.filter((ticket) => isActiveStatus(ticket.status));
       case "DONE":
-        return tickets.filter(
-          (ticket) =>
-            ticket.status === "COMPLETED" ||
-            ticket.status === "SKIPPED" ||
-            ticket.status === "CANCELLED",
-        );
+        return historyTickets;
       default:
         return tickets;
     }
-  }, [tickets, filter]);
+  }, [tickets, historyTickets, filter]);
 
   return (
     <section className="flex min-h-0 flex-1 flex-col">
@@ -129,13 +139,22 @@ export default function NurseQueuePanel({
                 Hàng Đợi Khám Của Khoa
               </h2>
               <p className="text-[11px] text-slate-500">
-                {queueDateCaption(date, dateFilter)} &middot; {waitingCount} đang
-                chờ
-                {emergencyCount > 0 && (
-                  <span className="font-semibold text-red-600">
-                    {" "}
-                    &middot; {emergencyCount} khẩn cấp
-                  </span>
+                {filter === "DONE" ? (
+                  <>
+                    Lịch sử 7 ngày gần nhất &middot; {historyTickets.length} phiếu
+                    hoàn tất
+                  </>
+                ) : (
+                  <>
+                    {queueDateCaption(date, dateFilter)} &middot; {waitingCount}{" "}
+                    đang chờ
+                    {emergencyCount > 0 && (
+                      <span className="font-semibold text-red-600">
+                        {" "}
+                        &middot; {emergencyCount} khẩn cấp
+                      </span>
+                    )}
+                  </>
                 )}
               </p>
             </div>
@@ -228,16 +247,22 @@ export default function NurseQueuePanel({
           ))}
         </div>
 
-        {error && (
+        {filter !== "DONE" && error && (
           <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-800">
             {error}
+          </p>
+        )}
+        {filter === "DONE" && historyError && (
+          <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-800">
+            {historyError}
           </p>
         )}
       </div>
 
       {/* Ticket list */}
       <div className="min-h-0 flex-1 overflow-y-auto bg-surface-light p-3">
-        {isLoading && tickets.length === 0 ? (
+        {(filter === "DONE" ? historyLoading : isLoading) &&
+        visible.length === 0 ? (
           <div className="space-y-2">
             {Array.from({ length: 4 }, (_, index) => (
               <div
@@ -252,11 +277,27 @@ export default function NurseQueuePanel({
               <Users className="h-6 w-6" aria-hidden="true" />
             </span>
             <p className="text-sm font-semibold text-slate-700">
-              Không có phiếu nào trong mục này
+              {filter === "DONE"
+                ? "Chưa có phiếu hoàn tất trong 7 ngày gần nhất"
+                : "Không có phiếu nào trong mục này"}
             </p>
             <p className="max-w-[260px] text-xs text-slate-500">
-              Phiếu mới từ quầy tiếp đón tự xuất hiện trong vòng 10 giây.
+              {filter === "DONE"
+                ? "Phiếu đã hoàn tất sẽ xuất hiện ở đây để đo lại sinh hiệu hoặc khôi phục chờ."
+                : "Phiếu mới từ quầy tiếp đón tự xuất hiện trong vòng 10 giây."}
             </p>
+          </div>
+        ) : filter === "DONE" ? (
+          <div className="space-y-2">
+            {historyTickets.map((ticket) => (
+              <NurseHistoryCard
+                key={ticket.ticketNumber}
+                ticket={ticket}
+                isMutating={isMutating}
+                onCaptureVitals={onCaptureVitals}
+                onRestoreTicket={onRestoreTicket}
+              />
+            ))}
           </div>
         ) : (
           <div className="space-y-2">
@@ -270,6 +311,7 @@ export default function NurseQueuePanel({
                 // "Sắp tới" mixes days in one list, so each card carries its own.
                 showDate={dateFilter === "UPCOMING"}
                 onChangeStatus={onChangeStatus}
+                onRequestComplete={onRequestComplete}
                 onCaptureVitals={onCaptureVitals}
               />
             ))}
@@ -301,6 +343,7 @@ interface NurseTicketCardProps {
   showDate?: boolean;
   record?: VitalsRecord;
   onChangeStatus: (ticketNumber: string, status: QueueStatus) => void;
+  onRequestComplete: (ticket: QueueTicket) => void;
   onCaptureVitals: (ticket: QueueTicket) => void;
 }
 
@@ -311,6 +354,7 @@ function NurseTicketCard({
   showDate = false,
   record,
   onChangeStatus,
+  onRequestComplete,
   onCaptureVitals,
 }: NurseTicketCardProps) {
   const triage = triageMeta(ticket.priorityLevel);
@@ -453,12 +497,159 @@ function NurseTicketCard({
             key={action.status}
             type="button"
             disabled={isMutating}
-            onClick={() => onChangeStatus(ticket.ticketNumber, action.status)}
+            onClick={() => {
+              if (action.status === "COMPLETED") {
+                onRequestComplete(ticket);
+                return;
+              }
+              onChangeStatus(ticket.ticketNumber, action.status);
+            }}
             className={`inline-flex h-8 items-center justify-center rounded-md px-2.5 text-[11px] font-semibold transition-colors disabled:cursor-not-allowed ${ACTION_TONES[action.tone]}`}
           >
             {action.label}
           </button>
         ))}
+      </div>
+    </article>
+  );
+}
+
+interface NurseHistoryCardProps {
+  ticket: QueueTicket;
+  isMutating: boolean;
+  onCaptureVitals: (ticket: QueueTicket) => void;
+  onRestoreTicket: (ticket: QueueTicket) => void;
+}
+
+function NurseHistoryCard({
+  ticket,
+  isMutating,
+  onCaptureVitals,
+  onRestoreTicket,
+}: NurseHistoryCardProps) {
+  const status = QUEUE_STATUS_META.COMPLETED;
+  const patientName = ticket.patient?.fullName ?? "Không rõ họ tên";
+  const measured = hasRecordedVitals(ticket);
+  const notes = ticket.nurseNotes?.trim();
+
+  return (
+    <article className="rounded-xl border border-emerald-200/70 bg-white p-3 shadow-card">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span
+            className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${status.chipClass}`}
+          >
+            {status.label}
+          </span>
+          <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+            <CalendarDays className="h-3 w-3" aria-hidden="true" />
+            {dateLabel(ticket.appointmentDate)}
+          </span>
+        </div>
+        <span className="font-mono text-sm font-bold text-slate-900">
+          {ticket.ticketNumber}
+        </span>
+      </div>
+
+      <p className="mt-1.5 truncate text-sm font-bold text-slate-900">
+        {patientName}
+      </p>
+
+      <dl className="mt-1.5 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
+        <div className="min-w-0">
+          <dt className="text-slate-400">Khung giờ</dt>
+          <dd className="font-mono font-semibold text-slate-700">
+            {ticket.slotStartTime.slice(0, 5)}
+          </dd>
+        </div>
+        <div className="min-w-0">
+          <dt className="text-slate-400">Phòng khám</dt>
+          <dd className="truncate font-semibold text-slate-700">
+            {ticket.roomNumber}
+          </dd>
+        </div>
+        <div className="col-span-2 min-w-0">
+          <dt className="text-slate-400">Bác sĩ phụ trách</dt>
+          <dd className="flex items-center gap-1 truncate font-semibold text-slate-700">
+            <Stethoscope
+              className="h-3 w-3 shrink-0 text-slate-400"
+              aria-hidden="true"
+            />
+            {ticket.doctorName}
+          </dd>
+        </div>
+      </dl>
+
+      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+        {measured ? (
+          <>
+            {ticket.bloodPressure?.trim() && (
+              <span className="rounded border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700">
+                HA {ticket.bloodPressure.trim()} mmHg
+              </span>
+            )}
+            {(ticket.heartRate ?? 0) > 0 && (
+              <span className="rounded border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[10px] font-semibold text-violet-700">
+                Mạch {ticket.heartRate} lần/phút
+              </span>
+            )}
+            {ticket.temperature?.trim() && (
+              <span className="rounded border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[10px] font-semibold text-violet-700">
+                Nhiệt độ {ticket.temperature.trim()} °C
+              </span>
+            )}
+            {(ticket.spo2 ?? 0) > 0 && (
+              <span className="rounded border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[10px] font-semibold text-violet-700">
+                SpO2 {ticket.spo2}%
+              </span>
+            )}
+            {ticket.weightKg != null && (
+              <span className="rounded border border-sky-200 bg-sky-50 px-1.5 py-0.5 text-[10px] font-semibold text-sky-700">
+                Cân nặng {ticket.weightKg} kg
+              </span>
+            )}
+            {ticket.heightCm != null && (
+              <span className="rounded border border-sky-200 bg-sky-50 px-1.5 py-0.5 text-[10px] font-semibold text-sky-700">
+                Chiều cao {ticket.heightCm} cm
+              </span>
+            )}
+          </>
+        ) : (
+          <span className="inline-flex items-center gap-1 rounded border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">
+            <HeartPulse className="h-3 w-3" aria-hidden="true" />
+            Chưa đo sinh hiệu
+          </span>
+        )}
+      </div>
+
+      {notes && (
+        <p className="mt-1.5 line-clamp-2 text-[11px] leading-relaxed text-slate-600">
+          <span className="font-semibold text-slate-500">
+            Ghi chú điều dưỡng:
+          </span>{" "}
+          {notes}
+        </p>
+      )}
+
+      <div className="mt-2 flex flex-wrap items-center gap-1.5 border-t border-slate-100 pt-2">
+        <button
+          type="button"
+          disabled={isMutating}
+          onClick={() => onCaptureVitals(ticket)}
+          className="inline-flex h-8 min-w-[7.5rem] flex-1 items-center justify-center gap-1 rounded-md border border-violet-300 bg-violet-50 px-1 text-[11px] font-semibold text-violet-700 transition-colors hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <HeartPulse className="h-3.5 w-3.5" aria-hidden="true" />
+          Đo / Sửa sinh hiệu
+        </button>
+        <button
+          type="button"
+          disabled={isMutating}
+          onClick={() => onRestoreTicket(ticket)}
+          className="inline-flex h-8 flex-1 items-center justify-center gap-1 rounded-md border border-slate-300 bg-white px-2 text-[11px] font-semibold text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
+          Khôi phục chờ
+        </button>
       </div>
     </article>
   );

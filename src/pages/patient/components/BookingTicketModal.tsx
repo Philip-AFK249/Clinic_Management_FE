@@ -236,7 +236,7 @@ export default function BookingTicketModal({
               className="inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white text-base font-semibold text-slate-700 transition-colors hover:bg-slate-50"
             >
               <FileText className="h-5 w-5" aria-hidden="true" />
-              🖨️ Tải phiếu PDF
+              Tải phiếu PDF
             </button>
             <Link
               to="/patient/dashboard"

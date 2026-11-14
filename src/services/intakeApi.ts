@@ -392,6 +392,41 @@ export async function getReceptionUpcomingQueue(
   }
 }
 
+function isoDaysAgo(days: number): string {
+  const date = new Date();
+  date.setDate(date.getDate() - days);
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
+    .toISOString()
+    .slice(0, 10);
+}
+
+/**
+ * Completed tickets for one department (or the whole clinic) from `fromDate`
+ * onward. The backend defaults to the last 7 days when `fromDate` is omitted.
+ */
+export async function getReceptionHistoryQueueApi(
+  departmentId?: number | null,
+  fromDate?: string,
+  signal?: AbortSignal,
+): Promise<QueueTicket[]> {
+  try {
+    const { data } = await intakeApi.get<QueueTicket[]>(
+      "/v1/queue/reception/history",
+      {
+        params: {
+          departmentId: departmentId ?? undefined,
+          fromDate: fromDate?.trim() || isoDaysAgo(7),
+        },
+        signal,
+      },
+    );
+    return data;
+  } catch (error) {
+    if (axios.isCancel(error)) throw error;
+    throw toApiError(error);
+  }
+}
+
 /**
  * 60-minute slot load balance for a department on a given day, proxied from
  * DoctorScheduleService (:8081).

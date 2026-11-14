@@ -12,7 +12,14 @@ import NurseStationHeader from "./components/NurseStationHeader";
 import NurseQueuePanel from "./components/NurseQueuePanel";
 import NurseDutyPanel from "./components/NurseDutyPanel";
 import VitalsCaptureModal from "./components/VitalsCaptureModal";
-import { sortNurseQueue, vitalsRecordFromTicket } from "./data/nurseStation";
+import CompleteTicketDialog from "./components/CompleteTicketDialog";
+import RestoreTicketDialog from "./components/RestoreTicketDialog";
+import { useNurseHistoryQueue } from "./hooks/useNurseHistoryQueue";
+import {
+  hasRecordedVitals,
+  sortNurseQueue,
+  vitalsRecordFromTicket,
+} from "./data/nurseStation";
 import type { VitalsRecord } from "./data/nurseStation";
 import { filterDateISO, todayISO } from "../reception/data/queueDates";
 import type { QueueDateFilter } from "../reception/data/queueDates";
@@ -46,12 +53,17 @@ export default function NurseStationPage() {
   const [dateFilter, setDateFilter] = useState<QueueDateFilter>("TODAY");
   const queueDate = filterDateISO(dateFilter);
   const queue = useReceptionQueue(queueDate, dateFilter);
+  const history = useNurseHistoryQueue(departmentId);
 
   const [shifts, setShifts] = useState<DoctorShift[]>([]);
   const [shiftsLoading, setShiftsLoading] = useState(true);
   const [shiftsError, setShiftsError] = useState("");
   const [vitals, setVitals] = useState<Record<string, VitalsRecord>>({});
   const [activeTicket, setActiveTicket] = useState<QueueTicket | null>(null);
+  const [completeTicket, setCompleteTicket] = useState<QueueTicket | null>(null);
+  const [restoreTicket, setRestoreTicket] = useState<QueueTicket | null>(null);
+  const [isCompleting, setIsCompleting] = useState(false);
+  const [isRestoring, setIsRestoring] = useState(false);
 
   const shiftsSeq = useRef(0);
   const shiftsAbortRef = useRef<AbortController | null>(null);
@@ -104,6 +116,12 @@ export default function NurseStationPage() {
     [queue.tickets, departmentId],
   );
 
+  const departmentHistory = useMemo(
+    () =>
+      history.tickets.filter((ticket) => ticket.departmentId === departmentId),
+    [history.tickets, departmentId],
+  );
+
   const waitingCount = useMemo(
     () => departmentTickets.filter((ticket) => ticket.status === "WAITING").length,
     [departmentTickets],
@@ -143,11 +161,22 @@ export default function NurseStationPage() {
     [departmentTickets, effectiveVitals],
   );
 
+  const completeHasVitals = completeTicket
+    ? Boolean(vitals[completeTicket.ticketNumber]) ||
+      hasRecordedVitals(completeTicket)
+    : false;
+
+  const handleRefresh = useCallback(() => {
+    queue.refresh();
+    history.refresh();
+  }, [queue, history]);
+
   const handleStatusChange = useCallback(
     async (ticketNumber: string, status: QueueStatus) => {
       try {
         await updateTicketStatus(ticketNumber, status);
         queue.refresh();
+        history.refresh();
       } catch (cause) {
         toast.error(
           cause instanceof Error
@@ -157,8 +186,61 @@ export default function NurseStationPage() {
         );
       }
     },
-    [queue],
+    [queue, history],
   );
+
+  async function handleConfirmComplete() {
+    if (!completeTicket) return;
+    setIsCompleting(true);
+    try {
+      await updateTicketStatus(completeTicket.ticketNumber, "COMPLETED");
+      toast.success(`Đã hoàn tất phiếu ${completeTicket.ticketNumber}.`, {
+        duration: 4000,
+      });
+      setCompleteTicket(null);
+      queue.refresh();
+      history.refresh();
+    } catch (cause) {
+      toast.error(
+        cause instanceof Error
+          ? cause.message
+          : "Không cập nhật được trạng thái phiếu.",
+        { duration: 5000 },
+      );
+    } finally {
+      setIsCompleting(false);
+    }
+  }
+
+  function handleMeasureNow() {
+    if (!completeTicket) return;
+    setActiveTicket(completeTicket);
+    setCompleteTicket(null);
+  }
+
+  async function handleConfirmRestore() {
+    if (!restoreTicket) return;
+    setIsRestoring(true);
+    try {
+      await updateTicketStatus(restoreTicket.ticketNumber, "WAITING");
+      toast.success(
+        `Đã khôi phục phiếu ${restoreTicket.ticketNumber} về hàng đợi.`,
+        { duration: 4000 },
+      );
+      setRestoreTicket(null);
+      queue.refresh();
+      history.refresh();
+    } catch (cause) {
+      toast.error(
+        cause instanceof Error
+          ? cause.message
+          : "Không khôi phục được phiếu.",
+        { duration: 5000 },
+      );
+    } finally {
+      setIsRestoring(false);
+    }
+  }
 
   /**
    * The reading is already on the ticket (the modal saved it); keep a local
@@ -169,6 +251,7 @@ export default function NurseStationPage() {
     setVitals((current) => ({ ...current, [record.ticketNumber]: record }));
     setActiveTicket(null);
     queue.refresh();
+    history.refresh();
   }
 
   return (
@@ -187,6 +270,7 @@ export default function NurseStationPage() {
         <main className="flex w-[60%] min-w-0 flex-col overflow-hidden border-r border-slate-200/80">
           <NurseQueuePanel
             tickets={departmentTickets}
+            historyTickets={departmentHistory}
             date={queueDate}
             dateFilter={dateFilter}
             onDateFilterChange={setDateFilter}
@@ -194,14 +278,18 @@ export default function NurseStationPage() {
             emergencyCount={emergencyCount}
             vitals={effectiveVitals}
             isLoading={queue.isLoading}
-            isMutating={queue.isMutating}
+            historyLoading={history.isLoading}
+            isMutating={queue.isMutating || isCompleting || isRestoring}
             isOffline={queue.isOffline}
             error={queue.error}
+            historyError={history.error}
             lastUpdatedAt={queue.lastUpdatedAt}
-            onRefresh={queue.refresh}
+            onRefresh={handleRefresh}
             onChangeStatus={(ticketNumber, status) =>
               void handleStatusChange(ticketNumber, status)
             }
+            onRequestComplete={setCompleteTicket}
+            onRestoreTicket={setRestoreTicket}
             onCaptureVitals={setActiveTicket}
           />
         </main>
@@ -219,10 +307,33 @@ export default function NurseStationPage() {
         </aside>
       </div>
 
+      {completeTicket && (
+        <CompleteTicketDialog
+          ticket={completeTicket}
+          hasVitals={completeHasVitals}
+          isBusy={isCompleting}
+          onClose={() => setCompleteTicket(null)}
+          onMeasure={handleMeasureNow}
+          onComplete={() => void handleConfirmComplete()}
+        />
+      )}
+
+      {restoreTicket && (
+        <RestoreTicketDialog
+          ticket={restoreTicket}
+          isBusy={isRestoring}
+          onClose={() => setRestoreTicket(null)}
+          onConfirm={() => void handleConfirmRestore()}
+        />
+      )}
+
       {activeTicket && (
         <VitalsCaptureModal
           ticket={activeTicket}
-          existing={effectiveVitals[activeTicket.ticketNumber]}
+          existing={
+            vitals[activeTicket.ticketNumber] ??
+            vitalsRecordFromTicket(activeTicket)
+          }
           nurseName={nurse.fullName}
           onClose={() => setActiveTicket(null)}
           onSave={handleSaveVitals}

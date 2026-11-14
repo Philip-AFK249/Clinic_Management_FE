@@ -107,6 +107,16 @@ export function vitalsRecordFromTicket(ticket: QueueTicket): VitalsRecord | unde
   };
 }
 
+/** Whether any of the four core vitals were recorded on the ticket. */
+export function hasRecordedVitals(ticket: QueueTicket): boolean {
+  return (
+    Boolean(ticket.bloodPressure?.trim()) ||
+    (ticket.heartRate ?? 0) > 0 ||
+    Boolean(ticket.temperature?.trim()) ||
+    (ticket.spo2 ?? 0) > 0
+  );
+}
+
 /** Human-readable lines for a saved reading; empty entries are dropped. */
 export function vitalsSummary(record: VitalsRecord | undefined): string[] {
   if (!record) return [];
