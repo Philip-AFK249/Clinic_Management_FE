@@ -25,7 +25,7 @@ import type {
 import type { TimeSlotResponse } from "../../../services/intakeApi";
 import type { ShiftSelection } from "./ShiftDispatcherCard";
 import BookingSlotChips from "./BookingSlotChips";
-import { isSlotPast } from "../data/bookingSlots";
+import { isMorningSessionElapsed, isSlotElapsed } from "../data/bookingSlots";
 import { CLINIC_SERVICES } from "../data/clinicContent";
 
 interface SymptomsStepProps {
@@ -338,7 +338,16 @@ export default function SymptomsStep({
           <BookingSlotChips
             value={slotStartTime}
             onSelect={(slot) => onSlotPick?.(slot)}
-            isDisabled={(slot) => (triageDate ? isSlotPast(triageDate, slot) : false)}
+            targetDate={triageDate}
+            isDisabled={(slot) => {
+              if (!triageDate) return false;
+              // An elapsed morning today stays tappable so it can open the
+              // one-tap "move to tomorrow" prompt instead of looking frozen.
+              if (slot < "12:00" && isMorningSessionElapsed(triageDate)) {
+                return false;
+              }
+              return isSlotElapsed(triageDate, slot);
+            }}
           />
         </section>
       )}

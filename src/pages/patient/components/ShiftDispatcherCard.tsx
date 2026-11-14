@@ -22,7 +22,12 @@ import type {
   VoiceScheduleTriageResponse,
 } from "../../../services/voiceTriageApi";
 import type { TimeSlotResponse } from "../../../services/intakeApi";
-import { getInitialDate, SESSION_SLOT_TIMES, isSlotPast } from "../data/bookingSlots";
+import {
+  getInitialDate,
+  isMorningSessionElapsed,
+  isSlotElapsed,
+  SESSION_SLOT_TIMES,
+} from "../data/bookingSlots";
 import { SlotChip } from "./BookingSlotChips";
 
 /** A concrete bookable pick: which half of the day, which doctor, which hour. */
@@ -183,13 +188,49 @@ export default function ShiftDispatcherCard({
     availabilityByKey.set(slot.startTime.slice(0, 5), slot);
   }
 
-  /** Full session, a start time that has already passed, or no capacity left. */
+  const morningElapsedToday = isMorningSessionElapsed(targetDate);
+
+  /**
+   * Full session, an hour that has fully elapsed, or no capacity left.
+   *
+   * An elapsed morning today stays tappable: the tap opens the one-tap
+   * "move to tomorrow" prompt instead of booking, so a low-tech patient never
+   * sees a frozen-looking card.
+   */
   function slotDisabled(session: SessionSchedule, slot: string): boolean {
     if (session.is_full) return true;
-    if (isSlotPast(targetDate, slot)) return true;
+    if (session.session === "MORNING" && morningElapsedToday) return false;
+    if (isSlotElapsed(targetDate, slot)) return true;
     const live = availabilityByKey.get(slot);
     return Boolean(live && (!live.isAvailable || live.availableCapacity <= 0));
   }
+
+  /** Whether this half still has at least one hour that can be booked. */
+  function sessionHasBookableSlot(session: SessionSchedule): boolean {
+    if (session.is_full) return false;
+    return SESSION_SLOT_TIMES[session.session].some(
+      (slot) => !slotDisabled(session, slot),
+    );
+  }
+
+  /**
+   * A recommendation for the morning must move (or disappear) once the
+   * morning has ended: recommending an elapsed session is worse than no
+   * recommendation at all.
+   */
+  const afternoonHasRoom = (() => {
+    const afternoon = sessions.find((item) => item.session === "AFTERNOON");
+    return afternoon ? sessionHasBookableSlot(afternoon) : false;
+  })();
+  const recommendedSession: SessionName | null =
+    triage.recommended_shift === "MORNING" && morningElapsedToday
+      ? afternoonHasRoom
+        ? "AFTERNOON"
+        : null
+      : triage.recommended_shift === "MORNING" ||
+          triage.recommended_shift === "AFTERNOON"
+        ? triage.recommended_shift
+        : null;
 
   return (
     <section className="space-y-4 rounded-xl border border-slate-200/80 bg-white p-5 shadow-card">
@@ -317,12 +358,14 @@ export default function ShiftDispatcherCard({
             <SessionPanel
               key={session.session}
               session={session}
-              isRecommended={session.session === triage.recommended_shift}
+              isRecommended={session.session === recommendedSession}
               selected={selected}
               onSelect={onSelect}
               selectedDoctorId={selectedDoctorId}
               onSelectDoctor={onSelectDoctor}
               slotDisabled={(slot) => slotDisabled(session, slot)}
+              targetDate={targetDate}
+              morningElapsedToday={morningElapsedToday}
             />
           ))}
         </div>
@@ -380,6 +423,8 @@ interface SessionPanelProps {
   onSelectDoctor?: (doctorId: number | null) => void;
   /** Whether a 60-minute chip in this session must render disabled. */
   slotDisabled: (slot: string) => boolean;
+  targetDate: string;
+  morningElapsedToday: boolean;
 }
 
 function SessionPanel({
@@ -390,10 +435,14 @@ function SessionPanel({
   selectedDoctorId,
   onSelectDoctor,
   slotDisabled,
+  targetDate,
+  morningElapsedToday,
 }: SessionPanelProps) {
   const meta = SESSION_META[session.session];
   const Icon = meta.icon;
   const full = session.is_full;
+  const sessionElapsed =
+    session.session === "MORNING" && morningElapsedToday;
   /**
    * The outline follows the patient's own pick, not the recommendation: a
    * doctor + slot chosen in this half of the day is what lights the card, so
@@ -457,14 +506,24 @@ function SessionPanel({
 
   return (
     <div
+      onClick={
+        sessionElapsed
+          ? (event) => {
+              if ((event.target as HTMLElement).closest("button")) return;
+              onSelect(session.session, null, sessionSlots[0] ?? "07:30");
+            }
+          : undefined
+      }
       className={`rounded-xl border p-4 transition-shadow ${
-        isActive
-          ? "border-clinical-600 bg-white shadow-md ring-2 ring-clinical-500/20"
-          : full
-            ? "border-slate-200 bg-slate-50 opacity-70"
-            : isRecommended
-              ? "border-clinical-300 bg-clinical-50/60"
-              : "border-slate-200 bg-white"
+        sessionElapsed
+          ? "cursor-pointer border-slate-200 bg-slate-50/80 opacity-80 hover:border-slate-300"
+          : isActive
+            ? "border-clinical-600 bg-white shadow-md ring-2 ring-clinical-500/20"
+            : full
+              ? "border-slate-200 bg-slate-50 opacity-70"
+              : isRecommended
+                ? "border-clinical-300 bg-clinical-50/60"
+                : "border-slate-200 bg-white"
       }`}
     >
       <div className="flex items-start justify-between gap-2">
@@ -479,12 +538,16 @@ function SessionPanel({
         </div>
         <span
           className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${
-            full
+            sessionElapsed || full
               ? "bg-slate-200 text-slate-600"
               : "bg-triage-p3-bg text-triage-p3"
           }`}
         >
-          {full ? "Kín lịch" : `Còn ${free} chỗ`}
+          {sessionElapsed
+            ? "Đã qua giờ sáng nay"
+            : full
+              ? "Kín lịch"
+              : `Còn ${free} chỗ`}
         </span>
       </div>
 
@@ -493,6 +556,19 @@ function SessionPanel({
           <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
           Khuyến chọn (Ít chờ đợi nhất)
         </span>
+      )}
+
+      {sessionElapsed && (
+        <button
+          type="button"
+          onClick={() =>
+            onSelect(session.session, null, sessionSlots[0] ?? "07:30")
+          }
+          className="mt-3 flex min-h-[48px] w-full items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-base font-semibold text-slate-700 transition-colors hover:bg-slate-100"
+        >
+          <CalendarClock className="h-5 w-5" aria-hidden="true" />
+          Ca sáng hôm nay đã kết thúc · Chạm để đổi sang Sáng mai
+        </button>
       )}
 
       {full ? (
@@ -525,6 +601,7 @@ function SessionPanel({
                     selected?.session === session.session &&
                     selected.slotStartTime === slot
                   }
+                  isElapsed={isSlotElapsed(targetDate, slot)}
                   disabled={slotDisabled(slot)}
                   onSelect={handleSlotPick}
                 />

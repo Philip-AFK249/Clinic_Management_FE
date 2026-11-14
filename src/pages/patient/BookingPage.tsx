@@ -21,6 +21,7 @@ import PatientFooter from "./components/PatientFooter";
 import SymptomsStep from "./components/SymptomsStep";
 import BookingIdentityFields from "./components/BookingIdentityFields";
 import BookingTicketModal from "./components/BookingTicketModal";
+import RescheduleMorningModal from "./components/RescheduleMorningModal";
 import FloatingRagChatbot from "./components/FloatingRagChatbot";
 import {
   CLINIC_SERVICES,
@@ -31,7 +32,16 @@ import {
 import { triageSymptoms } from "./data/patientMockRecords";
 import { hospitalCodeFrom } from "./data/patientProfile";
 import { writeActiveBooking } from "./data/activeBooking";
-import { dayOffsetIso, getInitialDate } from "./data/bookingSlots";
+import {
+  clinicDayOffsetIso,
+  clinicNowHHmm,
+  clinicTodayIso,
+  dayOffsetIso,
+  getInitialDate,
+  isMorningSessionElapsed,
+  isSlotElapsed,
+  SESSION_SLOT_TIMES,
+} from "./data/bookingSlots";
 import { formatDoctorName, formatRoom } from "./data/bookingDisplay";
 import {
   sendVoiceScheduleTriage,
@@ -148,6 +158,12 @@ function doctorOnDuty(
 function dateLabelFrom(iso: string): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
   return m ? `${m[3]}/${m[2]}/${m[1]}` : iso;
+}
+
+/** `YYYY-MM-DD` as `dd/MM`, for the plain-language reschedule prompt. */
+function dayMonthLabelFrom(iso: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  return m ? `${m[3]}/${m[2]}` : iso;
 }
 
 /** The booking form, patient identity included. */
@@ -275,6 +291,17 @@ export default function BookingPage() {
    * choosing an hour.
    */
   const [selectedDoctorId, setSelectedDoctorId] = useState<number | null>(null);
+  /**
+   * Set when a patient taps a morning slot after today's morning has ended.
+   *
+   * The tap is intercepted instead of silently ignored: the prompt offers a
+   * one-tap move to the same hour tomorrow, or today's afternoon when there is
+   * still room.
+   */
+  const [morningReschedule, setMorningReschedule] = useState<{
+    slotStartTime: string;
+    nowLabel: string;
+  } | null>(null);
   /**
    * The gateway's `department_id` for the current verdict (1/2/3), kept apart from
    * `deptIdx`.
@@ -548,6 +575,7 @@ export default function BookingPage() {
    */
   function handleTriageDateChange(next: string) {
     if (!next) return;
+    setMorningReschedule(null);
     setTriageDate(next);
     setShiftSelection(null);
     setTimeSlot(null);
@@ -609,6 +637,15 @@ export default function BookingPage() {
     doctorId: number | null,
     slotStartTime: string,
   ) {
+    // A morning hour that has already ended is not bookable today. Intercept
+    // the tap and offer the same hour tomorrow instead of doing nothing.
+    if (session === "MORNING" && isMorningSessionElapsed(triageDate)) {
+      setMorningReschedule({
+        slotStartTime,
+        nowLabel: clinicNowHHmm(),
+      });
+      return;
+    }
     setShiftSelection({ session, doctorId, slotStartTime });
     setSelectedDoctorId((previous) => {
       if (previous === null || !voiceTriage) return previous;
@@ -620,6 +657,133 @@ export default function BookingPage() {
       setDeptIdx(serviceIndexForDepartment(selectedDepartmentId));
     }
     setTimeSlot(slotStartTime);
+  }
+
+  /** Keyword path: a chip pressed without a dispatcher session payload. */
+  function handleKeywordSlotPick(slot: string) {
+    const isMorning = slot < "12:00";
+    if (isMorning && isMorningSessionElapsed(triageDate)) {
+      setMorningReschedule({ slotStartTime: slot, nowLabel: clinicNowHHmm() });
+      return;
+    }
+    setTimeSlot(slot);
+  }
+
+  /** The earliest afternoon hour today that is still open, if any. */
+  function earliestAfternoonSlotToday(): string | null {
+    if (triageDate !== clinicTodayIso()) return null;
+    const afternoon = voiceTriage
+      ? sessionScheduleFor(voiceTriage, "AFTERNOON")
+      : null;
+    if (voiceTriage && (!afternoon || afternoon.is_full)) return null;
+    const availability = new Map(
+      (slotAvailability ?? []).map((slot) => [slot.startTime.slice(0, 5), slot]),
+    );
+    return (
+      SESSION_SLOT_TIMES.AFTERNOON.find((slot) => {
+        if (isSlotElapsed(triageDate, slot)) return false;
+        const live = availability.get(slot);
+        return !(live && (!live.isAvailable || live.availableCapacity <= 0));
+      }) ?? null
+    );
+  }
+
+  /** Secondary CTA in the prompt: take the still-open afternoon hour. */
+  function handleChooseAfternoonFromPrompt(slot: string) {
+    setMorningReschedule(null);
+    handleSelectShift("AFTERNOON", null, slot);
+  }
+
+  /**
+   * Pick tomorrow's morning hour once its slot grid has arrived.
+   *
+   * Requests the exact hour the patient tapped; if it is full, the earliest
+   * remaining morning hour wins. The success toast repeats the chosen hour so
+   * the result is unmistakable.
+   */
+  function applyTomorrowMorning(
+    tomorrow: string,
+    requestedSlot: string,
+    slots: TimeSlotResponse[],
+  ) {
+    const availability = new Map(
+      slots.map((slot) => [slot.startTime.slice(0, 5), slot]),
+    );
+    const isAvailable = (slot: string) => {
+      const live = availability.get(slot);
+      return !(live && (!live.isAvailable || live.availableCapacity <= 0));
+    };
+    const exactIsAvailable =
+      SESSION_SLOT_TIMES.MORNING.includes(requestedSlot) &&
+      isAvailable(requestedSlot);
+    const earliestAvailable = SESSION_SLOT_TIMES.MORNING.find(isAvailable);
+
+    // A loaded grid that leaves no open morning hour is a real "full" answer,
+    // not an excuse to select a slot the clinic cannot honour.
+    if (slots.length > 0 && !exactIsAvailable && !earliestAvailable) {
+      setShiftSelection(null);
+      setTimeSlot(null);
+      toast.warning(
+        `Sáng mai (${dayMonthLabelFrom(tomorrow)}) đã kín lịch. Cô/Bác vui lòng chọn khung giờ khác.`,
+        { duration: 6000 },
+      );
+      return;
+    }
+
+    const candidate = exactIsAvailable
+      ? requestedSlot
+      : (earliestAvailable ?? requestedSlot);
+
+    setShiftSelection({
+      session: "MORNING",
+      doctorId: null,
+      slotStartTime: candidate,
+    });
+    setTimeSlot(candidate);
+    setSelectedDoctorId(null);
+    if (selectedDepartmentId !== null) {
+      setDeptIdx(serviceIndexForDepartment(selectedDepartmentId));
+    }
+    toast.success(
+      `Đã chuyển lịch sang Sáng mai (${dayMonthLabelFrom(tomorrow)}) lúc ${candidate}.`,
+      { duration: 5000 },
+    );
+  }
+
+  /**
+   * The one-tap move: tomorrow's date, tomorrow's rota/slots, then the same
+   * morning hour (or the earliest still-open one).
+   */
+  function handleRescheduleToTomorrow() {
+    const prompt = morningReschedule;
+    if (!prompt) return;
+    const tomorrow = clinicDayOffsetIso(1);
+    setMorningReschedule(null);
+    setShiftSelection(null);
+    setTimeSlot(null);
+    setSelectedDoctorId(null);
+    setTriageDate(tomorrow);
+
+    // Re-query the rota for the new day, exactly as a manual date change does.
+    if (voiceClip) void requerySchedule(tomorrow);
+
+    if (voiceDepartmentId === null) {
+      applyTomorrowMorning(tomorrow, prompt.slotStartTime, []);
+      return;
+    }
+
+    const departmentId = voiceDepartmentId;
+    getAvailableSlots(departmentId, tomorrow)
+      .then((slots) => {
+        setSlotGrid({ key: `${departmentId}|${tomorrow}`, slots });
+        applyTomorrowMorning(tomorrow, prompt.slotStartTime, slots);
+      })
+      .catch(() => {
+        // Keep the move useful even if the grid is unavailable: select the
+        // requested hour and let the backend confirm capacity at submit time.
+        setSlotGrid({ key: `${departmentId}|${tomorrow}`, slots: [] });
+        applyTomorrowMorning(tomorrow, prompt.slotStartTime, []);
+      });
   }
 
   /**
@@ -684,6 +848,7 @@ export default function BookingPage() {
     setTriageSourceText("");
     setScheduleUnavailable(false);
     setTriageDate(getInitialDate());
+    setMorningReschedule(null);
     setDuplicateDate(null);
   }
 
@@ -999,7 +1164,7 @@ export default function BookingPage() {
                   deptIdx={deptIdx}
                   onDeptIdxChange={setDeptIdx}
                   slotStartTime={timeSlot}
-                  onSlotPick={setTimeSlot}
+                  onSlotPick={handleKeywordSlotPick}
                   scheduleUnavailable={scheduleUnavailable}
                   triageDate={triageDate}
                   onTriageDateChange={handleTriageDateChange}
@@ -1139,6 +1304,19 @@ export default function BookingPage() {
 
       <PatientFooter />
       <FloatingRagChatbot />
+
+      {morningReschedule && (
+        <RescheduleMorningModal
+          nowLabel={morningReschedule.nowLabel}
+          todayLabel={dayMonthLabelFrom(clinicTodayIso())}
+          tomorrowLabel={dayMonthLabelFrom(clinicDayOffsetIso(1))}
+          clickedSlotTime={morningReschedule.slotStartTime}
+          earliestAfternoonSlot={earliestAfternoonSlotToday()}
+          onConfirmTomorrow={handleRescheduleToTomorrow}
+          onChooseAfternoon={handleChooseAfternoonFromPrompt}
+          onClose={() => setMorningReschedule(null)}
+        />
+      )}
 
       {ticket && (
         <BookingTicketModal
