@@ -39,6 +39,7 @@ import type {
   AmbientPatientContext,
   CompleteEncounterPayload,
   PatientEncounterDto,
+  StartEncounterPayload,
 } from "../../services/clinicalApi";
 
 /**
@@ -93,7 +94,8 @@ export default function DoctorEHRPage() {
     isLoading: isHistoryLoading,
     error: historyError,
     refresh: refreshEncounterHistory,
-  } = useDoctorEncounterHistory();
+    prependEncounter,
+  } = useDoctorEncounterHistory(session.doctorId);
   // Same session-wide formulary the prescribing table reads (the request is
   // de-duplicated in the hook), reused here so the sign-off guard judges stock
   // and the penicillin class against the live drugs row.
@@ -242,6 +244,41 @@ export default function DoctorEHRPage() {
     return text ? { key: ticketNumber, text } : null;
   }, [ticketDetail, ticketNumber]);
 
+  const buildStartEncounterPayload =
+    useCallback((): StartEncounterPayload | null => {
+      if (!ticketNumber) return null;
+      return {
+        ticketNumber,
+        patientId,
+        patientName,
+        doctorId: session.doctorId,
+        doctorName: session.profile.fullName,
+        departmentId: session.profile.departmentId,
+        ...(insuranceCode && insuranceCode !== "Chưa cập nhật"
+          ? { insuranceCode }
+          : {}),
+        ...(ticketDetail?.bloodPressure
+          ? { bloodPressure: ticketDetail.bloodPressure }
+          : {}),
+        ...(ticketDetail?.heartRate
+          ? { heartRate: ticketDetail.heartRate }
+          : {}),
+        ...(ticketDetail?.temperature
+          ? { temperature: ticketDetail.temperature }
+          : {}),
+        ...(ticketDetail?.spo2 ? { spo2: ticketDetail.spo2 } : {}),
+      };
+    }, [
+      insuranceCode,
+      patientId,
+      patientName,
+      session.doctorId,
+      session.profile.departmentId,
+      session.profile.fullName,
+      ticketDetail,
+      ticketNumber,
+    ]);
+
   /** Everything the copilot needs to reason about the person in the room. */
   const patientContext = useMemo<AmbientPatientContext>(() => {
     const context: AmbientPatientContext = {
@@ -311,32 +348,16 @@ export default function DoctorEHRPage() {
     if (currentEncounterId !== null) return;
     if (startedTicketRef.current === ticketNumber) return;
 
+    const payload = buildStartEncounterPayload();
+    if (!payload) return;
+
     startedTicketRef.current = ticketNumber;
-    setIsStartingEncounter(true);
+    void Promise.resolve().then(() => setIsStartingEncounter(true));
 
     // No cleanup flag on purpose: the effect re-runs on every queue poll (the
     // ref above is what stops duplicates), and cancelling here would strand a
     // request that resolves right after a poll landed.
-    void startEncounterApi({
-      ticketNumber,
-      patientId,
-      patientName,
-      doctorId: session.doctorId,
-      doctorName: session.profile.fullName,
-      departmentId: session.profile.departmentId,
-      ...(insuranceCode && insuranceCode !== "Chưa cập nhật"
-        ? { insuranceCode }
-        : {}),
-      // Unmeasured vitals stay off the record rather than being sent as 0.
-      ...(ticketDetail?.bloodPressure
-        ? { bloodPressure: ticketDetail.bloodPressure }
-        : {}),
-      ...(ticketDetail?.heartRate ? { heartRate: ticketDetail.heartRate } : {}),
-      ...(ticketDetail?.temperature
-        ? { temperature: ticketDetail.temperature }
-        : {}),
-      ...(ticketDetail?.spo2 ? { spo2: ticketDetail.spo2 } : {}),
-    }).then(
+    void startEncounterApi(payload).then(
       (encounter) => {
         setIsStartingEncounter(false);
         setCurrentEncounterId(encounter.encounterId);
@@ -356,15 +377,10 @@ export default function DoctorEHRPage() {
       },
     );
   }, [
+    buildStartEncounterPayload,
     currentEncounterId,
-    insuranceCode,
-    patientId,
     patientName,
     queue.lastUpdatedAt,
-    session.doctorId,
-    session.profile.departmentId,
-    session.profile.fullName,
-    ticketDetail,
     ticketNumber,
     vitalsReady,
   ]);
@@ -661,16 +677,6 @@ export default function DoctorEHRPage() {
   const handleApprove = useCallback(async () => {
     if (status !== "DRAFT_READY" || !patient) return;
 
-    if (currentEncounterId === null) {
-      toast.error(
-        isStartingEncounter
-          ? "Bệnh án đang được mở, vui lòng chờ vài giây rồi phê duyệt."
-          : "Chưa mở được bệnh án trên ClinicalConsultationService. Vui lòng thử lại.",
-        { duration: 5000 },
-      );
-      return;
-    }
-
     const diagnoses = toDiagnoses(icdAccepted);
     if (diagnoses.length === 0) {
       toast.error(
@@ -709,17 +715,51 @@ export default function DoctorEHRPage() {
       patientAllergies,
     };
 
+    let encounterId = currentEncounterId;
+    if (encounterId === null) {
+      const startPayload = buildStartEncounterPayload();
+      if (!startPayload) {
+        toast.error(
+          "Chưa xác định được phiếu khám hiện tại để mở bệnh án. Vui lòng thử lại.",
+          { duration: 5000 },
+        );
+        return;
+      }
+
+      setIsStartingEncounter(true);
+      try {
+        const started = await startEncounterApi(startPayload);
+        encounterId = started.encounterId;
+        setCurrentEncounterId(started.encounterId);
+        startedTicketRef.current = startPayload.ticketNumber;
+        warnedTicketRef.current = null;
+      } catch (cause) {
+        toast.error(
+          cause instanceof Error
+            ? `Không mở được bệnh án để phê duyệt: ${cause.message}`
+            : "Không mở được bệnh án để phê duyệt. Vui lòng thử lại.",
+          { duration: 6000 },
+        );
+        return;
+      } finally {
+        setIsStartingEncounter(false);
+      }
+    }
+
+    if (encounterId === null) return;
+
     setIsSubmittingEncounter(true);
     try {
-      await completeEncounterApi(currentEncounterId, payload);
+      const completed = await completeEncounterApi(encounterId, payload);
+      prependEncounter(completed);
+      refreshEncounterHistory();
       toast.success(
         "Bệnh án đã được phê duyệt và đơn thuốc đã chuyển xuống Quầy Dược.",
         { duration: 4000 },
       );
       approve();
-      queue.finishEncounter(String(currentEncounterId));
+      queue.finishEncounter(String(encounterId));
       // The signed encounter now belongs in the doctor's history tab.
-      refreshEncounterHistory();
       setCurrentEncounterId(null);
       startedTicketRef.current = null;
       warnedTicketRef.current = null;
@@ -735,12 +775,13 @@ export default function DoctorEHRPage() {
     }
   }, [
     approve,
+    buildStartEncounterPayload,
     currentEncounterId,
     hasPrescriptionErrors,
     icdAccepted,
-    isStartingEncounter,
     patient,
     patientAllergies,
+    prependEncounter,
     queue,
     refreshEncounterHistory,
     rxLines,

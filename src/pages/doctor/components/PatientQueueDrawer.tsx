@@ -131,6 +131,11 @@ export default function PatientQueueDrawer({
   const showingHistory = tab === "HISTORY";
   const refreshing = showingHistory ? isHistoryLoading : isRefreshing;
 
+  function selectTab(next: SidebarTab) {
+    setTab(next);
+    if (next === "HISTORY") onRefreshHistory();
+  }
+
   if (collapsed) {
     return (
       <aside className="flex w-12 shrink-0 flex-col items-center gap-3 border-r border-slate-200/80 bg-white py-3">
@@ -227,7 +232,7 @@ export default function PatientQueueDrawer({
           type="button"
           role="tab"
           aria-selected={!showingHistory}
-          onClick={() => setTab("QUEUE")}
+          onClick={() => selectTab("QUEUE")}
           className={`inline-flex items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] font-semibold transition-colors ${
             !showingHistory
               ? "bg-white text-teal-700 shadow-sm"
@@ -241,7 +246,7 @@ export default function PatientQueueDrawer({
           type="button"
           role="tab"
           aria-selected={showingHistory}
-          onClick={() => setTab("HISTORY")}
+          onClick={() => selectTab("HISTORY")}
           className={`inline-flex items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] font-semibold transition-colors ${
             showingHistory
               ? "bg-white text-teal-700 shadow-sm"

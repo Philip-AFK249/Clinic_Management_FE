@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ClinicalApiError, getDoctorEncountersApi } from "../../../services/clinicalApi";
-import type { PatientEncounterDto } from "../../../services/clinicalApi";
-import { useDoctorSession } from "./useDoctorSession";
+import type {
+  EncounterResponse,
+  PatientEncounterDto,
+} from "../../../services/clinicalApi";
 
 export interface DoctorEncounterHistory {
   encounters: PatientEncounterDto[];
   isLoading: boolean;
   error: string | null;
   refresh: () => void;
+  prependEncounter: (encounter: EncounterResponse) => void;
 }
 
 /**
@@ -17,8 +20,9 @@ export interface DoctorEncounterHistory {
  * the "Lịch sử đã khám" tab reflects the encounter that just completed without
  * a full page reload.
  */
-export function useDoctorEncounterHistory(): DoctorEncounterHistory {
-  const { doctorId } = useDoctorSession();
+export function useDoctorEncounterHistory(
+  doctorId: number,
+): DoctorEncounterHistory {
   const [encounters, setEncounters] = useState<PatientEncounterDto[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -26,6 +30,13 @@ export function useDoctorEncounterHistory(): DoctorEncounterHistory {
   const hasLoaded = useRef(false);
 
   const refresh = useCallback(() => setReloadToken((token) => token + 1), []);
+
+  const prependEncounter = useCallback((encounter: EncounterResponse) => {
+    setEncounters((current) => [
+      encounter,
+      ...current.filter((row) => row.encounterId !== encounter.encounterId),
+    ]);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -65,5 +76,5 @@ export function useDoctorEncounterHistory(): DoctorEncounterHistory {
     };
   }, [doctorId, reloadToken]);
 
-  return { encounters, isLoading, error, refresh };
+  return { encounters, isLoading, error, refresh, prependEncounter };
 }
