@@ -7,9 +7,17 @@ import type { PaymentStatus } from "../data/pharmacyTypes";
 
 const POLL_INTERVAL_MS = 10_000;
 
+/** The two lists the counter works with: live queue and handover history. */
+export type PharmacyQueueStatus = "PENDING_DISPENSE" | "DISPENSED";
+
 /**
  * Live dispensing queue backed by
- * `GET /pharmacy/prescriptions?status=PENDING_DISPENSE`.
+ * `GET /pharmacy/prescriptions?status=PENDING_DISPENSE`, plus the dispensed
+ * history from the same endpoint with `status=DISPENSED`.
+ *
+ * The pending list is always fetched so the header counters stay meaningful
+ * even while the pharmacist is reading history; the dispensed list is only
+ * fetched while that tab is open.
  *
  * Two things are deliberately *local*: which lines the pharmacist has ticked
  * off and whether a prescription was settled at the counter. Neither exists in
@@ -25,9 +33,14 @@ export function usePharmacyQueue() {
   // Joins each prescription line back to its `drugs` row for the BHYT rate.
   const catalog = useDrugCatalog();
 
-  const [prescriptions, setPrescriptions] = useState<PrescriptionDetailResponse[]>(
-    [],
-  );
+  const [queueStatus, setQueueStatus] =
+    useState<PharmacyQueueStatus>("PENDING_DISPENSE");
+  const [pendingPrescriptions, setPendingPrescriptions] = useState<
+    PrescriptionDetailResponse[]
+  >([]);
+  const [dispensedPrescriptions, setDispensedPrescriptions] = useState<
+    PrescriptionDetailResponse[]
+  >([]);
   const [packedItemIds, setPackedItemIds] = useState<ReadonlySet<string>>(
     () => new Set<string>(),
   );
@@ -53,9 +66,17 @@ export function usePharmacyQueue() {
     async function load(showSpinner: boolean) {
       if (showSpinner) setIsRefreshing(true);
       try {
-        const live = await getPharmacyQueueApi("PENDING_DISPENSE");
+        // Pending drives the live counter and the header; fetch it in every
+        // view so switching to history does not blank the counters.
+        const pending = await getPharmacyQueueApi("PENDING_DISPENSE");
         if (cancelled) return;
-        setPrescriptions(live);
+        setPendingPrescriptions(pending);
+
+        if (queueStatus === "DISPENSED") {
+          const dispensed = await getPharmacyQueueApi("DISPENSED");
+          if (cancelled) return;
+          setDispensedPrescriptions(dispensed);
+        }
         setError(null);
       } catch (cause) {
         if (cancelled) return;
@@ -79,19 +100,33 @@ export function usePharmacyQueue() {
       cancelled = true;
       window.clearInterval(interval);
     };
-  }, [reloadToken]);
+  }, [queueStatus, reloadToken]);
 
-  const orders = useMemo(
+  const pendingOrders = useMemo(
     () =>
-      prescriptions.map((prescription) =>
+      pendingPrescriptions.map((prescription) =>
         toPharmacyOrder(prescription, {
           drugsById: catalog.byId,
           packedItemIds,
           settledPrescriptionIds,
         }),
       ),
-    [catalog.byId, packedItemIds, prescriptions, settledPrescriptionIds],
+    [catalog.byId, packedItemIds, pendingPrescriptions, settledPrescriptionIds],
   );
+
+  const dispensedOrders = useMemo(
+    () =>
+      dispensedPrescriptions.map((prescription) =>
+        toPharmacyOrder(prescription, {
+          drugsById: catalog.byId,
+          packedItemIds,
+          settledPrescriptionIds,
+        }),
+      ),
+    [catalog.byId, dispensedPrescriptions, packedItemIds, settledPrescriptionIds],
+  );
+
+  const orders = queueStatus === "DISPENSED" ? dispensedOrders : pendingOrders;
 
   // Keep the selection valid as the queue moves: fall back to the head when
   // the selected order was dispensed or the queue was empty on first render.
@@ -102,6 +137,13 @@ export function usePharmacyQueue() {
 
   const selectOrder = useCallback((orderId: string) => {
     setSelectedOrderId(orderId);
+  }, []);
+
+  const selectQueueStatus = useCallback((status: PharmacyQueueStatus) => {
+    setQueueStatus(status);
+    setSelectedOrderId(null);
+    setQrOpen(false);
+    setBillingQrOpen(false);
   }, []);
 
   const toggleItemPacked = useCallback((itemId: string) => {
@@ -142,7 +184,10 @@ export function usePharmacyQueue() {
       next.delete(prescriptionId);
       return next;
     });
-    setPrescriptions((prev) =>
+    setPendingPrescriptions((prev) =>
+      prev.filter((item) => item.prescriptionId !== prescriptionId),
+    );
+    setDispensedPrescriptions((prev) =>
       prev.filter((item) => item.prescriptionId !== prescriptionId),
     );
     setSelectedOrderId((current) => (current === orderId ? null : current));
@@ -157,11 +202,11 @@ export function usePharmacyQueue() {
     setBillingQrOpen((prev) => !prev);
   }, []);
 
-  const pendingCount = orders.filter(
+  const pendingCount = pendingOrders.filter(
     (order) =>
       order.status === "PENDING_PREPARATION" || order.status === "PREPARING",
   ).length;
-  const readyCount = orders.filter(
+  const readyCount = pendingOrders.filter(
     (order) => order.status === "READY_FOR_PICKUP",
   ).length;
 
@@ -169,6 +214,9 @@ export function usePharmacyQueue() {
     orders,
     selectedOrder,
     selectedOrderId: selectedOrder?.orderId ?? "",
+    queueStatus,
+    pendingOrdersCount: pendingOrders.length,
+    dispensedOrdersCount: dispensedOrders.length,
     pendingCount,
     readyCount,
     /** Prescriptions dispensed during this counter shift. */
@@ -179,6 +227,7 @@ export function usePharmacyQueue() {
     billingQrOpen,
     refreshQueue,
     selectOrder,
+    selectQueueStatus,
     toggleItemPacked,
     updatePaymentStatus,
     markDispensed,

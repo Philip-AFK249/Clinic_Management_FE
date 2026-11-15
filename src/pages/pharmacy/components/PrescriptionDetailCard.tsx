@@ -1,5 +1,12 @@
-import { AlertTriangle, BadgeCheck, User, Stethoscope } from "lucide-react";
+import {
+  AlertTriangle,
+  BadgeCheck,
+  PackageCheck,
+  User,
+  Stethoscope,
+} from "lucide-react";
 import type { PharmacyOrder } from "../data/pharmacyTypes";
+import { formatDispensedAt } from "../data/prescriptionMapper";
 
 interface PrescriptionDetailCardProps {
   order: PharmacyOrder;
@@ -52,6 +59,21 @@ export default function PrescriptionDetailCard({
               {order.diagnosis ?? "Xem trên bệnh án điện tử"}
             </span>
           </p>
+
+          {/* Handover attribution, only meaningful once dispensed. */}
+          {order.status === "DISPENSED" && (
+            <p className="mt-1.5 flex flex-wrap items-center gap-1 text-xs text-emerald-700">
+              <PackageCheck className="h-3 w-3" aria-hidden="true" />
+              Dược sĩ phát:{" "}
+              <span className="font-semibold">
+                {order.pharmacistName ?? "Chưa cập nhật"}
+              </span>
+              <span className="text-slate-300">|</span>
+              <span className="text-slate-500">
+                {formatDispensedAt(order.dispensedAt)}
+              </span>
+            </p>
+          )}
         </div>
 
         {/* BHYT pill */}

@@ -58,6 +58,10 @@ export interface PharmacyOrder {
   createdAt: string; // "09:15"
   status: PrescriptionStatus;
   paymentStatus: PaymentStatus;
+  /** Pharmacist who signed the handover, `null` until dispensed. */
+  pharmacistName: string | null;
+  /** ISO timestamp the service stamped on handover, `null` until dispensed. */
+  dispensedAt: string | null;
   items: MedicationItem[];
   /**
    * Server-computed money. Present on every live order, so the billing card

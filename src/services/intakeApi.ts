@@ -578,11 +578,16 @@ export async function getPatientBookingHistoryApi(
     const { data } =
       typeof patientId === "number"
         ? await intakeApi.get<QueueTicketDetailResponse[]>(
-            `/v1/queue/tickets/patient/${patientId}/history`,
-            { signal },
+            `/v1/queue/patient/${patientId}/history`,
+            {
+              params: trimmedIdentifier
+                ? { identifier: trimmedIdentifier }
+                : undefined,
+              signal,
+            },
           )
         : await intakeApi.get<QueueTicketDetailResponse[]>(
-            "/v1/queue/tickets/patient/history",
+            "/v1/queue/patient/history",
             { params: { identifier: trimmedIdentifier }, signal },
           );
     return Array.isArray(data) ? data : [];

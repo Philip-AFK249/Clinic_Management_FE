@@ -33,7 +33,11 @@ export default function BillingSummaryCard({
   const bhytCovered = order.insurancePaidAmount ?? computedInsurance;
   const coPay = order.patientCopayAmount ?? totalGross - bhytCovered;
 
+  // A dispensed prescription is a closed record: the handover already happened,
+  // so the billing card must not offer collection actions again.
+  const isDispensed = order.status === "DISPENSED";
   const settled =
+    isDispensed ||
     order.paymentStatus === "PAID_ONLINE" ||
     order.paymentStatus === "SETTLED_AT_COUNTER";
 
@@ -44,7 +48,11 @@ export default function BillingSummaryCard({
           <CreditCard className="h-4 w-4 text-emerald-600" aria-hidden="true" />
           Quyết Toán BHYT &amp; Đồng Chi Trả
         </p>
-        {settled ? (
+        {isDispensed ? (
+          <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700">
+            ✓ Đã Phát Thuốc
+          </span>
+        ) : settled ? (
           <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700">
             ✓ Đã Thanh Toán Qua Cổng Bệnh Nhân
           </span>
@@ -57,7 +65,7 @@ export default function BillingSummaryCard({
 
       <div className="space-y-1.5 px-4 py-3 text-xs text-slate-600">
         <p className="flex items-center justify-between">
-          <span>Tổng tiền thuốc gốc</span>
+          <span>Tổng tiền đơn thuốc</span>
           <span className="font-bold text-slate-900">
             {formatMoney(totalGross)}
           </span>
@@ -80,7 +88,7 @@ export default function BillingSummaryCard({
         <div className="my-1 border-t border-dashed border-slate-200" />
 
         <p className="flex items-center justify-between text-emerald-700">
-          <span>Quỹ BHYT chi trả (-)</span>
+          <span>BHYT chi trả (-)</span>
           <span className="font-bold">- {formatMoney(bhytCovered)}</span>
         </p>
         <div className="ml-4 space-y-0.5 border-l border-slate-200 pl-3 text-[11px] text-slate-500">
@@ -104,7 +112,9 @@ export default function BillingSummaryCard({
 
         <p className="flex items-center justify-between rounded-lg bg-emerald-50 px-2.5 py-2 text-sm">
           <span className="font-semibold text-emerald-800">
-            Số tiền người bệnh đồng chi trả
+            {isDispensed
+              ? "Bệnh nhân đã thanh toán"
+              : "Số tiền người bệnh đồng chi trả"}
           </span>
           <span className="font-bold text-emerald-700">
             {formatMoney(coPay)}

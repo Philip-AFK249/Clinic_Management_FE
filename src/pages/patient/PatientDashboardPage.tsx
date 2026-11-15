@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import {
   Activity,
   Ban,
@@ -22,12 +22,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "../../context/useAuth";
-import { cancelTicketApi, getPatientBookingHistoryApi } from "../../services/intakeApi";
-import type { QueueStatus, QueueTicketDetailResponse } from "../../services/intakeApi";
-import {
-  getEncountersByTicketNumbersApi,
-  getPatientEncountersApi,
-} from "../../services/clinicalApi";
+import { cancelTicketApi } from "../../services/intakeApi";
+import type { QueueStatus } from "../../services/intakeApi";
 import type {
   EncounterStatus,
   PatientEncounterDto,
@@ -42,6 +38,10 @@ import {
   readOwnedActiveBooking,
 } from "./data/activeBooking";
 import { identifierCandidates } from "./data/patientIdentifiers";
+import {
+  encounterKey,
+  loadPatientEncounters,
+} from "./data/patientEncounterLoader";
 import { usePatientTicket } from "./hooks/usePatientTicket";
 
 type DashboardTab = "queue" | "records";
@@ -159,40 +159,6 @@ function vnd(value: number | null | undefined): string {
   return `${amount.toLocaleString("vi-VN")} đ`;
 }
 
-function encounterKey(encounter: PatientEncounterDto): string {
-  if (
-    typeof encounter.encounterId === "number" &&
-    Number.isFinite(encounter.encounterId) &&
-    encounter.encounterId > 0
-  ) {
-    return `encounter-${encounter.encounterId}`;
-  }
-  return `ticket-${encounter.ticketNumber}-${encounter.encounterDate}`;
-}
-
-function encounterTimestamp(encounter: PatientEncounterDto): number {
-  const parsed = Date.parse(encounter.encounterDate || encounter.createdAt);
-  return Number.isNaN(parsed) ? 0 : parsed;
-}
-
-/**
- * Merge the two lookups (by intake patient id and by ticket number) into one
- * timeline. The same encounter can arrive from both, and the by-ticket answer
- * is the richer one - it carries the prescription lines and the billing
- * columns - so the later copy wins field by field.
- */
-function mergeEncounters(list: PatientEncounterDto[]): PatientEncounterDto[] {
-  const byKey = new Map<string, PatientEncounterDto>();
-  for (const encounter of list) {
-    const key = encounterKey(encounter);
-    const existing = byKey.get(key);
-    byKey.set(key, existing ? { ...existing, ...encounter } : encounter);
-  }
-  return [...byKey.values()].sort(
-    (left, right) => encounterTimestamp(right) - encounterTimestamp(left),
-  );
-}
-
 function pharmacyBadge(
   status: PrescriptionStatus | null | undefined,
   hasItems: boolean,
@@ -229,7 +195,10 @@ function pharmacyBadge(
 
 export default function PatientDashboardPage() {
   const { user } = useAuth();
-  const [tab, setTab] = useState<DashboardTab>("queue");
+  const [searchParams] = useSearchParams();
+  const [tab, setTab] = useState<DashboardTab>(() =>
+    searchParams.get("tab") === "ehr" ? "records" : "queue",
+  );
   // Read once on mount: the route unmounts between visits, so a booking made on
   // /patient/booking is picked up the next time the dashboard is opened.
   // Only this account's own scoped cache is consulted, and it must pass an
@@ -339,78 +308,16 @@ export default function PatientDashboardPage() {
       setEncounterError(null);
 
       try {
-        const [historyByIdentifier, historyByUserId, historyByActivePatient] =
-          await Promise.all([
-            Promise.all(
-              identifierList.map((identifier) =>
-                getPatientBookingHistoryApi(undefined, identifier, signal).catch(
-                  () => [] as QueueTicketDetailResponse[],
-                ),
-              ),
-            ),
-            getPatientBookingHistoryApi(signedInUser.id, undefined, signal).catch(
-              () => [] as QueueTicketDetailResponse[],
-            ),
-            activePatientId !== null && activePatientId !== signedInUser.id
-              ? getPatientBookingHistoryApi(
-                  activePatientId,
-                  undefined,
-                  signal,
-                ).catch(() => [] as QueueTicketDetailResponse[])
-              : Promise.resolve([] as QueueTicketDetailResponse[]),
-          ]);
+        const { encounters: merged, answered } = await loadPatientEncounters(
+          {
+            userId: signedInUser.id,
+            identifiers: identifierList,
+            patientIds: [signedInUser.id, activePatientId, storedPatientId],
+            ticketNumbers: [activeTicketNumber],
+          },
+          signal,
+        );
         if (cancelled || signal.aborted) return;
-
-        const ticketNumbers = new Set<string>();
-        if (activeTicketNumber) ticketNumbers.add(activeTicketNumber);
-
-        const patientIds = new Set<number>([signedInUser.id]);
-        if (activePatientId !== null) patientIds.add(activePatientId);
-        if (storedPatientId !== null) patientIds.add(storedPatientId);
-
-        for (const historyTicket of [
-          ...historyByUserId,
-          ...historyByActivePatient,
-          ...historyByIdentifier.flat(),
-        ]) {
-          if (historyTicket?.ticketNumber) {
-            ticketNumbers.add(historyTicket.ticketNumber);
-          }
-          if (typeof historyTicket?.patientId === "number") {
-            patientIds.add(historyTicket.patientId);
-          }
-        }
-
-        const [patientResults, ticketResult] = await Promise.all([
-          Promise.all(
-            [...patientIds].map(async (patientId) => {
-              try {
-                return {
-                  ok: true as const,
-                  list: await getPatientEncountersApi(patientId, signal),
-                };
-              } catch {
-                return { ok: false as const, list: [] as PatientEncounterDto[] };
-              }
-            }),
-          ),
-          ticketNumbers.size > 0
-            ? getEncountersByTicketNumbersApi([...ticketNumbers], signal)
-                .then((list) => ({ ok: true as const, list }))
-                .catch(() => ({ ok: false as const, list: [] as PatientEncounterDto[] }))
-            : Promise.resolve({
-                ok: false as const,
-                list: [] as PatientEncounterDto[],
-              }),
-        ]);
-        if (cancelled || signal.aborted) return;
-
-        const merged = mergeEncounters([
-          ...patientResults.flatMap((result) => result.list),
-          ...ticketResult.list,
-        ]);
-        const anySourceAnswered =
-          patientResults.some((result) => result.ok) || ticketResult.ok;
 
         setEncounters(merged);
         setExpandedEncounterKeys((current) => {
@@ -419,7 +326,7 @@ export default function PatientDashboardPage() {
           // open the newest visit by default on the first successful load.
           return current.length > 0 ? current : [encounterKey(merged[0])];
         });
-        if (merged.length === 0 && !anySourceAnswered) {
+        if (merged.length === 0 && !answered) {
           setEncounterError(
             "Không tải được lịch sử thăm khám từ hệ thống. Vui lòng thử lại.",
           );

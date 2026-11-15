@@ -1,4 +1,4 @@
-import { FileText, X } from "lucide-react";
+import { FileText, PackageCheck, X } from "lucide-react";
 import type { PatientEncounterDto } from "../../../services/clinicalApi";
 import type { PatientRecord } from "../data/doctorMockData";
 import { formatEncounterDate } from "../data/encounterMapper";
@@ -29,6 +29,58 @@ const STATUS_LABEL: Record<string, { label: string; className: string }> = {
     className: "border-red-200 bg-red-50 text-red-700",
   },
 };
+
+const PRESCRIPTION_STATUS_LABELS: Record<
+  NonNullable<PatientEncounterDto["prescriptionStatus"]>,
+  { label: string; className: string }
+> = {
+  PENDING_DISPENSE: {
+    label: "Chờ phát thuốc",
+    className: "border-amber-200 bg-amber-50 text-amber-700",
+  },
+  DISPENSING: {
+    label: "Đang phát thuốc",
+    className: "border-sky-200 bg-sky-50 text-sky-700",
+  },
+  DISPENSED: {
+    label: "Đã phát thuốc",
+    className: "border-emerald-200 bg-emerald-50 text-emerald-700",
+  },
+  CANCELLED: {
+    label: "Đơn thuốc đã hủy",
+    className: "border-rose-200 bg-rose-50 text-rose-700",
+  },
+};
+
+const DEPARTMENT_LABELS: Record<number, string> = {
+  1: "Khoa Nội Tổng quát & Tim mạch",
+  2: "Khoa Hô hấp & Dị ứng",
+  3: "Khoa Da liễu",
+};
+
+function departmentLabel(departmentId: number | undefined): string {
+  if (departmentId === undefined) return "Chuyên khoa";
+  return DEPARTMENT_LABELS[departmentId] ?? "Chuyên khoa";
+}
+
+function vnd(value: number | null | undefined): string {
+  const amount =
+    typeof value === "number" && Number.isFinite(value) ? value : 0;
+  return `${amount.toLocaleString("vi-VN")} đ`;
+}
+
+function dispensedAtLabel(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const parsed = new Date(iso);
+  if (Number.isNaN(parsed.getTime())) return iso;
+  return parsed.toLocaleString("vi-VN", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
 
 function SoapSection({ label, value }: { label: string; value?: string | null }) {
   return (
@@ -70,6 +122,14 @@ function Vital({
 function EncounterDetail({ encounter }: { encounter: PatientEncounterDto }) {
   const status = STATUS_LABEL[encounter.status] ?? STATUS_LABEL.COMPLETED;
   const diagnoses = encounter.diagnoses ?? [];
+  const prescriptionItems = encounter.prescriptionItems ?? [];
+  const prescriptionStatus = encounter.prescriptionStatus
+    ? PRESCRIPTION_STATUS_LABELS[encounter.prescriptionStatus]
+    : null;
+  const hasBilling =
+    typeof encounter.totalAmount === "number" ||
+    typeof encounter.insurancePaidAmount === "number" ||
+    typeof encounter.patientCopayAmount === "number";
 
   return (
     <div className="space-y-5">
@@ -110,6 +170,13 @@ function EncounterDetail({ encounter }: { encounter: PatientEncounterDto }) {
           <span className="font-semibold text-slate-800">
             {encounter.doctorName}
           </span>
+        </p>
+        <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+          Mã bệnh nhân:{" "}
+          <span className="font-mono font-medium text-slate-700">
+            {encounter.patientId}
+          </span>{" "}
+          &middot; {departmentLabel(encounter.departmentId)}
         </p>
       </section>
 
@@ -163,24 +230,105 @@ function EncounterDetail({ encounter }: { encounter: PatientEncounterDto }) {
         </div>
       </section>
 
-      {/* Prescription */}
+      {/* Prescription / dispensing */}
       <section>
-        <h3 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-teal-700">
-          <FileText className="h-3.5 w-3.5" />
-          Đơn thuốc
-        </h3>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-teal-700">
+            <FileText className="h-3.5 w-3.5" />
+            Đơn thuốc
+            {encounter.prescriptionId ? ` #${encounter.prescriptionId}` : ""}
+          </h3>
+          {prescriptionStatus && (
+            <span
+              className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${prescriptionStatus.className}`}
+            >
+              {prescriptionStatus.label}
+            </span>
+          )}
+        </div>
+
         <div className="mt-2 rounded-lg border border-slate-200/80 bg-white p-3 shadow-card">
-          {encounter.prescriptionId ? (
-            <p className="text-xs font-medium text-slate-700">
-              Đơn thuốc #{encounter.prescriptionId} đã được tạo cho ca khám này.
-            </p>
+          {prescriptionItems.length > 0 ? (
+            <ul className="space-y-2">
+              {prescriptionItems.map((item, index) => (
+                <li
+                  key={
+                    item.itemId ??
+                    `${item.drugCode ?? item.drugName}-${index}`
+                  }
+                  className="rounded-md border border-slate-100 bg-slate-50/60 px-2.5 py-2"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-xs font-semibold text-slate-900">
+                      {item.drugName}
+                      {item.concentration ? ` ${item.concentration}` : ""}
+                    </p>
+                    <span className="shrink-0 text-[11px] font-bold text-slate-800">
+                      {vnd(item.amount)}
+                    </span>
+                  </div>
+                  <p className="mt-0.5 text-[11px] leading-relaxed text-slate-500">
+                    {[item.dosageForm, item.routeFrequency, item.duration]
+                      .filter(Boolean)
+                      .join(" · ") || "Theo chỉ định của bác sĩ"}
+                  </p>
+                  <p className="text-[11px] text-slate-500">
+                    {item.quantity} x {vnd(item.unitPrice)}
+                  </p>
+                </li>
+              ))}
+            </ul>
           ) : (
             <p className="text-xs text-slate-400">
-              Lịch sử ca khám không kèm chi tiết đơn thuốc.
+              {encounter.prescriptionId
+                ? `Đơn thuốc #${encounter.prescriptionId} chưa có chi tiết thuốc trong hồ sơ này.`
+                : "Ca khám này không kèm đơn thuốc."}
+            </p>
+          )}
+
+          {encounter.dispensedAt && (
+            <p className="mt-2 flex items-center gap-1.5 border-t border-dashed border-slate-200 pt-2 text-[11px] font-medium text-emerald-700">
+              <PackageCheck className="h-3.5 w-3.5" aria-hidden="true" />
+              Đã phát thuốc lúc {dispensedAtLabel(encounter.dispensedAt)}
             </p>
           )}
         </div>
       </section>
+
+      {/* Billing */}
+      {hasBilling && (
+        <section>
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-teal-700">
+            Quyết toán BHYT &amp; đồng chi trả
+          </h3>
+          <div className="mt-2 space-y-1.5 rounded-lg border border-slate-200/80 bg-white p-3 text-xs shadow-card">
+            <p className="flex items-center justify-between text-slate-600">
+              <span>Tổng tiền đơn thuốc</span>
+              <span className="font-bold text-slate-900">
+                {vnd(encounter.totalAmount)}
+              </span>
+            </p>
+            <p className="flex items-center justify-between text-emerald-700">
+              <span>Quỹ BHYT chi trả (-)</span>
+              <span className="font-bold">
+                - {vnd(encounter.insurancePaidAmount)}
+              </span>
+            </p>
+            <div className="border-t border-slate-200 pt-1.5">
+              <p className="flex items-center justify-between rounded-md bg-emerald-50 px-2 py-1.5 text-sm">
+                <span className="font-semibold text-emerald-800">
+                  {encounter.prescriptionStatus === "DISPENSED"
+                    ? "Bệnh nhân đã thanh toán"
+                    : "Bệnh nhân đồng chi trả"}
+                </span>
+                <span className="font-bold text-emerald-700">
+                  {vnd(encounter.patientCopayAmount)}
+                </span>
+              </p>
+            </div>
+          </div>
+        </section>
+      )}
     </div>
   );
 }

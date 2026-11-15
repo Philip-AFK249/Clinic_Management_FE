@@ -118,7 +118,11 @@ export default function NurseStationPage() {
 
   const departmentHistory = useMemo(
     () =>
-      history.tickets.filter((ticket) => ticket.departmentId === departmentId),
+      departmentId > 0
+        ? history.tickets.filter(
+            (ticket) => ticket.departmentId === departmentId,
+          )
+        : history.tickets,
     [history.tickets, departmentId],
   );
 

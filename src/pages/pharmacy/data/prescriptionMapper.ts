@@ -47,6 +47,22 @@ function toClock(iso: string | undefined): string {
   return match ? match[1] : "--:--";
 }
 
+/** Handover timestamp as "dd/MM/yyyy HH:mm", or the raw value when unparseable. */
+export function formatDispensedAt(
+  iso: string | null | undefined,
+): string {
+  if (!iso) return "--";
+  const parsed = new Date(iso);
+  if (Number.isNaN(parsed.getTime())) return iso;
+  return parsed.toLocaleString("vi-VN", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 /** Display unit derived from the dosage form, which is drug master data. */
 function unitFor(dosageForm: string): string {
   const form = dosageForm.toLowerCase();
@@ -146,9 +162,9 @@ export function toPharmacyOrder(
     dob: null,
     age: null,
     gender: null,
-    insuranceCode: prescription.insuranceCode ?? null,
+    insuranceCode: prescription.insuranceCode?.trim() || null,
     initialHospitalCode: null,
-    isOcrVerified: Boolean(prescription.insuranceCode),
+    isOcrVerified: Boolean(prescription.insuranceCode?.trim()),
     allergies: [],
     prescribingDoctor: prescription.doctorName,
     roomNumber: null,
@@ -158,6 +174,8 @@ export function toPharmacyOrder(
     paymentStatus: settledPrescriptionIds?.has(prescription.prescriptionId)
       ? "SETTLED_AT_COUNTER"
       : "PENDING_AT_COUNTER",
+    pharmacistName: prescription.pharmacistName?.trim() || null,
+    dispensedAt: prescription.dispensedAt ?? null,
     items,
     totalAmount: toNumber(prescription.totalAmount),
     insurancePaidAmount: toNumber(prescription.insurancePaidAmount),

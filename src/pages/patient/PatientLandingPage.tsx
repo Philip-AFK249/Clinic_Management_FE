@@ -1,5 +1,6 @@
 import PatientNavbar from "./components/PatientNavbar";
 import HeroSection from "./components/HeroSection";
+import RecentVisitsSection from "./components/RecentVisitsSection";
 import TrustMetrics from "./components/TrustMetrics";
 import ClinicalServices from "./components/ClinicalServices";
 import MedicalStaffSection from "./components/MedicalStaffSection";
@@ -17,6 +18,7 @@ export default function PatientLandingPage() {
       <PatientNavbar />
       <main>
         <HeroSection />
+        <RecentVisitsSection />
         <TrustMetrics />
         <ClinicalServices />
         <MedicalStaffSection />

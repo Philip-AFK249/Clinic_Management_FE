@@ -74,6 +74,12 @@ function isoToLabel(iso: string): string {
   return m ? `${m[3]}/${m[2]}/${m[1]}` : iso;
 }
 
+function vnd(value: number | null | undefined): string {
+  const amount =
+    typeof value === "number" && Number.isFinite(value) ? value : 0;
+  return `${amount.toLocaleString("vi-VN")} đ`;
+}
+
 /** One date-view switch: Hôm nay / Ngày mai / Sắp tới. */
 function DatePill({
   label,
@@ -435,7 +441,17 @@ export default function PatientQueueDrawer({
             return (
               <article
                 key={encounter.encounterId}
-                className="rounded-lg border border-slate-200/80 bg-white p-3 shadow-card"
+                role="button"
+                tabIndex={0}
+                aria-label={`Xem bệnh án ${encounter.ticketNumber} của ${encounter.patientName}`}
+                onClick={() => onViewEncounter(encounter)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    onViewEncounter(encounter);
+                  }
+                }}
+                className="cursor-pointer rounded-lg border border-slate-200/80 bg-white p-3 shadow-card transition-colors hover:border-teal-300 hover:bg-teal-50/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-500"
               >
                 <div className="flex items-center justify-between gap-2">
                   <span className="font-mono text-[11px] font-semibold text-slate-600">
@@ -461,10 +477,29 @@ export default function PatientQueueDrawer({
                     {statusLabel}
                   </span>
                 </div>
+                {typeof encounter.patientCopayAmount === "number" && (
+                  <p className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-slate-500">
+                    <span>
+                      BHYT trả:{" "}
+                      <span className="font-semibold text-emerald-700">
+                        {vnd(encounter.insurancePaidAmount)}
+                      </span>
+                    </span>
+                    <span>
+                      Bệnh nhân trả:{" "}
+                      <span className="font-semibold text-slate-800">
+                        {vnd(encounter.patientCopayAmount)}
+                      </span>
+                    </span>
+                  </p>
+                )}
                 <div className="mt-2 grid grid-cols-2 gap-1.5">
                   <button
                     type="button"
-                    onClick={() => onViewEncounter(encounter)}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onViewEncounter(encounter);
+                    }}
                     className="inline-flex h-8 items-center justify-center gap-1 rounded-md border border-slate-200 bg-white text-[11px] font-semibold text-slate-700 transition-colors hover:border-teal-300 hover:text-teal-700"
                   >
                     <FileText className="h-3 w-3" aria-hidden="true" />
@@ -472,7 +507,10 @@ export default function PatientQueueDrawer({
                   </button>
                   <button
                     type="button"
-                    onClick={() => onReExamine(encounter)}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onReExamine(encounter);
+                    }}
                     className="inline-flex h-8 items-center justify-center gap-1 rounded-md bg-teal-600 text-[11px] font-semibold text-white transition-colors hover:bg-teal-700"
                   >
                     <RotateCcw className="h-3 w-3" aria-hidden="true" />

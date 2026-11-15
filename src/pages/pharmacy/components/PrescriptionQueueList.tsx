@@ -1,22 +1,23 @@
-import { useState } from "react";
-import { Clock, ChevronRight } from "lucide-react";
+import { ChevronRight, Clock } from "lucide-react";
 import type { PharmacyOrder, PrescriptionStatus } from "../data/pharmacyTypes";
+import { formatDispensedAt } from "../data/prescriptionMapper";
+import type { PharmacyQueueStatus } from "../hooks/usePharmacyQueue";
 
 interface PrescriptionQueueListProps {
   orders: PharmacyOrder[];
   selectedOrderId: string;
+  status: PharmacyQueueStatus;
+  /** All orders still waiting for a handover, across the sub-statuses. */
+  pendingCount: number;
+  /** Dispensed orders loaded for the history tab. */
+  dispensedCount: number;
   onSelect: (orderId: string) => void;
+  onStatusChange: (status: PharmacyQueueStatus) => void;
 }
 
-type QueueFilter = "ALL" | PrescriptionStatus;
-
-const FILTER_TABS: { key: QueueFilter; label: string }[] = [
-  { key: "ALL", label: "Tất cả" },
-  { key: "PENDING_PREPARATION", label: "Chờ soạn" },
-  { key: "PREPARING", label: "Đang soạn" },
-  { key: "READY_FOR_PICKUP", label: "Chờ phát" },
-  { key: "DISPENSED", label: "Đã phát" },
-  { key: "CANCELLED", label: "Đã hủy" },
+const FILTER_TABS: { key: PharmacyQueueStatus; label: string }[] = [
+  { key: "PENDING_DISPENSE", label: "Chờ cấp phát" },
+  { key: "DISPENSED", label: "Lịch sử đã phát" },
 ];
 
 const STATUS_BADGES: Record<
@@ -36,7 +37,7 @@ const STATUS_BADGES: Record<
     className: "bg-sky-50 text-sky-700 border-sky-200",
   },
   DISPENSED: {
-    label: "Đã hoàn tất",
+    label: "Đã phát thuốc",
     className: "bg-emerald-50 text-emerald-700 border-emerald-200",
   },
   CANCELLED: {
@@ -63,22 +64,22 @@ const PAYMENT_BADGES: Record<
   },
 };
 
+function vnd(value: number | null | undefined): string {
+  const amount =
+    typeof value === "number" && Number.isFinite(value) ? value : 0;
+  return `${amount.toLocaleString("vi-VN")} đ`;
+}
+
 export default function PrescriptionQueueList({
   orders,
   selectedOrderId,
+  status,
+  pendingCount,
+  dispensedCount,
   onSelect,
+  onStatusChange,
 }: PrescriptionQueueListProps) {
-  const [filter, setFilter] = useState<QueueFilter>("ALL");
-
-  const countFor = (filterKey: QueueFilter) =>
-    filterKey === "ALL"
-      ? orders.length
-      : orders.filter((order) => order.status === filterKey).length;
-
-  const filtered =
-    filter === "ALL"
-      ? orders
-      : orders.filter((order) => order.status === filter);
+  const isHistory = status === "DISPENSED";
 
   return (
     <aside className="flex w-80 shrink-0 flex-col border-r border-slate-200/80 bg-white">
@@ -86,40 +87,47 @@ export default function PrescriptionQueueList({
       <div className="border-b border-slate-200/80 px-3 py-2.5">
         <p className="text-sm font-bold text-slate-900">Hàng đợi Đơn thuốc</p>
         <div className="mt-2 flex flex-wrap gap-1">
-          {FILTER_TABS.map((tab) => (
-            <button
-              key={tab.key}
-              type="button"
-              onClick={() => setFilter(tab.key)}
-              className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold transition-colors ${
-                filter === tab.key
-                  ? "bg-emerald-600 text-white"
-                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-              }`}
-            >
-              {tab.label}
-              <span
-                className={`rounded-full px-1 text-[10px] font-bold ${
-                  filter === tab.key
-                    ? "bg-white/25 text-white"
-                    : "bg-emerald-50 text-emerald-700"
+          {FILTER_TABS.map((tab) => {
+            const active = status === tab.key;
+            const count =
+              tab.key === "PENDING_DISPENSE" ? pendingCount : dispensedCount;
+            return (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => onStatusChange(tab.key)}
+                className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+                  active
+                    ? "bg-emerald-600 text-white"
+                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                 }`}
               >
-                {countFor(tab.key)}
-              </span>
-            </button>
-          ))}
+                {tab.label}
+                <span
+                  className={`rounded-full px-1 text-[10px] font-bold ${
+                    active
+                      ? "bg-white/25 text-white"
+                      : "bg-emerald-50 text-emerald-700"
+                  }`}
+                >
+                  {count}
+                </span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
       {/* Order list */}
       <div className="flex-1 space-y-2 overflow-y-auto p-3">
-        {filtered.length === 0 && (
+        {orders.length === 0 && (
           <p className="py-6 text-center text-xs text-slate-400">
-            Không có đơn thuốc nào trong nhóm này.
+            {isHistory
+              ? "Chưa có đơn thuốc nào đã phát."
+              : "Không có đơn thuốc nào đang chờ cấp phát."}
           </p>
         )}
-        {filtered.map((order) => {
+        {orders.map((order) => {
           const statusBadge = STATUS_BADGES[order.status];
           const payBadge = PAYMENT_BADGES[order.paymentStatus];
           const selected = order.orderId === selectedOrderId;
@@ -158,25 +166,63 @@ export default function PrescriptionQueueList({
                 )}
               </p>
               <p className="text-xs text-slate-500">
+                Phiếu khám:{" "}
+                <span className="font-mono font-semibold text-slate-700">
+                  {order.ticketCode}
+                </span>
+              </p>
+              <p className="text-xs text-slate-500">
                 Bác sĩ: {order.prescribingDoctor}
                 {order.roomNumber ? ` (${order.roomNumber})` : ""}
               </p>
+
+              {isHistory && (
+                <div className="mt-1 space-y-0.5 text-[11px] text-slate-500">
+                  <p>
+                    Dược sĩ phát:{" "}
+                    <span className="font-semibold text-slate-700">
+                      {order.pharmacistName ?? "Chưa cập nhật"}
+                    </span>
+                  </p>
+                  <p>
+                    Thời điểm:{" "}
+                    <span className="font-medium text-slate-700">
+                      {formatDispensedAt(order.dispensedAt)}
+                    </span>
+                  </p>
+                </div>
+              )}
+
               <div className="mt-1.5 flex flex-wrap items-center gap-1">
-                <span className="inline-block rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">
-                  ✓ BHYT {order.isOcrVerified ? order.items[0]?.bhytCoveragePercent ?? 80 : 0}%
-                </span>
-                <span
-                  className={`inline-block rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${payBadge.className}`}
-                >
-                  {payBadge.label}
-                </span>
+                {(!isHistory || order.insuranceCode) && (
+                  <span className="inline-block rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">
+                    {order.insuranceCode
+                      ? `✓ BHYT: ${order.insuranceCode}`
+                      : `BHYT ${order.items[0]?.bhytCoveragePercent ?? 0}%`}
+                  </span>
+                )}
+                {isHistory ? (
+                  <span className="inline-block rounded-full border border-sky-200 bg-sky-50 px-1.5 py-0.5 text-[10px] font-semibold text-sky-700">
+                    Bệnh nhân trả: {vnd(order.patientCopayAmount)}
+                  </span>
+                ) : (
+                  <span
+                    className={`inline-block rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${payBadge.className}`}
+                  >
+                    {payBadge.label}
+                  </span>
+                )}
               </div>
               <p className="mt-1 text-[11px] text-slate-500">
                 {order.items.length} loại thuốc
+                {isHistory && order.insurancePaidAmount !== undefined
+                  ? ` · BHYT trả ${vnd(order.insurancePaidAmount)}`
+                  : ""}
               </p>
               {selected && (
                 <span className="mt-1.5 flex items-center gap-1 text-[11px] font-semibold text-emerald-700">
-                  Đang soạn <ChevronRight className="h-3 w-3" aria-hidden="true" />
+                  {isHistory ? "Đang xem hồ sơ" : "Đang soạn"}
+                  <ChevronRight className="h-3 w-3" aria-hidden="true" />
                 </span>
               )}
             </button>

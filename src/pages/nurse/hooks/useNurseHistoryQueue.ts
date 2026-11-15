@@ -14,8 +14,16 @@ export interface NurseHistoryQueueState {
 }
 
 export function useNurseHistoryQueue(
-  departmentId: number,
+  departmentId: number | null | undefined,
 ): NurseHistoryQueueState {
+  // `0` is what a roster entry without a department resolves to, and sending it
+  // as a filter would ask the service for a department that cannot exist. Omit
+  // the param instead so the station sees clinic-wide history.
+  const scopedDepartmentId =
+    typeof departmentId === "number" && departmentId > 0
+      ? departmentId
+      : null;
+
   const [tickets, setTickets] = useState<QueueTicket[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isOffline, setIsOffline] = useState(false);
@@ -25,8 +33,8 @@ export function useNurseHistoryQueue(
   const loadedDepartment = useRef<number | null>(null);
 
   useEffect(() => {
-    if (loadedDepartment.current !== departmentId) {
-      loadedDepartment.current = departmentId;
+    if (loadedDepartment.current !== scopedDepartmentId) {
+      loadedDepartment.current = scopedDepartmentId;
       setTickets([]);
       setIsLoading(true);
     }
@@ -37,7 +45,7 @@ export function useNurseHistoryQueue(
     async function load() {
       try {
         const history = await getReceptionHistoryQueueApi(
-          departmentId,
+          scopedDepartmentId,
           undefined,
           signal,
         );
@@ -67,7 +75,7 @@ export function useNurseHistoryQueue(
       controller.abort();
       window.clearInterval(interval);
     };
-  }, [departmentId, reloadToken]);
+  }, [scopedDepartmentId, reloadToken]);
 
   const refresh = useCallback(() => setReloadToken((token) => token + 1), []);
 

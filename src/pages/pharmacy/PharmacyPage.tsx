@@ -2,6 +2,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import {
   AlertTriangle,
+  BadgeCheck,
   PackageCheck,
   Printer,
   RefreshCw,
@@ -29,6 +30,7 @@ export default function PharmacyPage() {
   const [isDispensing, setIsDispensing] = useState(false);
 
   const selectedOrder = queue.selectedOrder;
+  const isDispensed = selectedOrder?.status === "DISPENSED";
 
   function handleToggleItem(itemId: string) {
     queue.toggleItemPacked(itemId);
@@ -110,7 +112,11 @@ export default function PharmacyPage() {
         <PrescriptionQueueList
           orders={queue.orders}
           selectedOrderId={queue.selectedOrderId}
+          status={queue.queueStatus}
+          pendingCount={queue.pendingOrdersCount}
+          dispensedCount={queue.dispensedOrdersCount}
           onSelect={queue.selectOrder}
+          onStatusChange={queue.selectQueueStatus}
         />
 
         {/* Inspection workspace */}
@@ -129,6 +135,7 @@ export default function PharmacyPage() {
                 <MedicationPackingTray
                   order={selectedOrder}
                   onToggleItem={handleToggleItem}
+                  readOnly={isDispensed}
                 />
                 <BillingSummaryCard
                   order={selectedOrder}
@@ -166,24 +173,34 @@ export default function PharmacyPage() {
                   </button>
                 </div>
 
-                <div className="flex items-center gap-3">
-                  <span className="text-xs text-slate-500">
-                    {!allPacked
-                      ? "Chưa đối soát đủ khay thuốc"
-                      : !settled
-                        ? "Chưa tất toán thanh toán"
-                        : "Sẵn sàng bàn giao"}
+                {isDispensed ? (
+                  <span className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">
+                    <BadgeCheck className="h-4 w-4" aria-hidden="true" />
+                    Đơn #{selectedOrder.orderId} đã bàn giao thuốc
+                    {selectedOrder.pharmacistName
+                      ? ` cho ${selectedOrder.patientName} bởi ${selectedOrder.pharmacistName}`
+                      : ` cho ${selectedOrder.patientName}`}
                   </span>
-                  <button
-                    type="button"
-                    onClick={() => void handleConfirmHandover()}
-                    disabled={!canHandover || isDispensing}
-                    className="inline-flex h-12 items-center gap-2 rounded-lg bg-emerald-600 px-6 text-sm font-bold text-white shadow-sm transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500"
-                  >
-                    <PackageCheck className="h-5 w-5" aria-hidden="true" />
-                    Xác Nhận Bàn Giao Thuốc Cho Người Bệnh
-                  </button>
-                </div>
+                ) : (
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs text-slate-500">
+                      {!allPacked
+                        ? "Chưa đối soát đủ khay thuốc"
+                        : !settled
+                          ? "Chưa tất toán thanh toán"
+                          : "Sẵn sàng bàn giao"}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => void handleConfirmHandover()}
+                      disabled={!canHandover || isDispensing}
+                      className="inline-flex h-12 items-center gap-2 rounded-lg bg-emerald-600 px-6 text-sm font-bold text-white shadow-sm transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500"
+                    >
+                      <PackageCheck className="h-5 w-5" aria-hidden="true" />
+                      Xác Nhận Bàn Giao Thuốc Cho Người Bệnh
+                    </button>
+                  </div>
+                )}
               </footer>
             </>
           ) : (
@@ -195,11 +212,14 @@ export default function PharmacyPage() {
                 <p className="text-base font-bold text-slate-900">
                   {queue.isRefreshing
                     ? "Đang tải hàng đợi đơn thuốc..."
-                    : "Không có đơn thuốc nào chờ phát"}
+                    : queue.queueStatus === "DISPENSED"
+                      ? "Chưa có lịch sử phát thuốc"
+                      : "Không có đơn thuốc nào chờ phát"}
                 </p>
                 <p className="mt-1 text-sm text-slate-500">
-                  Đơn mới sẽ xuất hiện ở đây ngay khi bác sĩ phê duyệt bệnh án
-                  và đẩy xuống Quầy Dược.
+                  {queue.queueStatus === "DISPENSED"
+                    ? "Các đơn đã bàn giao thuốc sẽ được lưu tại đây kèm dược sĩ phát và chi phí bệnh nhân đã thanh toán."
+                    : "Đơn mới sẽ xuất hiện ở đây ngay khi bác sĩ phê duyệt bệnh án và đẩy xuống Quầy Dược."}
                 </p>
               </div>
               <button
@@ -215,7 +235,7 @@ export default function PharmacyPage() {
         </main>
       </div>
 
-      {selectedOrder && (
+      {selectedOrder && !isDispensed && (
         <QrVerificationModal
           open={queue.qrOpen}
           order={selectedOrder}
@@ -225,7 +245,7 @@ export default function PharmacyPage() {
       )}
 
       {/* VietQR popup */}
-      {queue.billingQrOpen && selectedOrder && (
+      {queue.billingQrOpen && selectedOrder && !isDispensed && (
         <div
           className="fixed inset-0 z-50"
           role="dialog"

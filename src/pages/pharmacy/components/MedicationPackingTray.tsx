@@ -5,6 +5,8 @@ import type { PharmacyOrder } from "../data/pharmacyTypes";
 interface MedicationPackingTrayProps {
   order: PharmacyOrder;
   onToggleItem: (itemId: string) => void;
+  /** Dispensed orders are shown as a read-only handover record. */
+  readOnly?: boolean;
 }
 
 const STATUS_LABELS: Record<PharmacyOrder["status"], string> = {
@@ -28,8 +30,9 @@ function isAllPacked(order: PharmacyOrder) {
 export default function MedicationPackingTray({
   order,
   onToggleItem,
+  readOnly = false,
 }: MedicationPackingTrayProps) {
-  const allPacked = isAllPacked(order);
+  const allPacked = readOnly || isAllPacked(order);
 
   function handleToggle(itemId: string) {
     const item = order.items.find((i) => i.id === itemId);
@@ -58,7 +61,8 @@ export default function MedicationPackingTray({
             aria-hidden="true"
           />
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Khay Soạn Thuốc - #{order.orderId}
+            {readOnly ? "Thuốc Đã Cấp Phát" : "Khay Soạn Thuốc"} - #
+            {order.orderId}
           </p>
         </div>
         <span
@@ -68,7 +72,11 @@ export default function MedicationPackingTray({
               : "border-amber-200 bg-amber-50 text-amber-700"
           }`}
         >
-          {allPacked ? "✓ Đã đối soát đủ" : STATUS_LABELS[order.status]}
+          {allPacked
+            ? readOnly
+              ? "✓ Đã bàn giao"
+              : "✓ Đã đối soát đủ"
+            : STATUS_LABELS[order.status]}
         </span>
       </div>
 
@@ -87,21 +95,31 @@ export default function MedicationPackingTray({
           {order.items.map((item) => {
             const coverage = item.bhytCoveragePercent;
             const lowStock = item.stockUnits < item.quantity;
+            const packed = readOnly || item.isPacked;
             return (
               <tr
                 key={item.id}
                 className={`border-b border-slate-100 ${
-                  item.isPacked ? "bg-emerald-50/40" : ""
+                  packed ? "bg-emerald-50/40" : ""
                 } ${item.isAllergyRisk ? "bg-red-50/50" : ""}`}
               >
                 <td className="py-2.5 pl-4 pr-1">
-                  <input
-                    type="checkbox"
-                    checked={item.isPacked}
-                    onChange={() => handleToggle(item.id)}
-                    aria-label={`Đối soát ${item.name}`}
-                    className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
-                  />
+                  {readOnly ? (
+                    <span
+                      aria-label={`Đã cấp phát ${item.name}`}
+                      className="inline-flex h-4 w-4 items-center justify-center rounded bg-emerald-600 text-[10px] font-bold text-white"
+                    >
+                      ✓
+                    </span>
+                  ) : (
+                    <input
+                      type="checkbox"
+                      checked={item.isPacked}
+                      onChange={() => handleToggle(item.id)}
+                      aria-label={`Đối soát ${item.name}`}
+                      className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                    />
+                  )}
                 </td>
                 <td className="py-2.5 pr-2">
                   <p className="font-semibold text-slate-900">{item.name}</p>
