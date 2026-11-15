@@ -21,7 +21,7 @@ export default function MedicalStaffSection() {
       : MEDICAL_STAFF.filter((staff) => staff.role === activeFilter);
 
   return (
-    <section id="doctors" className="scroll-mt-24 bg-surface-light py-16 lg:py-24">
+    <section id="doctors" className="scroll-mt-24 bg-slate-50/70 py-16 lg:py-20">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="max-w-2xl">
@@ -57,7 +57,7 @@ export default function MedicalStaffSection() {
                 role="tab"
                 aria-selected={active}
                 onClick={() => setActiveFilter(filter.key)}
-                className={`inline-flex h-12 items-center gap-2 rounded-full border px-5 text-base font-medium transition-colors ${
+                className={`inline-flex h-10 items-center gap-2 rounded-full border px-4 text-sm font-medium transition-colors ${
                   active
                     ? "border-clinical-600 bg-clinical-600 text-white shadow-sm"
                     : "border-slate-200 bg-white text-slate-700 hover:border-clinical-300 hover:text-clinical-700"
@@ -93,7 +93,7 @@ function StaffCard({ staff }: { staff: StaffMember }) {
   const isDoctor = staff.role === "DOCTOR";
 
   return (
-    <article className="flex flex-col overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-card transition-all hover:shadow-elevated">
+    <article className="flex flex-col overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm transition-all hover:shadow-md">
       {/* Header image & badges */}
       <div className="relative aspect-[4/5] w-full">
         <img
@@ -164,7 +164,7 @@ function StaffCard({ staff }: { staff: StaffMember }) {
         {isDoctor ? (
           <Link
             to={`/patient/booking?doctorId=${staff.id}`}
-            className="mt-4 flex items-center justify-center gap-2 rounded-lg bg-cta px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-cta-hover"
+            className="mt-4 flex items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-cta px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-cta-hover"
           >
             <Calendar className="h-4 w-4" aria-hidden="true" />
             Đặt lịch khám
@@ -172,7 +172,7 @@ function StaffCard({ staff }: { staff: StaffMember }) {
         ) : (
           <a
             href={`tel:${staff.phone}`}
-            className="mt-4 flex items-center justify-center gap-1.5 rounded-lg bg-slate-100 px-3 py-2 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-200"
+            className="mt-4 flex items-center justify-center gap-1.5 whitespace-nowrap rounded-xl bg-slate-100 px-3 py-2 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-200"
           >
             <Phone className="h-3.5 w-3.5 text-clinical-600" aria-hidden="true" />
             Liên hệ trực tiếp

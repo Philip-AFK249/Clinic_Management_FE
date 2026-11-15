@@ -6,11 +6,11 @@ export default function ClinicalFaq() {
   const [openIndex, setOpenIndex] = useState<number | null>(0);
 
   return (
-    <section id="faq" className="scroll-mt-24 bg-white py-16 lg:py-20">
+    <section id="faq" className="scroll-mt-24 bg-slate-50/70 py-16 lg:py-20">
       <div className="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8">
         <div className="text-center">
           <p className="text-xs font-semibold uppercase tracking-wider text-clinical-600">
-            Hỏi đáp FAQ
+            Hỏi đáp
           </p>
           <h2 className="mt-2 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
             Các Câu Hỏi Thường Gặp
@@ -20,13 +20,13 @@ export default function ClinicalFaq() {
           </p>
         </div>
 
-        <div className="mt-10 space-y-3">
+        <div className="mx-auto mt-10 max-w-3xl space-y-3">
           {FAQS.map((faq, index) => {
             const open = openIndex === index;
             return (
               <div
                 key={faq.question}
-                className="rounded-xl border border-slate-200/80 bg-white shadow-card"
+                className="rounded-2xl border border-slate-200/80 bg-white shadow-sm"
               >
                 <button
                   type="button"

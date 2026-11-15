@@ -83,7 +83,7 @@ export default function FloatingRagChatbot() {
   return (
     <>
       {open && (
-        <div className="fixed bottom-24 right-6 z-50 flex h-[520px] w-96 max-w-[calc(100vw-2rem)] flex-col rounded-2xl border border-slate-200 bg-white shadow-2xl">
+        <div className="fixed bottom-44 right-4 z-50 flex h-[calc(100dvh-12rem)] max-h-[520px] w-96 max-w-[calc(100vw-2rem)] flex-col rounded-2xl border border-slate-200 bg-white shadow-2xl sm:right-6 md:bottom-24">
           {/* Header */}
           <div className="flex items-center justify-between rounded-t-2xl border-b border-slate-200/80 bg-clinical-600 px-4 py-3 text-white">
             <div className="flex items-center gap-2.5">
@@ -192,7 +192,7 @@ export default function FloatingRagChatbot() {
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-label={open ? "Đóng trợ lý ảo phòng khám" : "Mở trợ lý ảo phòng khám"}
-        className="fixed bottom-6 right-6 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-clinical-600 text-white shadow-elevated transition-colors hover:bg-clinical-700"
+        className="fixed bottom-24 right-4 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-clinical-600 text-white shadow-elevated transition-colors hover:bg-clinical-700 sm:right-6 md:bottom-6"
       >
         {open ? (
           <X className="h-6 w-6" aria-hidden="true" />

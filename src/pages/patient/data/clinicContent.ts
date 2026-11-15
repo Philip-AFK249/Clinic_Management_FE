@@ -1,6 +1,7 @@
 import {
   Baby,
   Bus,
+  CalendarCheck,
   Car,
   Clock,
   Droplets,
@@ -8,7 +9,6 @@ import {
   HeartPulse,
   Microscope,
   MousePointerClick,
-  QrCode,
   ScanLine,
   Star,
   Stethoscope,
@@ -106,22 +106,28 @@ export interface WorkflowStep {
 
 export const WORKFLOW_STEPS: WorkflowStep[] = [
   {
-    title: "Bước 1: Khai báo triệu chứng hoặc Chọn bác sĩ",
+    title: "Khai báo triệu chứng",
     description:
-      "Nhập triệu chứng (bằng giọng nói hoặc gõ chữ) để Trợ lý AI định hướng đúng chuyên khoa cần khám.",
+      "Nhập triệu chứng bằng giọng nói hoặc văn bản để AI gợi ý đúng chuyên khoa cần khám.",
     icon: MousePointerClick,
   },
   {
-    title: "Bước 2: Nhận Vé khám điện tử & Mã QR",
+    title: "Quét BHYT / CCCD",
     description:
-      "Nhận xác nhận lịch hẹn tức thì qua tin nhắn và mã QR cá nhân hiển thị trên màn hình.",
-    icon: QrCode,
+      "Quét thẻ BHYT hoặc CCCD để xác nhận thông tin và quyền lợi bảo hiểm của bạn.",
+    icon: ScanLine,
   },
   {
-    title: "Bước 3: Check-in Kiosk 5 giây tại sảnh",
+    title: "Chọn bác sĩ & khung giờ",
     description:
-      "Quét mã QR tại máy Kiosk khi đến phòng khám để nhận số thứ tự tự động và vào thẳng phòng khám.",
-    icon: ScanLine,
+      "Chọn bác sĩ phù hợp và khung giờ trống, nhận phiếu khám điện tử kèm mã QR.",
+    icon: CalendarCheck,
+  },
+  {
+    title: "Khám bệnh & nhận đơn điện tử",
+    description:
+      "Check-in tại kiosk, vào khám và nhận kết quả, đơn thuốc điện tử trong cổng bệnh nhân.",
+    icon: FileText,
   },
 ];
 
