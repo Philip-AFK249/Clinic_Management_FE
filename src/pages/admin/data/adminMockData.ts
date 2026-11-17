@@ -92,16 +92,6 @@ export interface KnowledgeDocument {
   status: "INDEXED" | "SYNCING" | "STALE";
 }
 
-export interface OcrAuditLog {
-  id: string;
-  documentType: "BHYT_CARD" | "OLD_PRESCRIPTION" | "CCCD";
-  patientName: string;
-  confidenceScore: number;
-  extractedId: string;
-  timestamp: string;
-  status: "SUCCESS" | "FLAGGED_FOR_REVIEW";
-}
-
 export interface HospitalCode {
   code: string;
   name: string;
@@ -1021,63 +1011,6 @@ export const MOCK_KNOWLEDGE_BASE: KnowledgeDocument[] = [
   },
 ];
 
-export const MOCK_OCR_LOGS: OcrAuditLog[] = [
-  {
-    id: "OCR-20260910-001",
-    documentType: "BHYT_CARD",
-    patientName: "Nguyễn Văn An",
-    confidenceScore: 98.2,
-    extractedId: "DN 4 79 79 12345678",
-    timestamp: "10/09/2026 08:14:32",
-    status: "SUCCESS",
-  },
-  {
-    id: "OCR-20260910-002",
-    documentType: "BHYT_CARD",
-    patientName: "Trần Thị Mai",
-    confidenceScore: 99.1,
-    extractedId: "DN 4 79 79 87654321",
-    timestamp: "10/09/2026 08:21:05",
-    status: "SUCCESS",
-  },
-  {
-    id: "OCR-20260910-003",
-    documentType: "CCCD",
-    patientName: "Lê Hoàng Nam",
-    confidenceScore: 72.4,
-    extractedId: "079123456789",
-    timestamp: "10/09/2026 08:35:17",
-    status: "FLAGGED_FOR_REVIEW",
-  },
-  {
-    id: "OCR-20260910-004",
-    documentType: "OLD_PRESCRIPTION",
-    patientName: "Phạm Minh Đức",
-    confidenceScore: 94.7,
-    extractedId: "PRE-2025-4421",
-    timestamp: "10/09/2026 09:02:44",
-    status: "SUCCESS",
-  },
-  {
-    id: "OCR-20260910-005",
-    documentType: "BHYT_CARD",
-    patientName: "Hoàng Thị Lan",
-    confidenceScore: 97.6,
-    extractedId: "DN 4 79 79 11223344",
-    timestamp: "10/09/2026 09:15:28",
-    status: "SUCCESS",
-  },
-  {
-    id: "OCR-20260910-006",
-    documentType: "CCCD",
-    patientName: "Vũ Thanh Hằng",
-    confidenceScore: 68.9,
-    extractedId: "079987654321",
-    timestamp: "10/09/2026 09:30:11",
-    status: "FLAGGED_FOR_REVIEW",
-  },
-];
-
 export const MOCK_HOSPITAL_CODES: HospitalCode[] = [
   { code: "79-014", name: "BV Đa Khoa Sài Gòn", copayPercent: 20 },
   { code: "01-002", name: "BV Bạch Mai", copayPercent: 20 },
@@ -1191,12 +1124,6 @@ export const DUTY_TYPE_LABELS: Record<DutyType, string> = {
 };
 
 export const DOCTOR_TITLE_OPTIONS = ["PGS.TS", "BS.CKI", "BS.CKII", "ThS.BS", "BS"] as const;
-
-export const DOC_TYPE_LABELS: Record<OcrAuditLog["documentType"], string> = {
-  BHYT_CARD: "Thẻ BHYT",
-  OLD_PRESCRIPTION: "Đơn thuốc cũ",
-  CCCD: "CCCD",
-};
 
 export const MAX_PATIENTS_PER_SLOT = 4;
 

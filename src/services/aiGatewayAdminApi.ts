@@ -3,7 +3,7 @@ import axios from "axios";
 /**
  * Typed HTTP client for the AI Gateway's administrative surface (FastAPI),
  * which serves the admin console's model configuration, the pgvector knowledge
- * store, the ingestion pipeline and the OCR audit trail.
+ * store and the ingestion pipeline.
  *
  * Talks to the gateway **directly** at `VITE_AI_GATEWAY_URL` (default
  * http://localhost:8008 - the port `uvicorn app.api:app` serves) rather than
@@ -84,18 +84,6 @@ export interface RealKnowledgeDoc {
   embeddingModel: string;
   createdAt: string;
   status: "INDEXED";
-}
-
-/** One audit row reconstructed from the gateway's `confirmed_bhyt.jsonl`. */
-export interface RealOcrLog {
-  id: string;
-  documentType: "BHYT_CARD";
-  patientName: string;
-  extractedId: string;
-  /** 0-100, as the audit trail records it. */
-  confidenceScore: number;
-  timestamp: string;
-  status: "SUCCESS" | "FLAGGED_FOR_REVIEW";
 }
 
 /** A file sitting in the gateway's `data/raw_docs/`, ready to ingest. */
@@ -301,10 +289,3 @@ export async function runIngestPipelineApi(payload: {
   return data;
 }
 
-/** Real OCR audit logs, reconstructed from the gateway's `confirmed_bhyt.jsonl`. */
-export async function getOcrLogsApi(): Promise<RealOcrLog[]> {
-  const { data } = await aiGatewayAdminApi.get<{ logs: RealOcrLog[] }>(
-    "/api/v1/admin/ocr-logs",
-  );
-  return data.logs ?? [];
-}
