@@ -567,6 +567,7 @@ export default function DoctorEHRPage() {
                 `${encounter.date} - ${encounter.department}: ${encounter.complaint} (${encounter.diagnosis})`,
             )
             .join("; "),
+          rawTranscript: revealedLines.map((line) => line.text).join("\n"),
         });
 
         const icdCodes = diagnosesToCodes(response.diagnoses);
@@ -608,6 +609,7 @@ export default function DoctorEHRPage() {
       isSubmittingAi,
       patient,
       patientId,
+      revealedLines,
       rxLines,
       session.doctorId,
       session.profile.departmentId,
@@ -830,54 +832,58 @@ export default function DoctorEHRPage() {
               />
 
               {/* Approval dock */}
-              <footer className="flex h-14 shrink-0 items-center justify-between gap-3 border-t border-slate-200/80 bg-white px-4">
+              <footer className="flex h-14 shrink-0 items-center justify-between gap-3 border-t border-slate-200/80 bg-white px-5">
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
                     onClick={handleSaveDraft}
-                    className="inline-flex h-10 items-center rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+                    className="inline-flex h-9 items-center whitespace-nowrap rounded-lg border border-slate-300 bg-white px-3.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50"
                   >
-                    Lưu Bệnh án Nháp / Chưa hoàn tất
+                    Lưu nháp
                   </button>
                   <button
                     type="button"
                     onClick={handleRefer}
-                    className="inline-flex h-10 items-center rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+                    className="inline-flex h-9 items-center gap-1.5 whitespace-nowrap rounded-lg border border-slate-300 bg-white px-3.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50"
                   >
-                    <Send className="mr-1.5 h-4 w-4" aria-hidden="true" />
-                    Chuyển tuyến Bệnh viện / Hội chẩn
+                    <Send className="h-3.5 w-3.5" aria-hidden="true" />
+                    Chuyển tuyến / Hội chẩn
                   </button>
                 </div>
 
                 <div className="flex items-center gap-3">
-                  <span className="text-xs text-slate-500">
-                    {status === "DRAFT_READY"
-                      ? currentEncounterId === null
-                        ? isStartingEncounter
-                          ? "Đang mở bệnh án trên hệ thống..."
-                          : "Chưa có bệnh án trên hệ thống"
-                        : "Bệnh án AI chờ bác sĩ kiểm duyệt"
-                      : status === "APPROVED"
-                        ? "Ca khám đã hoàn tất"
-                        : "Đang chờ bệnh án AI"}
+                  <span
+                    className={`inline-flex items-center whitespace-nowrap rounded-full border px-2.5 py-1 text-xs font-medium ${
+                      hasPrescriptionErrors
+                        ? "border-red-200 bg-red-50 text-red-700"
+                        : status === "APPROVED"
+                          ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                          : "border-slate-200 bg-slate-50 text-slate-600"
+                    }`}
+                  >
+                    {hasPrescriptionErrors
+                      ? "⚠️ Lỗi đơn thuốc"
+                      : status === "DRAFT_READY"
+                        ? currentEncounterId === null
+                          ? isStartingEncounter
+                            ? "Đang mở bệnh án..."
+                            : "Chưa có bệnh án"
+                          : "Chờ bác sĩ duyệt"
+                        : status === "APPROVED"
+                          ? "Đã hoàn tất"
+                          : "Đang chờ bệnh án AI"}
                   </span>
                   {/* The button stays clickable so a doctor who clicks through
                       anyway gets the explanation from the toast, but the
-                      violation is spelled out here first. */}
-                  {hasPrescriptionErrors && (
-                    <span className="inline-flex items-center gap-1 rounded-full border border-red-200 bg-red-50 px-2.5 py-1 text-[11px] font-semibold text-red-700">
-                      ⚠️ Đơn thuốc có thuốc vi phạm dị ứng / tồn kho
-                    </span>
-                  )}
+                      violation is spelled out above first. */}
                   <button
                     type="button"
                     onClick={() => void handleApprove()}
                     disabled={status !== "DRAFT_READY" || isBusy}
-                    className="inline-flex h-12 items-center gap-2 rounded-lg bg-teal-600 px-8 text-base font-bold text-white shadow-md transition-colors hover:bg-teal-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500"
+                    className="inline-flex h-9 items-center gap-1.5 whitespace-nowrap rounded-lg bg-teal-600 px-4 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-teal-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500"
                   >
-                    <CheckCircle2 className="h-5 w-5" aria-hidden="true" />
-                    Ký Duyệt &amp; Hoàn Tất Ca Khám (Đẩy Đơn Xuống Quầy
-                    Dược)
+                    <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
+                    Ký duyệt &amp; Đẩy đơn thuốc
                   </button>
                 </div>
               </footer>

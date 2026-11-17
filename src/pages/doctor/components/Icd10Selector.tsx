@@ -16,11 +16,12 @@ interface Icd10SelectorProps {
 }
 
 /**
- * What the "Đề xuất AI" badge sends when the note box is still empty, so the
- * badge is always a working action rather than a dead label.
+ * The "Đề xuất AI" badge is a one-click action: it sends this explicit
+ * instruction with the live transcript / SOAP context instead of waiting for
+ * the doctor to type into the optional follow-up box.
  */
-const FALLBACK_AI_NOTE =
-  "Đề xuất mã chẩn đoán ICD-10 và đơn thuốc phù hợp với bệnh án hiện tại.";
+const AI_PROPOSAL_PROMPT =
+  "Đề xuất danh sách mã chẩn đoán ICD-10 chính xác và đơn thuốc phù hợp dựa trên hội thoại và ghi chú SOAP hiện tại.";
 
 export default function Icd10Selector({
   suggestions,
@@ -60,8 +61,9 @@ export default function Icd10Selector({
         </p>
         <button
           type="button"
-          onClick={() => submitProposal(aiNote.trim() || FALLBACK_AI_NOTE)}
+          onClick={() => submitProposal(AI_PROPOSAL_PROMPT)}
           disabled={isSubmittingAi}
+          title="Gửi hội thoại và ghi chú SOAP hiện tại để AI đề xuất ICD-10 và đơn thuốc"
           className="inline-flex shrink-0 items-center gap-1 rounded-md bg-teal-50 px-1.5 py-0.5 text-[10px] font-bold uppercase text-teal-700 transition-colors hover:bg-teal-100 disabled:cursor-wait disabled:opacity-70"
         >
           {isSubmittingAi ? (
@@ -105,8 +107,56 @@ export default function Icd10Selector({
         </button>
       </div>
 
-      {/* AI suggestions */}
+      {/* Autocomplete search */}
+      <div className="relative mt-2">
+        <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400">
+          <Search className="h-3.5 w-3.5" />
+        </span>
+        <input
+          type="search"
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setOpen(true);
+          }}
+          onFocus={() => setOpen(true)}
+          onBlur={() => window.setTimeout(() => setOpen(false), 150)}
+          placeholder="Tìm kiếm mã ICD-10 hoặc tên bệnh lý..."
+          className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-8 pr-3 text-xs text-slate-800 placeholder:text-slate-400 focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+        />
+        {open && results.length > 0 && (
+          <ul className="absolute z-20 mt-1 w-full rounded-lg border border-slate-200 bg-white shadow-elevated">
+            {results.map((item) => (
+              <li key={item.code}>
+                <button
+                  type="button"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    onAdd(item);
+                    setQuery("");
+                    setOpen(false);
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs hover:bg-teal-50"
+                >
+                  <span className="font-mono font-bold text-slate-800">
+                    {item.code}
+                  </span>
+                  <span className="truncate text-slate-600">{item.label}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      {/* AI suggestions, rendered right below the search bar */}
       <div className="mt-2 space-y-1.5">
+        {isSubmittingAi && suggestions.length === 0 && (
+          <div className="flex items-center gap-2 rounded-lg border border-teal-200 bg-teal-50/60 px-2.5 py-2 text-xs text-teal-700">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+            Đang phân tích hội thoại và ghi chú SOAP để đề xuất ICD-10...
+          </div>
+        )}
         {suggestions.map((item) => {
           const isAccepted = accepted.some((a) => a.code === item.code);
           // `toDiagnoses` sends the first accepted code as `isPrimary`, so the
@@ -172,48 +222,6 @@ export default function Icd10Selector({
           ))}
         </div>
       )}
-
-      {/* Autocomplete search */}
-      <div className="relative mt-3">
-        <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400">
-          <Search className="h-3.5 w-3.5" />
-        </span>
-        <input
-          type="search"
-          value={query}
-          onChange={(e) => {
-            setQuery(e.target.value);
-            setOpen(true);
-          }}
-          onFocus={() => setOpen(true)}
-          onBlur={() => window.setTimeout(() => setOpen(false), 150)}
-          placeholder="Tìm kiếm mã ICD-10 hoặc tên bệnh lý..."
-          className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-8 pr-3 text-xs text-slate-800 placeholder:text-slate-400 focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/20"
-        />
-        {open && results.length > 0 && (
-          <ul className="absolute z-20 mt-1 w-full rounded-lg border border-slate-200 bg-white shadow-elevated">
-            {results.map((item) => (
-              <li key={item.code}>
-                <button
-                  type="button"
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    onAdd(item);
-                    setQuery("");
-                    setOpen(false);
-                  }}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs hover:bg-teal-50"
-                >
-                  <span className="font-mono font-bold text-slate-800">
-                    {item.code}
-                  </span>
-                  <span className="truncate text-slate-600">{item.label}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
     </div>
   );
 }

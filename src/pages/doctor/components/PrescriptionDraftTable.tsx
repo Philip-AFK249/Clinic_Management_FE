@@ -15,7 +15,7 @@ interface PrescriptionDraftTableProps {
 
 /** What the "Đề xuất AI" badge asks the copilot for when there is no line yet. */
 const RX_AI_NOTE =
-  "Đề xuất đơn thuốc phù hợp với chẩn đoán và bệnh án hiện tại.";
+  "Đề xuất danh sách mã chẩn đoán ICD-10 chính xác và đơn thuốc phù hợp dựa trên hội thoại và ghi chú SOAP hiện tại.";
 
 export default function PrescriptionDraftTable({
   rxLines,

@@ -668,6 +668,8 @@ export interface CopilotChatRequest {
   patientId?: number | string;
   allergies?: string;
   patientHistory?: string;
+  /** Live consultation transcript, so the suggestion follows the dialogue. */
+  rawTranscript?: string;
 }
 
 /** Answer of `POST /api/v1/clinical/copilot-chat`. */
@@ -828,6 +830,7 @@ export async function sendCopilotChatApi(
         : {}),
       allergies: payload.allergies ?? "",
       patient_history: payload.patientHistory ?? "",
+      raw_transcript: payload.rawTranscript ?? "",
     });
     return requireGatewaySuccess(data);
   } catch (error) {
