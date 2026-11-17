@@ -182,6 +182,8 @@ export interface DrugDto {
   bhytCoverage: BhytCoverage;
   isPenicillinClass: boolean;
   active: boolean;
+  /** Optional because older `drugs` rows may not carry an expiry date. */
+  expiryDate?: string | null;
 }
 
 export interface PrescriptionItemResponse {
@@ -239,6 +241,7 @@ interface RawDrugResponse {
   penicillinClass?: boolean;
   active?: boolean;
   isActive?: boolean;
+  expiryDate?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -1076,5 +1079,6 @@ function normalizeDrug(raw: RawDrugResponse): DrugDto {
     bhytCoverage: raw.bhytCoverage,
     isPenicillinClass: raw.isPenicillinClass ?? raw.penicillinClass ?? false,
     active: raw.active ?? raw.isActive ?? true,
+    expiryDate: raw.expiryDate ?? null,
   };
 }

@@ -42,16 +42,53 @@ export function encounterTimestamp(encounter: PatientEncounterDto): number {
   return Number.isNaN(parsed) ? 0 : parsed;
 }
 
+/** Client-only ticket minted by the old "Khám lại" flow, never from intake. */
+const SYNTHETIC_TICKET_PREFIX = "#TK-RE-";
+
+/** `YYYY-MM-DD` bucket used to compare a synthetic row with a real visit. */
+function encounterDateKey(encounter: PatientEncounterDto): string {
+  const raw = encounter.encounterDate || encounter.createdAt || "";
+  const match = /^(\d{4}-\d{2}-\d{2})/.exec(raw);
+  return match ? match[1] : raw.slice(0, 10);
+}
+
+function isSyntheticTicket(ticketNumber: string | undefined): boolean {
+  return Boolean(ticketNumber?.startsWith(SYNTHETIC_TICKET_PREFIX));
+}
+
 /**
  * Merge the lookups into one timeline. The same encounter can arrive from both
  * a patient id and a ticket number, and the later copy wins field by field so
  * the richer payload (prescription lines, billing) is preserved.
+ *
+ * Cancelled encounters are dropped entirely. Client-only `#TK-RE-...` rows are
+ * also dropped once a real completed encounter exists on the same date, so a
+ * stale synthetic "Đang khám" row cannot shadow the visit the patient actually
+ * finished.
  */
 export function mergeEncounters(
   list: PatientEncounterDto[],
 ): PatientEncounterDto[] {
+  const active = list.filter((encounter) => encounter.status !== "CANCELLED");
+
+  const completedDates = new Set(
+    active
+      .filter(
+        (encounter) =>
+          encounter.status === "COMPLETED" &&
+          !isSyntheticTicket(encounter.ticketNumber),
+      )
+      .map(encounterDateKey),
+  );
+
   const byKey = new Map<string, PatientEncounterDto>();
-  for (const encounter of list) {
+  for (const encounter of active) {
+    if (
+      isSyntheticTicket(encounter.ticketNumber) &&
+      completedDates.has(encounterDateKey(encounter))
+    ) {
+      continue;
+    }
     const key = encounterKey(encounter);
     const existing = byKey.get(key);
     byKey.set(key, existing ? { ...existing, ...encounter } : encounter);

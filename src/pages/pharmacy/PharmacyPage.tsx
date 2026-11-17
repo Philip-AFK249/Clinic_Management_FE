@@ -3,7 +3,9 @@ import { toast } from "sonner";
 import {
   AlertTriangle,
   BadgeCheck,
+  ClipboardList,
   PackageCheck,
+  PackageSearch,
   Printer,
   RefreshCw,
   X,
@@ -16,6 +18,7 @@ import PrescriptionDetailCard from "./components/PrescriptionDetailCard";
 import MedicationPackingTray from "./components/MedicationPackingTray";
 import QrVerificationModal from "./components/QrVerificationModal";
 import BillingSummaryCard from "./components/BillingSummaryCard";
+import PharmacyInventoryPanel from "./components/PharmacyInventoryPanel";
 import { usePharmacyQueue } from "./hooks/usePharmacyQueue";
 import { usePharmacySession } from "./hooks/usePharmacySession";
 import { dispensePrescriptionApi } from "../../services/clinicalApi";
@@ -24,10 +27,21 @@ function formatMoney(value: number): string {
   return `${value.toLocaleString("vi-VN")} đ`;
 }
 
+type PharmacyView = "DISPENSE" | "INVENTORY";
+
+const VIEW_TABS: { key: PharmacyView; label: string; Icon: typeof ClipboardList }[] = [
+  { key: "DISPENSE", label: "Hàng đợi cấp phát", Icon: ClipboardList },
+  { key: "INVENTORY", label: "Kiểm tra tồn kho", Icon: PackageSearch },
+];
+
 export default function PharmacyPage() {
   const queue = usePharmacyQueue();
   const session = usePharmacySession();
   const [isDispensing, setIsDispensing] = useState(false);
+  const [activeView, setActiveView] = useState<PharmacyView>("DISPENSE");
+  // Bumped after each successful handover so the inventory tab reloads the
+  // stock the backend just decremented.
+  const [inventoryRefreshToken, setInventoryRefreshToken] = useState(0);
 
   const selectedOrder = queue.selectedOrder;
   const isDispensed = selectedOrder?.status === "DISPENSED";
@@ -73,6 +87,7 @@ export default function PharmacyPage() {
       );
       queue.markDispensed(selectedOrder.orderId);
       queue.refreshQueue();
+      setInventoryRefreshToken((token) => token + 1);
     } catch (cause) {
       toast.error(
         cause instanceof Error
@@ -108,8 +123,37 @@ export default function PharmacyPage() {
         onOpenScanner={queue.toggleQrScanner}
       />
 
-      <div className="flex min-h-0 flex-1">
-        <PrescriptionQueueList
+      {/* Primary view switcher */}
+      <div
+        role="tablist"
+        aria-label="Khu vực quầy dược"
+        className="flex shrink-0 items-center gap-1 border-b border-slate-200/80 bg-white px-4 py-2"
+      >
+        {VIEW_TABS.map(({ key, label, Icon }) => {
+          const active = activeView === key;
+          return (
+            <button
+              key={key}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              onClick={() => setActiveView(key)}
+              className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
+                active
+                  ? "bg-emerald-600 text-white shadow-sm"
+                  : "text-slate-600 hover:bg-slate-100"
+              }`}
+            >
+              <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+              {label}
+            </button>
+          );
+        })}
+      </div>
+
+      {activeView === "DISPENSE" ? (
+        <div className="flex min-h-0 flex-1">
+          <PrescriptionQueueList
           orders={queue.orders}
           selectedOrderId={queue.selectedOrderId}
           status={queue.queueStatus}
@@ -233,9 +277,12 @@ export default function PharmacyPage() {
             </div>
           )}
         </main>
-      </div>
+        </div>
+      ) : (
+        <PharmacyInventoryPanel refreshToken={inventoryRefreshToken} />
+      )}
 
-      {selectedOrder && !isDispensed && (
+      {activeView === "DISPENSE" && selectedOrder && !isDispensed && (
         <QrVerificationModal
           open={queue.qrOpen}
           order={selectedOrder}
@@ -245,7 +292,7 @@ export default function PharmacyPage() {
       )}
 
       {/* VietQR popup */}
-      {queue.billingQrOpen && selectedOrder && !isDispensed && (
+      {activeView === "DISPENSE" && queue.billingQrOpen && selectedOrder && !isDispensed && (
         <div
           className="fixed inset-0 z-50"
           role="dialog"

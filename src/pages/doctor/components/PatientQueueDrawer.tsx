@@ -128,7 +128,10 @@ export default function PatientQueueDrawer({
   onViewEncounter,
   onReExamine,
 }: PatientQueueDrawerProps) {
-  const [collapsed, setCollapsed] = useState(false);
+  const [manualToggle, setManualToggle] = useState<{
+    key: string | null;
+    collapsed: boolean;
+  } | null>(null);
   const [tab, setTab] = useState<SidebarTab>("QUEUE");
   const today = todayIso();
   const tomorrow = dayOffsetIso(1);
@@ -137,6 +140,20 @@ export default function PatientQueueDrawer({
   const showingHistory = tab === "HISTORY";
   const refreshing = showingHistory ? isHistoryLoading : isRefreshing;
 
+  // Give the clinical workspace more width whenever the queue has nothing to
+  // show or the doctor is already with a patient. The rail keeps the count
+  // visible and one click away; a manual toggle sticks for the current
+  // condition and resets when a new patient / queue state arrives.
+  const autoCollapseKey = activePatient
+    ? `active:${activePatient.ticketNumber}`
+    : queue.length === 0
+      ? "empty"
+      : null;
+  const collapsed =
+    manualToggle?.key === autoCollapseKey
+      ? manualToggle.collapsed
+      : autoCollapseKey !== null;
+
   function selectTab(next: SidebarTab) {
     setTab(next);
     if (next === "HISTORY") onRefreshHistory();
@@ -144,19 +161,28 @@ export default function PatientQueueDrawer({
 
   if (collapsed) {
     return (
-      <aside className="flex w-12 shrink-0 flex-col items-center gap-3 border-r border-slate-200/80 bg-white py-3">
+      <aside className="flex w-[52px] shrink-0 flex-col items-center gap-3 border-r border-slate-200/80 bg-white py-3">
         <button
           type="button"
-          onClick={() => setCollapsed(false)}
+          onClick={() => setManualToggle({ key: autoCollapseKey, collapsed: false })}
           aria-label="Mở rộng hàng đợi bệnh nhân"
+          title="Mở rộng hàng đợi bệnh nhân"
           className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-teal-700"
         >
           <ChevronRight className="h-4 w-4" />
         </button>
-        <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-teal-50 text-teal-700">
+        <span
+          className="flex h-9 w-9 items-center justify-center rounded-lg bg-teal-50 text-teal-700"
+          title="Hàng đợi bệnh nhân"
+        >
           <Users className="h-4 w-4" />
         </span>
-        <span className="text-xs font-bold text-slate-900">{queue.length}</span>
+        <span
+          title={`${queue.length} bệnh nhân trong hàng đợi`}
+          className="inline-flex min-w-[26px] items-center justify-center rounded-full bg-teal-600 px-1.5 py-0.5 text-[11px] font-bold text-white"
+        >
+          {queue.length}
+        </span>
       </aside>
     );
   }
@@ -219,7 +245,7 @@ export default function PatientQueueDrawer({
           </button>
           <button
             type="button"
-            onClick={() => setCollapsed(true)}
+            onClick={() => setManualToggle({ key: autoCollapseKey, collapsed: true })}
             aria-label="Thu gọn hàng đợi bệnh nhân"
             className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-teal-700"
           >

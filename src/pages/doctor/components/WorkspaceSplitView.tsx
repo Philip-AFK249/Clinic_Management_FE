@@ -10,11 +10,11 @@ export default function WorkspaceSplitView({
   right,
 }: WorkspaceSplitViewProps) {
   return (
-    <div className="grid min-h-0 flex-1 grid-cols-12">
-      <section className="col-span-5 flex min-h-0 flex-col border-r border-slate-200/80 bg-white">
+    <div className="grid min-h-0 flex-1 grid-cols-5">
+      <section className="col-span-2 flex min-h-0 min-w-0 flex-col border-r border-slate-200/80 bg-white">
         {left}
       </section>
-      <section className="col-span-7 flex min-h-0 flex-col bg-surface-light">
+      <section className="col-span-3 flex min-h-0 min-w-0 flex-col bg-surface-light">
         {right}
       </section>
     </div>

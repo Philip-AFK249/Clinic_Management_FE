@@ -18,7 +18,6 @@ import { useDoctorEncounterHistory } from "./hooks/useDoctorEncounterHistory";
 import { useDrugCatalog } from "../../hooks/useDrugCatalog";
 import { toDiagnoses, toPrescriptionItems, rxLinesToDraft } from "./data/rxMapper";
 import { vitalsObjectiveLine } from "./data/ticketMapper";
-import { encounterToPatientRecord } from "./data/encounterMapper";
 import {
   diagnosesToCodes,
   normalizePrescriptionDraft,
@@ -60,7 +59,6 @@ export default function DoctorEHRPage() {
   /** History-tab row opened in the slide-over; null means the active chart. */
   const [selectedHistoryEncounter, setSelectedHistoryEncounter] =
     useState<PatientEncounterDto | null>(null);
-  const [isReExamining, setIsReExamining] = useState(false);
   /**
    * The bệnh án opened for the patient in the room. Held in state (not a
    * module constant) because it belongs to one consultation: it is created when
@@ -246,7 +244,10 @@ export default function DoctorEHRPage() {
 
   const buildStartEncounterPayload =
     useCallback((): StartEncounterPayload | null => {
-      if (!ticketNumber) return null;
+      // Only a ticket minted by PatientIntakeService may open an encounter.
+      // Client-only `#TK-RE-...` re-examination tickets have no intake row and
+      // must never be sent to `/clinical/encounters/start`.
+      if (!ticketNumber || !isValidTicketNumber(ticketNumber)) return null;
       return {
         ticketNumber,
         patientId,
@@ -520,88 +521,28 @@ export default function DoctorEHRPage() {
   }, []);
 
   /**
-   * Open a fresh encounter for a patient who has been seen before.
+   * Re-examination needs a real intake ticket.
    *
-   * The old visit cannot be resumed: ClinicalConsultationService keys encounters
-   * by today's ticket, and the previous one is already COMPLETED. We mint a
-   * local `#TK-RE-...` ticket, start a new encounter, and reopen the chart with
-   * the previous visits as context so the doctor records a normal new visit.
+   * A click from the history tab has no live queue row, and minting a local
+   * `#TK-RE-...` ticket would create an encounter the patient dashboard and
+   * pharmacy cannot reconcile. Tell the doctor to issue a proper ticket at
+   * reception or the kiosk, then call the patient from the queue instead.
    */
   const handleReExamine = useCallback(
-    async (encounter: PatientEncounterDto) => {
-      if (queue.ongoingTicket || queue.activePatient) {
+    (encounter: PatientEncounterDto) => {
+      if (queue.activePatient) {
         toast.warning(
           "Vui lòng hoàn thành ca khám hiện tại trước khi tiếp nhận ca mới.",
           { duration: 5000 },
         );
         return;
       }
-      if (isReExamining) return;
-      if (
-        !window.confirm(
-          `Tiếp nhận khám lại cho bệnh nhân ${encounter.patientName} hôm nay?`,
-        )
-      ) {
-        return;
-      }
-
-      const ticketNumber = `#TK-RE-${encounter.patientId}-${Date.now().toString().slice(-4)}`;
-      // Fall back to the clicked row when the history list is stale/empty, so
-      // the reopened chart still carries this visit instead of no history.
-      const historySource = doctorEncounters.some(
-        (item) => item.patientId === encounter.patientId,
-      )
-        ? doctorEncounters
-        : [encounter];
-      const record = encounterToPatientRecord(
-        encounter,
-        historySource,
-        ticketNumber,
+      toast.warning(
+        `Không thể mở ca khám lại cho ${encounter.patientName} bằng phiếu tạm. Vui lòng cấp số mới tại Quầy Tiếp Đón hoặc Kiosk rồi gọi bệnh nhân từ hàng đợi.`,
+        { duration: 6000 },
       );
-
-      setIsReExamining(true);
-      try {
-        const started = await startEncounterApi({
-          ticketNumber,
-          patientId: encounter.patientId,
-          patientName: encounter.patientName,
-          doctorId: session.doctorId,
-          doctorName: session.profile.fullName,
-          departmentId: session.profile.departmentId,
-        });
-
-        // Mark the encounter as opened *before* selecting the ticket: the
-        // page effect must not send a second POST for the same synthetic ticket.
-        startedTicketRef.current = ticketNumber;
-        warnedTicketRef.current = null;
-        setCurrentEncounterId(started.encounterId);
-        setTicketDetailState({ ticket: ticketNumber, detail: null });
-        setSelectedHistoryEncounter(null);
-        setHistoryOpen(false);
-        queue.selectTicket(record);
-        toast.success(
-          `Đã tiếp nhận khám lại cho ${encounter.patientName}. Bắt đầu ghi âm ca mới.`,
-          { duration: 4000 },
-        );
-      } catch (cause) {
-        toast.error(
-          cause instanceof Error
-            ? `Không tiếp nhận được ca khám lại: ${cause.message}`
-            : "Không tiếp nhận được ca khám lại. Vui lòng thử lại.",
-          { duration: 6000 },
-        );
-      } finally {
-        setIsReExamining(false);
-      }
     },
-    [
-      doctorEncounters,
-      isReExamining,
-      queue,
-      session.doctorId,
-      session.profile.departmentId,
-      session.profile.fullName,
-    ],
+    [queue.activePatient],
   );
 
   const handleAiProposal = useCallback(
