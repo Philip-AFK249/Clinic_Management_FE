@@ -6,7 +6,6 @@ import {
   Loader2,
   QrCode,
   RefreshCw,
-  RotateCcw,
   Users,
   WifiOff,
 } from "lucide-react";
@@ -47,7 +46,6 @@ interface PatientQueueDrawerProps {
   onRefresh: () => void;
   onRefreshHistory: () => void;
   onViewEncounter: (encounter: PatientEncounterDto) => void;
-  onReExamine: (encounter: PatientEncounterDto) => void;
 }
 
 const TRIAGE_STYLES: Record<
@@ -126,7 +124,6 @@ export default function PatientQueueDrawer({
   onRefresh,
   onRefreshHistory,
   onViewEncounter,
-  onReExamine,
 }: PatientQueueDrawerProps) {
   const [manualToggle, setManualToggle] = useState<{
     key: string | null;
@@ -519,33 +516,25 @@ export default function PatientQueueDrawer({
                     </span>
                   </p>
                 )}
-                <div className="mt-2 grid grid-cols-2 gap-1.5">
-                  <button
-                    type="button"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onViewEncounter(encounter);
-                    }}
-                    className="inline-flex h-8 items-center justify-center gap-1 rounded-md border border-slate-200 bg-white text-[11px] font-semibold text-slate-700 transition-colors hover:border-teal-300 hover:text-teal-700"
-                  >
-                    <FileText className="h-3 w-3" aria-hidden="true" />
-                    Xem bệnh án
-                  </button>
-                  <button
-                    type="button"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onReExamine(encounter);
-                    }}
-                    className="inline-flex h-8 items-center justify-center gap-1 rounded-md bg-teal-600 text-[11px] font-semibold text-white transition-colors hover:bg-teal-700"
-                  >
-                    <RotateCcw className="h-3 w-3" aria-hidden="true" />
-                    Khám lại
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onViewEncounter(encounter);
+                  }}
+                  className="mt-2 inline-flex h-8 w-full items-center justify-center gap-1 rounded-md border border-slate-200 bg-white text-[11px] font-semibold text-slate-700 transition-colors hover:border-teal-300 hover:text-teal-700"
+                >
+                  <FileText className="h-3 w-3" aria-hidden="true" />
+                  Xem bệnh án
+                </button>
               </article>
             );
           })}
+
+          <p className="pt-1 text-center text-[10px] leading-relaxed text-slate-500">
+            Để tiếp nhận khám lại, vui lòng cấp số mới tại Quầy Tiếp Đón hoặc
+            Kiosk.
+          </p>
         </div>
       )}
     </aside>

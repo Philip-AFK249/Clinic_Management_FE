@@ -190,8 +190,8 @@ export default function DoctorEHRPage() {
     ticket: string;
     detail: QueueTicketDetailResponse | null;
   } | null>(null);
-  // Re-examination tickets are minted in the UI and have no intake row, so
-  // they always settle with no vitals instead of waiting on a fetch.
+  // A ticket without an intake row has no vitals to fetch, so it settles
+  // immediately instead of waiting on a request that can never succeed.
   const isSyntheticTicket =
     ticketNumber !== null && !isValidTicketNumber(ticketNumber);
   const ticketDetail = isSyntheticTicket
@@ -205,7 +205,7 @@ export default function DoctorEHRPage() {
 
   useEffect(() => {
     if (!ticketNumber) return undefined;
-    // Nothing to fetch for a synthetic ticket; `vitalsReady` above already
+    // Nothing to fetch without an intake row; `vitalsReady` above already
     // treats it as settled so the encounter can open immediately.
     if (isSyntheticTicket) return undefined;
     let cancelled = false;
@@ -245,8 +245,8 @@ export default function DoctorEHRPage() {
   const buildStartEncounterPayload =
     useCallback((): StartEncounterPayload | null => {
       // Only a ticket minted by PatientIntakeService may open an encounter.
-      // Client-only `#TK-RE-...` re-examination tickets have no intake row and
-      // must never be sent to `/clinical/encounters/start`.
+      // A ticket without an intake row must never reach
+      // `/clinical/encounters/start`.
       if (!ticketNumber || !isValidTicketNumber(ticketNumber)) return null;
       return {
         ticketNumber,
@@ -520,31 +520,6 @@ export default function DoctorEHRPage() {
     setHistoryOpen(true);
   }, []);
 
-  /**
-   * Re-examination needs a real intake ticket.
-   *
-   * A click from the history tab has no live queue row, and minting a local
-   * `#TK-RE-...` ticket would create an encounter the patient dashboard and
-   * pharmacy cannot reconcile. Tell the doctor to issue a proper ticket at
-   * reception or the kiosk, then call the patient from the queue instead.
-   */
-  const handleReExamine = useCallback(
-    (encounter: PatientEncounterDto) => {
-      if (queue.activePatient) {
-        toast.warning(
-          "Vui lòng hoàn thành ca khám hiện tại trước khi tiếp nhận ca mới.",
-          { duration: 5000 },
-        );
-        return;
-      }
-      toast.warning(
-        `Không thể mở ca khám lại cho ${encounter.patientName} bằng phiếu tạm. Vui lòng cấp số mới tại Quầy Tiếp Đón hoặc Kiosk rồi gọi bệnh nhân từ hàng đợi.`,
-        { duration: 6000 },
-      );
-    },
-    [queue.activePatient],
-  );
-
   const handleAiProposal = useCallback(
     async (promptText: string) => {
       const message = promptText.trim();
@@ -774,7 +749,6 @@ export default function DoctorEHRPage() {
           onRefresh={queue.refresh}
           onRefreshHistory={refreshEncounterHistory}
           onViewEncounter={handleViewEncounter}
-          onReExamine={(encounter) => void handleReExamine(encounter)}
         />
 
         {/* Main workspace */}
