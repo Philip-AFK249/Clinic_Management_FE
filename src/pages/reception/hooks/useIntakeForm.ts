@@ -4,6 +4,7 @@ import { toIsoDate as toOcrIsoDate } from "../../../services/ocrApi";
 import type { BhytOcrData } from "../../../services/ocrApi";
 import { RECEPTION_DEPARTMENTS, toIsoDate } from "../data/receptionMockData";
 import type { OcrCardSample } from "../data/receptionMockData";
+import type { ReceiptScanResult } from "../components/ReceiptScanModal";
 
 export type IntakeMode = "SCAN" | "MANUAL";
 
@@ -23,9 +24,15 @@ export interface IntakeFormState {
   slotStartTime: string;
   priorityLevel: TriagePriority;
   chiefComplaint: string;
+  receiptNumber: string;
+  receiptAmount: number | null;
+  isReceiptVerified: boolean;
 }
 
-export type IntakeField = Exclude<keyof IntakeFormState, "mode" | "isOcrVerified">;
+export type IntakeField = Exclude<
+  keyof IntakeFormState,
+  "mode" | "isOcrVerified" | "receiptNumber" | "receiptAmount" | "isReceiptVerified"
+>;
 
 export type IntakeErrors = Partial<Record<IntakeField, string>>;
 
@@ -104,6 +111,9 @@ function createInitialState(): IntakeFormState {
     slotStartTime: "",
     priorityLevel: "P3",
     chiefComplaint: "",
+    receiptNumber: "",
+    receiptAmount: null,
+    isReceiptVerified: false,
   };
 }
 
@@ -206,6 +216,12 @@ export function useIntakeForm() {
           const scanned = normalizeInsuranceCode(current.insuranceCode);
           if (!edited || edited !== scanned) next.isOcrVerified = false;
         }
+        if (
+          (field === "receiptNumber" || field === "receiptAmount") &&
+          current.isReceiptVerified
+        ) {
+          next.isReceiptVerified = false;
+        }
         return next;
       });
     },
@@ -272,6 +288,15 @@ export function useIntakeForm() {
     }));
   }, []);
 
+  const applyReceiptResult = useCallback((result: ReceiptScanResult) => {
+    setForm((current) => ({
+      ...current,
+      receiptNumber: result.receiptNumber,
+      receiptAmount: result.receiptAmount,
+      isReceiptVerified: true,
+    }));
+  }, []);
+
   const reset = useCallback(() => {
     setForm(createInitialState());
   }, []);
@@ -303,6 +328,9 @@ export function useIntakeForm() {
       priorityLevel: form.priorityLevel,
       intakeSource: intakeSourceFor(form.mode),
       chiefComplaint: optional(form.chiefComplaint),
+      receiptNumber: optional(form.receiptNumber),
+      receiptAmount: form.receiptAmount,
+      isReceiptVerified: form.isReceiptVerified,
     };
   }, [departmentName, form]);
 
@@ -325,6 +353,7 @@ export function useIntakeForm() {
     setMode,
     applyOcrSample,
     applyOcrResult,
+    applyReceiptResult,
     reset,
     validate,
     toRequest,

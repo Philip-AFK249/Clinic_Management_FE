@@ -71,6 +71,8 @@ export interface User {
   initialHospitalCode?: string;
   /** True once the BHYT card has been read back through the OCR scanner. */
   isOcrVerified?: boolean;
+  medicalHistory?: string;
+  allergies?: string;
 }
 
 /**
@@ -89,6 +91,8 @@ export type PatientProfileFields = Pick<
   | "insuranceCode"
   | "initialHospitalCode"
   | "isOcrVerified"
+  | "medicalHistory"
+  | "allergies"
 >;
 
 /**
@@ -105,6 +109,8 @@ export const PATIENT_PROFILE_FIELDS: (keyof PatientProfileFields)[] = [
   "insuranceCode",
   "initialHospitalCode",
   "isOcrVerified",
+  "medicalHistory",
+  "allergies",
 ];
 
 /**

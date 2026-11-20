@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { AlertTriangle, Calendar, ChevronLeft, Check, PhoneCall } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "../../context/useAuth";
+import { updateMyProfileApi } from "../../services/authApi";
 import { normalizeBhytInsuranceCode } from "../../services/ocrApi";
 import {
   checkInPatient,
@@ -20,6 +21,8 @@ import PatientFooter from "./components/PatientFooter";
 import SymptomsStep from "./components/SymptomsStep";
 import BookingIdentityFields from "./components/BookingIdentityFields";
 import BookingTicketModal from "./components/BookingTicketModal";
+import MedicalBillOcrModal from "./components/MedicalBillOcrModal";
+import type { MedicalBillOcrResult } from "./components/MedicalBillOcrModal";
 import RescheduleMorningModal from "./components/RescheduleMorningModal";
 import FloatingRagChatbot from "./components/FloatingRagChatbot";
 import {
@@ -95,6 +98,20 @@ function dayMonthLabelFrom(iso: string): string {
   return m ? `${m[3]}/${m[2]}` : iso;
 }
 
+function appendUniqueLines(current: string | undefined, additions: string[]): string {
+  const seen = new Set(
+    (current ?? "")
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean),
+  );
+  for (const addition of additions) {
+    const line = addition.trim();
+    if (line) seen.add(line);
+  }
+  return [...seen].join("\n");
+}
+
 /** The booking form, patient identity included. */
 interface BookingFormData extends BookingIdentityFieldsValue {
   /** True once a card has been read back through the OCR service. */
@@ -135,7 +152,7 @@ function formFromSession(user: User | null): BookingFormData {
 }
 
 export default function BookingPage() {
-  const { user } = useAuth();
+  const { user, updateUser } = useAuth();
   const navigate = useNavigate();
   const [step, setStep] = useState(0);
   const [symptoms, setSymptoms] = useState("");
@@ -171,6 +188,10 @@ export default function BookingPage() {
   const [rescanRequested, setRescanRequested] = useState(false);
   /** Set once a scan lands here, so this page stops re-offering to skip it. */
   const [scannedThisSession, setScannedThisSession] = useState(false);
+  const [isBillOcrOpen, setIsBillOcrOpen] = useState(false);
+  const [billOcrResult, setBillOcrResult] = useState<MedicalBillOcrResult | null>(
+    null,
+  );
 
   // --- Voice triage state -----------------------------------------------------
   // Held here rather than inside SymptomsStep because the results outlive the
@@ -381,6 +402,46 @@ export default function BookingPage() {
       setScannedThisSession(true);
     },
     [],
+  );
+
+  const handleMedicalBillConfirmed = useCallback(
+    (result: MedicalBillOcrResult) => {
+      const additions = [
+        result.clinicalSummary.trim(),
+        result.detectedMedications.length > 0
+          ? `Thuốc đã dùng: ${result.detectedMedications.join(", ")}`
+          : "",
+      ].filter(Boolean);
+      setSymptoms((prev) => appendUniqueLines(prev, additions));
+      setBillOcrResult(result);
+      setIsBillOcrOpen(false);
+
+      const fullName = user?.fullName.trim() || formData.fullName.trim();
+      if (!fullName) return;
+      const medicalHistory = appendUniqueLines(user?.medicalHistory, [
+        result.clinicalSummary,
+        ...result.detectedMedications.map((name) => `Thuốc đã dùng: ${name}`),
+      ]);
+      const allergies = appendUniqueLines(user?.allergies, result.allergyHints);
+
+      void updateMyProfileApi({
+        fullName,
+        medicalHistory: medicalHistory || null,
+        allergies: allergies || null,
+      })
+        .then(() => {
+          updateUser({
+            medicalHistory: medicalHistory || undefined,
+            allergies: allergies || undefined,
+          });
+        })
+        .catch((error: unknown) => {
+          toast.warning("Đã thêm thông tin vào lịch hẹn nhưng chưa lưu vào hồ sơ.", {
+            description: error instanceof Error ? error.message : undefined,
+          });
+        });
+    },
+    [formData.fullName, updateUser, user],
   );
 
   /**
@@ -781,6 +842,7 @@ export default function BookingPage() {
     setIsSubmitting(false);
     setRescanRequested(false);
     setScannedThisSession(false);
+    setBillOcrResult(null);
     setVoiceTriage(null);
     setVoiceClip(null);
     setShiftSelection(null);
@@ -1110,6 +1172,10 @@ export default function BookingPage() {
                   triageDate={triageDate}
                   onTriageDateChange={handleTriageDateChange}
                   isRefreshingSchedule={isRefreshingSchedule}
+                  onOpenBillOcr={() => setIsBillOcrOpen(true)}
+                  medicalBillSummary={billOcrResult?.clinicalSummary}
+                  detectedMedications={billOcrResult?.detectedMedications}
+                  allergyHints={billOcrResult?.allergyHints}
                   afterHours={afterHours}
                 />
               )}
@@ -1265,6 +1331,12 @@ export default function BookingPage() {
           onClose={resetBooking}
         />
       )}
+
+      <MedicalBillOcrModal
+        isOpen={isBillOcrOpen}
+        onClose={() => setIsBillOcrOpen(false)}
+        onConfirmed={handleMedicalBillConfirmed}
+      />
     </div>
   );
 }

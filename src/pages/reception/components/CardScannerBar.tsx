@@ -3,6 +3,7 @@ import {
   CheckCircle2,
   CreditCard,
   Keyboard,
+  ReceiptText,
   ScanLine,
   TriangleAlert,
 } from "lucide-react";
@@ -10,6 +11,8 @@ import type { IntakeMode } from "../hooks/useIntakeForm";
 import { INTAKE_SOURCE_LABELS } from "../data/receptionMockData";
 import type { OcrCardSample } from "../data/receptionMockData";
 import BhytScanModal from "./BhytScanModal";
+import ReceiptScanModal from "./ReceiptScanModal";
+import type { ReceiptScanResult } from "./ReceiptScanModal";
 import type { BhytOcrData } from "../../../services/ocrApi";
 
 interface CardScannerBarProps {
@@ -19,6 +22,9 @@ interface CardScannerBarProps {
   onModeChange: (mode: IntakeMode) => void;
   /** Hands the AI Gateway payload up so the page can fold it into the form. */
   onApplyOcr: (data: BhytOcrData) => void;
+  receiptNumber?: string;
+  isReceiptVerified?: boolean;
+  onApplyReceipt: (result: ReceiptScanResult) => void;
 }
 
 export default function CardScannerBar({
@@ -27,12 +33,21 @@ export default function CardScannerBar({
   sample,
   onModeChange,
   onApplyOcr,
+  receiptNumber = "",
+  isReceiptVerified = false,
+  onApplyReceipt,
 }: CardScannerBarProps) {
   const [isScanModalOpen, setIsScanModalOpen] = useState(false);
+  const [isReceiptScanOpen, setIsReceiptScanOpen] = useState(false);
 
   function handleApply(data: BhytOcrData) {
     onApplyOcr(data);
     setIsScanModalOpen(false);
+  }
+
+  function handleApplyReceipt(result: ReceiptScanResult) {
+    onApplyReceipt(result);
+    setIsReceiptScanOpen(false);
   }
 
   return (
@@ -90,14 +105,24 @@ export default function CardScannerBar({
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={() => setIsScanModalOpen(true)}
-              className="inline-flex h-12 shrink-0 items-center justify-center gap-2 rounded-lg bg-teal-600 px-5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-teal-700 active:scale-[0.98]"
-            >
-              <ScanLine className="h-4 w-4" aria-hidden="true" />
-              Quét CCCD / BHYT
-            </button>
+            <div className="flex shrink-0 gap-2">
+              <button
+                type="button"
+                onClick={() => setIsScanModalOpen(true)}
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-teal-600 px-5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-teal-700 active:scale-[0.98]"
+              >
+                <ScanLine className="h-4 w-4" aria-hidden="true" />
+                Quét CCCD / BHYT
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsReceiptScanOpen(true)}
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-lg border border-teal-300 bg-white px-4 text-sm font-bold text-teal-700 shadow-sm transition-colors hover:bg-teal-50 active:scale-[0.98]"
+              >
+                <ReceiptText className="h-4 w-4" aria-hidden="true" />
+                Quét biên lai
+              </button>
+            </div>
           </div>
 
           {sample && (
@@ -140,6 +165,22 @@ export default function CardScannerBar({
             </div>
           )}
 
+          {receiptNumber && (
+            <div
+              className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-[11px] ${
+                isReceiptVerified
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                  : "border-amber-200 bg-amber-50 text-amber-800"
+              }`}
+            >
+              <ReceiptText className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              <span className="font-bold">
+                {isReceiptVerified ? "Biên lai đã xác thực" : "Biên lai đã chỉnh sửa"}
+              </span>
+              <span className="font-mono">{receiptNumber}</span>
+            </div>
+          )}
+
           {sample && !isOcrVerified && (
             <button
               type="button"
@@ -163,6 +204,11 @@ export default function CardScannerBar({
         isOpen={isScanModalOpen}
         onClose={() => setIsScanModalOpen(false)}
         onApply={handleApply}
+      />
+      <ReceiptScanModal
+        isOpen={isReceiptScanOpen}
+        onClose={() => setIsReceiptScanOpen(false)}
+        onApply={handleApplyReceipt}
       />
     </section>
   );

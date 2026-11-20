@@ -989,6 +989,7 @@ export interface CreateDrugPayload {
   unitPrice: number;
   bhytCoverage: BhytCoverageType;
   isPenicillinClass?: boolean;
+  expiryDate?: string | null;
 }
 
 export interface UpdateDrugPayload {
@@ -1000,10 +1001,56 @@ export interface UpdateDrugPayload {
   bhytCoverage: BhytCoverageType;
   isPenicillinClass?: boolean;
   active?: boolean;
+  expiryDate?: string | null;
 }
 
 export interface AdjustStockPayload {
   quantityChange: number;
+}
+
+export interface BatchRestockItemPayload {
+  drugId: number;
+  ocrDrugName?: string | null;
+  batchNumber?: string | null;
+  expiryDate?: string | null;
+  quantityAdded: number;
+  importUnitPrice?: number | null;
+  updateCatalogPrice?: boolean;
+}
+
+export interface BatchRestockInvoicePayload {
+  invoiceNumber: string;
+  supplierName: string;
+  invoiceDate?: string | null;
+  totalAmount?: number | null;
+  verifiedBy: string;
+  notes?: string | null;
+  items: BatchRestockItemPayload[];
+}
+
+export interface StockInvoiceItem {
+  itemId: number;
+  drugId: number;
+  drugCode: string;
+  drugName: string;
+  ocrDrugName?: string | null;
+  batchNumber?: string | null;
+  expiryDate?: string | null;
+  quantityAdded: number;
+  newStockQuantity: number;
+  importUnitPrice?: number | null;
+}
+
+export interface StockInvoice {
+  id: number;
+  invoiceNumber: string;
+  supplierName: string;
+  invoiceDate?: string | null;
+  totalAmount?: number | null;
+  verifiedBy: string;
+  notes?: string | null;
+  createdAt: string;
+  items: StockInvoiceItem[];
 }
 
 export async function getDrugsApi(signal?: AbortSignal): Promise<DrugDto[]> {
@@ -1053,6 +1100,36 @@ export async function adjustDrugStockApi(id: number, payload: AdjustStockPayload
       signal,
     });
     return normalizeDrug(data);
+  } catch (error) {
+    if (axios.isCancel(error)) throw error;
+    throw toApiError(error);
+  }
+}
+
+export async function batchRestockFromInvoiceApi(
+  payload: BatchRestockInvoicePayload,
+  signal?: AbortSignal,
+): Promise<StockInvoice> {
+  try {
+    const { data } = await clinicalApi.post<StockInvoice>(
+      clinicalPath("/pharmacy/drugs/batch-restock-invoice"),
+      payload,
+      { signal },
+    );
+    return data;
+  } catch (error) {
+    if (axios.isCancel(error)) throw error;
+    throw toApiError(error);
+  }
+}
+
+export async function getStockInvoicesApi(signal?: AbortSignal): Promise<StockInvoice[]> {
+  try {
+    const { data } = await clinicalApi.get<StockInvoice[]>(
+      clinicalPath("/pharmacy/invoices"),
+      { signal },
+    );
+    return data;
   } catch (error) {
     if (axios.isCancel(error)) throw error;
     throw toApiError(error);

@@ -20,6 +20,14 @@ export const OCR_BASE_URL: string = (
 /** BHYT card scan endpoint, relative to the gateway root. */
 const BHYT_OCR_PATH = "/api/v1/ocr/bhyt";
 
+/** Invoice / receipt scan endpoint, relative to the gateway root. */
+const INVOICE_OCR_PATH = "/api/v1/ocr/invoice";
+
+export type InvoiceType =
+  | "SUPPLIER_DRUG"
+  | "PATIENT_MEDICAL"
+  | "RECEPTION_RECEIPT";
+
 export const ocrApi = axios.create({
   baseURL: OCR_BASE_URL,
   // A Groq VLM round-trip on a phone photo is seconds, not milliseconds - the
@@ -492,4 +500,81 @@ export async function uploadBhytCardApi(file: File): Promise<BhytOcrResponse> {
   }
 
   return payload;
+}
+
+export interface InvoiceLineItem {
+  name: string;
+  concentration?: string | null;
+  unit?: string | null;
+  batchNumber?: string | null;
+  expiryDate?: string | null;
+  expiryDateIso?: string | null;
+  quantity?: number | null;
+  unitPrice?: number | null;
+  lineTotal?: number | null;
+}
+
+export interface InvoiceOcrData {
+  invoiceType: InvoiceType;
+  invoiceNumber?: string | null;
+  invoiceDate?: string | null;
+  invoiceDateIso?: string | null;
+  issuerName?: string | null;
+  patientOrBuyerName?: string | null;
+  totalAmount?: number | null;
+  items: InvoiceLineItem[];
+  clinicalSummary?: string | null;
+  detectedMedications?: string[];
+  allergyHints?: string[];
+  notes?: string | null;
+}
+
+export interface InvoiceOcrResponse {
+  success: boolean;
+  data: InvoiceOcrData;
+  warnings?: string[];
+  model?: string;
+  latency_ms?: number;
+  image_preview?: string;
+  image_size_kb?: number;
+  raw_text?: string;
+}
+
+export async function scanInvoiceOcrApi(
+  file: File,
+  invoiceType: InvoiceType,
+): Promise<InvoiceOcrResponse> {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("invoice_type", invoiceType);
+
+  let payload: InvoiceOcrResponse;
+  try {
+    const response = await ocrApi.post<InvoiceOcrResponse>(INVOICE_OCR_PATH, form);
+    payload = response.data;
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      const detail = detailOf(error.response?.data);
+      const status = error.response?.status;
+      if (detail) throw new BhytOcrError(detail, status);
+      if (error.code === "ECONNABORTED") {
+        throw new BhytOcrError("Yêu cầu quét chứng từ quá thời gian chờ.", status);
+      }
+      throw new BhytOcrError(
+        status
+          ? `Máy chủ nhận diện chứng từ trả về lỗi ${status}.`
+          : "Không thể kết nối tới máy chủ nhận diện chứng từ.",
+        status,
+      );
+    }
+    throw error;
+  }
+
+  if (!payload?.success || !payload.data) {
+    throw new BhytOcrError(
+      detailOf(payload) || "Máy chủ không trả về thông tin chứng từ hợp lệ.",
+    );
+  }
+
+  return { ...payload, data: { ...payload.data, items: payload.data.items ?? [] } };
 }

@@ -60,6 +60,7 @@ function findNurse(email: string) {
  * silently resolved to another doctor's queue by `resolveDoctorId`.
  */
 function toUser(dto: AuthResponseDto, extraContext?: LoginExtraContext): User {
+  const storedProfile = readStoredProfileFields();
   // Only a doctor may fall back to the khoa picked on the login screen: it is
   // the one role whose department the user chooses before the account is known.
   // Everyone else either has a department in the DB or has no business having
@@ -79,7 +80,7 @@ function toUser(dto: AuthResponseDto, extraContext?: LoginExtraContext): User {
     // it spread last it would win over a real backend value, and a patient who
     // updated their card on another device would sign in here and see the old
     // one - which is exactly what `PUT /auth/me/profile` was added to prevent.
-    ...readStoredProfileFields(),
+    ...storedProfile,
     id: dto.userId,
     email: dto.email,
     fullName: dto.fullName,
@@ -110,6 +111,8 @@ function toUser(dto: AuthResponseDto, extraContext?: LoginExtraContext): User {
     gender: dto.gender ?? undefined,
     address: dto.address ?? undefined,
     isOcrVerified: dto.isOcrVerified ?? false,
+    medicalHistory: dto.medicalHistory ?? storedProfile.medicalHistory,
+    allergies: dto.allergies ?? storedProfile.allergies,
   };
 }
 

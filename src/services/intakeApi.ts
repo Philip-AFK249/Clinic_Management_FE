@@ -102,6 +102,9 @@ export interface AdministrativeIntakeRequest {
   secondaryDepartmentId?: number;
   secondaryDepartmentName?: string;
   multiSpecialtyNote?: string;
+  receiptNumber?: string | null;
+  receiptAmount?: number | null;
+  isReceiptVerified?: boolean;
 }
 
 export interface IntakeResponse {
@@ -123,6 +126,9 @@ export interface IntakeResponse {
   priorityLevel: TriagePriority;
   checkInTime: string; // "yyyy-MM-dd'T'HH:mm:ss"
   message: string;
+  receiptNumber?: string | null;
+  receiptAmount?: number | null;
+  isReceiptVerified?: boolean;
 }
 
 export interface IntakePatient {
@@ -191,6 +197,9 @@ export interface QueueTicketDetailResponse {
   weightKg?: number | null;
   heightCm?: number | null;
   nurseNotes?: string | null;
+  receiptNumber?: string | null;
+  receiptAmount?: number | null;
+  isReceiptVerified?: boolean;
 }
 
 /**
@@ -236,6 +245,9 @@ export interface QueueTicket {
   weightKg?: number | null;
   heightCm?: number | null;
   nurseNotes?: string | null;
+  receiptNumber?: string | null;
+  receiptAmount?: number | null;
+  isReceiptVerified?: boolean;
 }
 
 // ---------------------------------------------------------------------------

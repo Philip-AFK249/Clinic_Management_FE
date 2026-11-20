@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { CornerDownLeft, Loader2, TicketCheck } from "lucide-react";
 import ReceptionHeader from "./components/ReceptionHeader";
 import CardScannerBar from "./components/CardScannerBar";
+import type { ReceiptScanResult } from "./components/ReceiptScanModal";
 import PatientIdentityForm from "./components/PatientIdentityForm";
 import type { DuplicateBookingNotice } from "./components/PatientIdentityForm";
 import SlotSelector from "./components/SlotSelector";
@@ -299,6 +300,13 @@ export default function ReceptionDeskPage() {
     toast.success("Đã bóc tách thông tin thẻ BHYT và áp dụng vào form tiếp nhận.");
   }
 
+  function handleApplyReceipt(result: ReceiptScanResult) {
+    intake.applyReceiptResult(result);
+    toast.success(
+      `Đã đính kèm biên lai ${result.receiptNumber} - ${result.receiptAmount.toLocaleString("vi-VN")}đ.`,
+    );
+  }
+
   const isBlocked = isSubmitting || queue.isMutating;
 
   return (
@@ -319,6 +327,9 @@ export default function ReceptionDeskPage() {
               sample={lastScanned}
               onModeChange={intake.setMode}
               onApplyOcr={handleApplyOcr}
+              receiptNumber={form.receiptNumber}
+              isReceiptVerified={form.isReceiptVerified}
+              onApplyReceipt={handleApplyReceipt}
             />
 
             <PatientIdentityForm

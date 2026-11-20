@@ -4,10 +4,12 @@ import {
   Loader2,
   PackageSearch,
   RefreshCw,
+  ScanLine,
   Search,
 } from "lucide-react";
 import { getDrugsApi } from "../../../services/clinicalApi";
 import type { BhytCoverage, DrugDto } from "../../../services/clinicalApi";
+import InvoiceRestockModal from "./InvoiceRestockModal";
 
 interface PharmacyInventoryPanelProps {
   /** Bumped by the page after a handover so the stock list reflects the decrement. */
@@ -85,6 +87,7 @@ export default function PharmacyInventoryPanel({
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<StockFilter>("ALL");
   const [reloadToken, setReloadToken] = useState(0);
+  const [isRestockOpen, setIsRestockOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -160,6 +163,14 @@ export default function PharmacyInventoryPanel({
             <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
               {visibleDrugs.length}/{drugs.length} mặt hàng
             </span>
+            <button
+              type="button"
+              onClick={() => setIsRestockOpen(true)}
+              className="inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg bg-emerald-600 px-3 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-emerald-700"
+            >
+              <ScanLine className="h-3.5 w-3.5" aria-hidden="true" />
+              Quét hóa đơn nhập kho
+            </button>
             <button
               type="button"
               onClick={() => {
@@ -323,6 +334,12 @@ export default function PharmacyInventoryPanel({
           </div>
         )}
       </div>
+
+      <InvoiceRestockModal
+        isOpen={isRestockOpen}
+        onClose={() => setIsRestockOpen(false)}
+        onRestocked={() => setReloadToken((token) => token + 1)}
+      />
     </main>
   );
 }

@@ -103,6 +103,16 @@ export default function TicketPrintModal({
               {ticket.identityCardNumber && (
                 <Row label="CCCD" value={ticket.identityCardNumber} />
               )}
+              {ticket.isReceiptVerified && ticket.receiptNumber && (
+                <Row
+                  label="Biên lai đã xác thực"
+                  value={`${ticket.receiptNumber}${
+                    ticket.receiptAmount
+                      ? ` (${ticket.receiptAmount.toLocaleString("vi-VN")}đ)`
+                      : ""
+                  }`}
+                />
+              )}
               <Row
                 label="Ước tính chờ"
                 value={`~${waitMinutes} phút (${ticket.patientsAhead} người trước)`}

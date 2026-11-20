@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Pill, CreditCard, Building2, Edit, Plus, PackagePlus, Search, Loader2 } from "lucide-react";
+import { Pill, CreditCard, Building2, Edit, Plus, PackagePlus, ScanLine, Search, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import type { DrugDto } from "../../../services/clinicalApi";
 import { getDrugsApi } from "../../../services/clinicalApi";
@@ -11,6 +11,7 @@ import {
 import CreateDrugModal from "./Modals/CreateDrugModal";
 import EditDrugModal from "./Modals/EditDrugModal";
 import RestockDrugModal from "./Modals/RestockDrugModal";
+import InvoiceRestockModal from "../../pharmacy/components/InvoiceRestockModal";
 
 type CatalogSubTab = "DRUGS" | "BHYT" | "SERVICES";
 
@@ -43,6 +44,7 @@ export default function MedicalCatalogTab() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isRestockModalOpen, setIsRestockModalOpen] = useState(false);
+  const [isInvoiceRestockOpen, setIsInvoiceRestockOpen] = useState(false);
   const [selectedDrug, setSelectedDrug] = useState<DrugDto | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -161,14 +163,24 @@ export default function MedicalCatalogTab() {
                 className="w-full rounded-lg border border-slate-200 pl-9 pr-3 py-2 text-xs transition-colors focus:border-clinical-500 focus:outline-none focus:ring-2 focus:ring-clinical-500/20"
               />
             </div>
-            <button
-              type="button"
-              onClick={handleOpenCreate}
-              className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-slate-800 px-3 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-slate-900"
-            >
-              <Plus size={14} />
-              Thêm Thuốc Mới
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setIsInvoiceRestockOpen(true)}
+                className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-emerald-700"
+              >
+                <ScanLine size={14} aria-hidden="true" />
+                Quét hóa đơn nhập kho
+              </button>
+              <button
+                type="button"
+                onClick={handleOpenCreate}
+                className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-slate-800 px-3 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-slate-900"
+              >
+                <Plus size={14} />
+                Thêm Thuốc Mới
+              </button>
+            </div>
           </div>
 
           <div className="overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-card">
@@ -418,6 +430,11 @@ export default function MedicalCatalogTab() {
         drug={selectedDrug}
         onRestocked={handleRestocked}
         isSubmitting={isSubmitting}
+      />
+      <InvoiceRestockModal
+        isOpen={isInvoiceRestockOpen}
+        onClose={() => setIsInvoiceRestockOpen(false)}
+        onRestocked={fetchDrugs}
       />
     </div>
   );

@@ -1,10 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  CheckCircle2,
-  Loader2,
-  Sparkles,
-  TriangleAlert,
-} from "lucide-react";
+import { CheckCircle2, Loader2, TriangleAlert } from "lucide-react";
 import BhyCardPreview from "./BhyCardPreview";
 import { toast } from "sonner";
 import {
@@ -387,12 +382,12 @@ export default function BhyTOcrUpload({ onExtracted }: BhyTOcrUploadProps) {
                     );
                     const name = known
                       ? known.label
-                          .replace(/^\s*\d{2}-\d{3}\s*-\s*/, "")
-                          .replace(
-                            /\s*\((?:Đúng|Trái) tuyến[^)]*\)/i,
-                            "",
-                          )
-                          .trim()
+                        .replace(/^\s*\d{2}-\d{3}\s*-\s*/, "")
+                        .replace(
+                          /\s*\((?:Đúng|Trái) tuyến[^)]*\)/i,
+                          "",
+                        )
+                        .trim()
                       : code === review.initialHospitalCode
                         ? review.initialHospitalName
                         : "";
@@ -519,7 +514,7 @@ export default function BhyTOcrUpload({ onExtracted }: BhyTOcrUploadProps) {
             onClick={() => inputRef.current?.click()}
             className="inline-flex h-12 items-center gap-2 rounded-lg bg-clinical-600 px-6 text-base font-semibold text-white shadow-sm transition-all hover:bg-clinical-700"
           >
-            <span aria-hidden="true">📷 🪪</span>
+            <span aria-hidden="true"></span>
             Chụp / Tải ảnh thẻ BHYT
           </button>
           <button
@@ -527,8 +522,7 @@ export default function BhyTOcrUpload({ onExtracted }: BhyTOcrUploadProps) {
             onClick={handleDemoSample}
             className="inline-flex h-11 items-center gap-2 rounded-lg border border-slate-200 bg-white px-5 text-base font-semibold text-slate-700 shadow-sm transition-colors hover:border-clinical-400 hover:text-clinical-700"
           >
-            <Sparkles className="h-4 w-4 text-clinical-600" aria-hidden="true" />
-            ✨ Xem ảnh thẻ mẫu
+            Xem ảnh thẻ mẫu
           </button>
           <p className="mx-auto max-w-md text-sm leading-relaxed text-slate-500">
             Chụp hoặc tải ảnh thẻ BHYT Việt Nam để bóc tách thông tin, sau đó

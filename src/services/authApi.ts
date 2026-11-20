@@ -66,6 +66,8 @@ export interface AuthResponseDto {
   address?: string | null;
   isOcrVerified?: boolean | null;
   createdAt?: string | null;
+  medicalHistory?: string | null;
+  allergies?: string | null;
 }
 
 export interface LoginRequestDto {
@@ -139,6 +141,8 @@ export interface UpdatePatientRequestDto {
   gender?: string | null;
   address?: string | null;
   isOcrVerified?: boolean | null;
+  medicalHistory?: string | null;
+  allergies?: string | null;
 }
 
 // ---------------------------------------------------------------------------

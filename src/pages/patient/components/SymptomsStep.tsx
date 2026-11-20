@@ -2,6 +2,7 @@ import { useState } from "react";
 import {
   ArrowRight,
   CalendarClock,
+  FileText,
   RefreshCw,
   ShieldCheck,
   Sparkles,
@@ -85,6 +86,10 @@ interface SymptomsStepProps {
   triageDate?: string;
   onTriageDateChange?: (date: string) => void;
   isRefreshingSchedule?: boolean;
+  onOpenBillOcr?: () => void;
+  medicalBillSummary?: string;
+  detectedMedications?: string[];
+  allergyHints?: string[];
   /**
    * The booking page opened at/after the 17:00 closing time, so the date
    * started on tomorrow. Drives the auto-shift banner below.
@@ -119,6 +124,10 @@ export default function SymptomsStep({
   triageDate = "",
   onTriageDateChange,
   isRefreshingSchedule = false,
+  onOpenBillOcr,
+  medicalBillSummary = "",
+  detectedMedications = [],
+  allergyHints = [],
   afterHours = false,
 }: SymptomsStepProps) {
   const [triageAck, setTriageAck] = useState(false);
@@ -249,6 +258,54 @@ export default function SymptomsStep({
         </p>
         <QuickSymptomChips onSelect={handleChipSelect} />
       </div>
+
+      {onOpenBillOcr && (
+        <section className="rounded-xl border border-slate-200/80 bg-white p-5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-clinical-50 text-clinical-600">
+                <FileText className="h-5 w-5" aria-hidden="true" />
+              </span>
+              <div>
+                <h2 className="text-base font-semibold text-slate-900">
+                  Có hóa đơn khám chữa bệnh cũ?
+                </h2>
+                <p className="mt-0.5 text-xs text-slate-500">
+                  Quét biên lai viện phí hoặc hóa đơn thuốc để bác sĩ biết bạn
+                  đã dùng thuốc gì. Bạn sẽ kiểm tra lại trước khi dùng.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={onOpenBillOcr}
+              className="inline-flex h-10 items-center gap-2 rounded-lg border border-clinical-300 bg-white px-4 text-sm font-semibold text-clinical-700 transition-colors hover:bg-clinical-50"
+            >
+              <FileText className="h-4 w-4" aria-hidden="true" />
+              Quét hóa đơn cũ
+            </button>
+          </div>
+          {(medicalBillSummary ||
+            detectedMedications.length > 0 ||
+            allergyHints.length > 0) && (
+            <div className="mt-4 space-y-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">
+              {medicalBillSummary && <p>{medicalBillSummary}</p>}
+              {detectedMedications.length > 0 && (
+                <p>
+                  <span className="font-bold">Thuốc đã dùng:</span>{" "}
+                  {detectedMedications.join(", ")}
+                </p>
+              )}
+              {allergyHints.length > 0 && (
+                <p>
+                  <span className="font-bold">Dị ứng ghi nhận:</span>{" "}
+                  {allergyHints.join(", ")}
+                </p>
+              )}
+            </div>
+          )}
+        </section>
+      )}
 
       {/* After the 17:00 closing time (or when the rota itself points at the
           next day), the whole form is already scoped to tomorrow - say so

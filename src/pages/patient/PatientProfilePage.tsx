@@ -5,6 +5,7 @@ import {
   ArrowLeft,
   CheckCircle2,
   CreditCard,
+  FileText,
   IdCard,
   Loader2,
   Save,
@@ -18,6 +19,8 @@ import PatientNavbar from "./components/PatientNavbar";
 import PatientFooter from "./components/PatientFooter";
 import BhyTOcrUpload from "./components/BhyTOcrUpload";
 import BhyCardPreview from "./components/BhyCardPreview";
+import MedicalBillOcrModal from "./components/MedicalBillOcrModal";
+import type { MedicalBillOcrResult } from "./components/MedicalBillOcrModal";
 import { useAuth } from "../../context/useAuth";
 import { updateMyProfileApi } from "../../services/authApi";
 import { normalizeBhytInsuranceCode } from "../../services/ocrApi";
@@ -54,6 +57,8 @@ interface FormState {
   identityCardNumber: string;
   insuranceCode: string;
   initialHospitalCode: string;
+  medicalHistory: string;
+  allergies: string;
 }
 
 /**
@@ -75,6 +80,20 @@ function formatToDateInput(val?: string | null): string {
   return parsed.toISOString().slice(0, 10);
 }
 
+function appendUniqueLines(current: string, additions: string[]): string {
+  const seen = new Set(
+    current
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean),
+  );
+  for (const addition of additions) {
+    const line = addition.trim();
+    if (line) seen.add(line);
+  }
+  return [...seen].join("\n");
+}
+
 /**
  * The session, as the form wants it.
  *
@@ -92,6 +111,8 @@ function formFromSession(user: User | null): FormState {
     identityCardNumber: user?.identityCardNumber ?? "",
     insuranceCode: user?.insuranceCode ?? "",
     initialHospitalCode: user?.initialHospitalCode ?? "",
+    medicalHistory: user?.medicalHistory ?? "",
+    allergies: user?.allergies ?? "",
   };
 }
 
@@ -117,6 +138,8 @@ function sessionSignature(user: User | null): string {
     user.identityCardNumber,
     user.insuranceCode,
     user.initialHospitalCode,
+    user.medicalHistory,
+    user.allergies,
   ]);
 }
 
@@ -124,6 +147,7 @@ export default function PatientProfilePage() {
   const { user, updateUser } = useAuth();
   const navigate = useNavigate();
   const [ocrOpen, setOcrOpen] = useState(false);
+  const [billOcrOpen, setBillOcrOpen] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const [form, setForm] = useState<FormState>(() => formFromSession(user));
@@ -246,6 +270,8 @@ export default function PatientProfilePage() {
     const dateOfBirth = form.dateOfBirth;
     const gender = form.gender;
     const address = form.address.trim();
+    const medicalHistory = form.medicalHistory.trim();
+    const allergies = form.allergies.trim();
 
     // Editing or clearing the number invalidates the scan: verification belongs
     // to the exact card that was read, not to whatever is now in the field.
@@ -266,6 +292,8 @@ export default function PatientProfilePage() {
         dateOfBirth: dateOfBirth || null,
         gender: gender || null,
         address: address || null,
+        medicalHistory: medicalHistory || null,
+        allergies: allergies || null,
         isOcrVerified,
       });
     } catch (error) {
@@ -286,6 +314,8 @@ export default function PatientProfilePage() {
       dateOfBirth: dateOfBirth || undefined,
       gender: gender || undefined,
       address: address || undefined,
+      medicalHistory: medicalHistory || undefined,
+      allergies: allergies || undefined,
       identityCardNumber: identityCardNumber || undefined,
       insuranceCode: insuranceCode || undefined,
       initialHospitalCode: initialHospitalCode || undefined,
@@ -329,6 +359,19 @@ export default function PatientProfilePage() {
       meetsFiveYears: meetsFiveYearRule(info.validFrom, info.validUntil),
     });
     setOcrOpen(false);
+  }
+
+  function handleMedicalBillConfirmed(result: MedicalBillOcrResult) {
+    setForm((prev) => ({
+      ...prev,
+      medicalHistory: appendUniqueLines(prev.medicalHistory, [
+        result.clinicalSummary,
+        ...result.detectedMedications.map((name) => `Thuốc đã dùng: ${name}`),
+      ]),
+      allergies: appendUniqueLines(prev.allergies, result.allergyHints),
+    }));
+    setBillOcrOpen(false);
+    toast.success("Đã thêm thông tin từ hóa đơn vào hồ sơ. Nhấn Lưu để cập nhật lên hệ thống.");
   }
 
   const insuranceNumber = normalizeBhytInsuranceCode(form.insuranceCode);
@@ -483,6 +526,56 @@ export default function PatientProfilePage() {
                 placeholder="Số nhà, đường, phường/xã, quận/huyện, tỉnh/thành phố"
                 onChange={(value) => set("address", value)}
               />
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-card">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4">
+              <div>
+                <h2 className="text-lg font-bold text-slate-900">
+                  Tiền sử bệnh &amp; Dị ứng thuốc
+                </h2>
+                <p className="mt-0.5 text-xs text-slate-500">
+                  Bác sĩ sẽ thấy các thông tin này khi khám, kể cả với lần đặt lịch mới.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setBillOcrOpen(true)}
+                className="inline-flex h-10 items-center gap-2 rounded-lg border border-clinical-300 bg-white px-4 text-xs font-semibold text-clinical-700 transition-colors hover:bg-clinical-50"
+              >
+                <FileText className="h-4 w-4" aria-hidden="true" />
+                Quét hóa đơn khám cũ
+              </button>
+            </div>
+
+            <div className="mt-5 grid gap-5">
+              <div>
+                <label htmlFor="medicalHistory" className="mb-1.5 block text-sm font-medium text-slate-700">
+                  Tiền sử bệnh / Thuốc đã dùng
+                </label>
+                <textarea
+                  id="medicalHistory"
+                  rows={4}
+                  value={form.medicalHistory}
+                  onChange={(event) => set("medicalHistory", event.target.value)}
+                  placeholder="Mỗi dòng một thông tin, ví dụ: Cao huyết áp từ 2019"
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 transition-colors focus:border-clinical-500 focus:outline-none focus:ring-2 focus:ring-clinical-100"
+                />
+              </div>
+              <div>
+                <label htmlFor="allergies" className="mb-1.5 block text-sm font-medium text-slate-700">
+                  Dị ứng thuốc / Chống chỉ định
+                </label>
+                <textarea
+                  id="allergies"
+                  rows={3}
+                  value={form.allergies}
+                  onChange={(event) => set("allergies", event.target.value)}
+                  placeholder="Mỗi dòng một loại thuốc hoặc chất gây dị ứng"
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 transition-colors focus:border-clinical-500 focus:outline-none focus:ring-2 focus:ring-clinical-100"
+                />
+              </div>
             </div>
           </section>
 
@@ -687,6 +780,12 @@ export default function PatientProfilePage() {
           </div>
         </div>
       )}
+
+      <MedicalBillOcrModal
+        isOpen={billOcrOpen}
+        onClose={() => setBillOcrOpen(false)}
+        onConfirmed={handleMedicalBillConfirmed}
+      />
     </div>
   );
 }

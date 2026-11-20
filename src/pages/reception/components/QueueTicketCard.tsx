@@ -1,4 +1,4 @@
-import { Ban, Clock, DoorOpen, PhoneCall, Printer, SkipForward } from "lucide-react";
+import { Ban, Clock, DoorOpen, PhoneCall, Printer, ReceiptText, SkipForward } from "lucide-react";
 import type { QueueStatus, QueueTicket } from "../../../services/intakeApi";
 import { QUEUE_STATUS_META, estimateWaitMinutes, triageMeta } from "../data/receptionMockData";
 import { dateLabel, shortDateLabel } from "../data/queueDates";
@@ -116,6 +116,15 @@ export default function QueueTicketCard({
         {ticket.patient?.isOcrVerified && (
           <span className="rounded border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">
             OCR
+          </span>
+        )}
+        {ticket.isReceiptVerified && (
+          <span
+            className="inline-flex items-center gap-1 rounded border border-teal-200 bg-teal-50 px-1.5 py-0.5 text-[10px] font-semibold text-teal-700"
+            title={ticket.receiptNumber ? `Biên lai ${ticket.receiptNumber} đã xác thực` : undefined}
+          >
+            <ReceiptText className="h-3 w-3" aria-hidden="true" />
+            Biên lai OK
           </span>
         )}
       </div>

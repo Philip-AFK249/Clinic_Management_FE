@@ -19,6 +19,9 @@ export interface TicketView {
   priorityLevel: TriagePriority;
   checkInTime: string | null;
   patientsAhead: number;
+  receiptNumber?: string | null;
+  receiptAmount?: number | null;
+  isReceiptVerified?: boolean;
 }
 
 export function ticketViewFromIntake(
@@ -46,6 +49,9 @@ export function ticketViewFromIntake(
     priorityLevel: response.priorityLevel,
     checkInTime: response.checkInTime,
     patientsAhead: before,
+    receiptNumber: response.receiptNumber,
+    receiptAmount: response.receiptAmount,
+    isReceiptVerified: response.isReceiptVerified,
   };
 }
 
@@ -69,5 +75,8 @@ export function ticketViewFromQueue(
     priorityLevel: ticket.priorityLevel,
     checkInTime: ticket.checkInTime,
     patientsAhead: countPatientsAhead(ticket, queue),
+    receiptNumber: ticket.receiptNumber,
+    receiptAmount: ticket.receiptAmount,
+    isReceiptVerified: ticket.isReceiptVerified,
   };
 }

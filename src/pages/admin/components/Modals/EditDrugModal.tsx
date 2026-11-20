@@ -48,6 +48,7 @@ function toFormData(drug: DrugDto): UpdateDrugPayload {
     bhytCoverage: drug.bhytCoverage,
     isPenicillinClass: drug.isPenicillinClass,
     active: drug.active,
+    expiryDate: drug.expiryDate ?? null,
   };
 }
 
@@ -260,6 +261,24 @@ function EditDrugForm({
                 value={formData.stockQuantity}
                 onChange={(e) =>
                   setFormData((prev) => ({ ...prev, stockQuantity: Number(e.target.value) || 0 }))
+                }
+                className={inputClass}
+                disabled={submitting}
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div>
+              <label htmlFor="edit-drug-expiry-date" className="mb-1.5 block text-xs font-semibold text-slate-700">
+                Hạn sử dụng
+              </label>
+              <input
+                id="edit-drug-expiry-date"
+                type="date"
+                value={formData.expiryDate ?? ""}
+                onChange={(e) =>
+                  setFormData((prev) => ({ ...prev, expiryDate: e.target.value || null }))
                 }
                 className={inputClass}
                 disabled={submitting}
