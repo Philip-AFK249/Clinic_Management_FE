@@ -1,5 +1,6 @@
 import { useState } from "react";
 import {
+  AlertTriangle,
   ArrowLeft,
   ArrowRight,
   Check,
@@ -8,6 +9,7 @@ import {
   RefreshCw,
   ShieldCheck,
   Sparkles,
+  Stethoscope,
   UserRound,
 } from "lucide-react";
 import VoiceInputCard from "./VoiceInputCard";
@@ -20,7 +22,7 @@ import TriageResultCard from "./TriageResultCard";
 import ShiftDispatcherCard from "./ShiftDispatcherCard";
 import { triageSymptoms } from "../data/patientMockRecords";
 import { dobLabelFrom, GENDER_OPTIONS, genderFrom, hospitalLabelFrom } from "../data/patientProfile";
-import type { BhyTelemetry } from "../data/patientMockRecords";
+import type { BhyTelemetry, TriageSuggestion } from "../data/patientMockRecords";
 import type {
   ClarificationOption,
   SessionName,
@@ -40,6 +42,12 @@ export interface ClarificationStep {
   selectedOptionId?: string;
   detectedAgeGroup?: string | null;
 }
+
+const PRIORITY_LABELS: Record<TriageSuggestion["priority"], string> = {
+  P1: "P1 - Khẩn cấp (Ưu tiên 1)",
+  P2: "P2 - Cần khám sớm",
+  P3: "P3 - Khám thông thường",
+};
 
 interface SymptomsStepProps {
   symptoms: string;
@@ -68,6 +76,10 @@ interface SymptomsStepProps {
   /** The voice triage verdict, or `null` until a recording has been analysed. */
   voiceTriage?: VoiceScheduleTriageResponse | null;
   isAnalysingVoice?: boolean;
+  isAnalysingText?: boolean;
+  onAnalyzeText?: (text: string) => void;
+  triageError?: string | null;
+  onRetryTriage?: () => void;
   clarification?: VoiceTriageResult | null;
   clarificationSteps?: ClarificationStep[];
   isRefiningVoice?: boolean;
@@ -76,9 +88,7 @@ interface SymptomsStepProps {
     optionId?: string;
   }) => void;
   onClarificationBack?: () => void;
-  onClarificationReset?: () => void;
-  defaultAgeGroup?: string;
-  defaultPatientHistory?: string;
+  onClarificationSkip?: () => void;
   /** The recorded clip, which the parent re-uploads to re-query another date. */
   onVoiceClip?: (clip: Blob) => void;
   onVoiceCancel?: () => void;
@@ -132,14 +142,16 @@ export default function SymptomsStep({
   onRequestRescan,
   voiceTriage = null,
   isAnalysingVoice = false,
+  isAnalysingText = false,
+  onAnalyzeText,
+  triageError = null,
+  onRetryTriage,
   clarification = null,
   clarificationSteps = [],
   isRefiningVoice = false,
   onClarificationAnswer,
   onClarificationBack,
-  onClarificationReset,
-  defaultAgeGroup,
-  defaultPatientHistory,
+  onClarificationSkip,
   onVoiceClip,
   onVoiceCancel,
   shiftSelection = null,
@@ -164,28 +176,51 @@ export default function SymptomsStep({
   const [triageAck, setTriageAck] = useState(false);
   const [customAnswer, setCustomAnswer] = useState("");
 
-  /**
-   * Only one department recommendation may be on screen.
-   *
-   * The keyword matcher and the clinical LLM both answer "where should you go",
-   * and they disagree often enough that showing both makes the form look broken.
-   * A real transcription beats keyword matching on the same text, so the voice
-   * verdict replaces it - but only replaces the *card*; the typed symptoms and
-   * the acknowledgement gate below are shared by both.
-   */
-  const suggestion = voiceTriage ? null : triageSymptoms(symptoms);
+  const clarificationQuestion = (clarification?.clarifying_question ?? "").trim();
+  const clarificationOptions = clarification?.clarification_options ?? [];
+  const clarificationStepIndex = Math.min(
+    3,
+    Math.max(0, clarificationSteps.length - 1),
+  );
+  const preliminaryResult =
+    voiceTriage?.needs_clarification === true ? voiceTriage : clarification;
+  const isClarifying =
+    (voiceTriage?.needs_clarification === true ||
+      clarification?.needs_clarification === true) &&
+    (Boolean(clarificationQuestion) || clarificationOptions.length > 0) &&
+    Boolean(onClarificationAnswer);
+
+  const voiceSuggestion: TriageSuggestion | null =
+    voiceTriage && !isClarifying
+      ? {
+          department: voiceTriage.department_name || "Khoa Nội Tổng quát & Tim mạch",
+          priority: voiceTriage.priority_level ?? "P3",
+          priorityLabel:
+            PRIORITY_LABELS[voiceTriage.priority_level] ?? PRIORITY_LABELS.P3,
+          confidence: Math.round((voiceTriage.similarity_score ?? 0.92) * 100),
+          summary: [
+            voiceTriage.chief_complaint_summary,
+            voiceTriage.disease_guess,
+            voiceTriage.advice,
+          ]
+            .filter(Boolean)
+            .join(" — "),
+        }
+      : null;
+  const suggestion = voiceTriage ? voiceSuggestion : triageSymptoms(symptoms);
+  const finalTriage = voiceTriage
+    ? {
+        ...voiceTriage,
+        priority_level: voiceTriage.priority_level ?? "P3",
+        recommended_shift: voiceTriage.recommended_shift ?? "MANUAL_PICK",
+      }
+    : null;
   const hasSymtoms = symptoms.trim().length > 0;
   /** Whichever disclaimer is actually rendered has to be acknowledged. */
   const needsAck = Boolean(suggestion ?? voiceTriage);
   const hasSlot = Boolean(slotStartTime);
   const canContinue = hasSymtoms && (!needsAck || triageAck) && hasSlot;
 
-  /**
-   * The co-consult half of a multi-organ verdict, lifted off the gateway
-   * response so the alert card above the slot selector stays shape-agnostic.
-   * Single-specialty verdicts have no `secondary_department_id` and produce
-   * `null`, which keeps that path rendering exactly as it did before.
-   */
   const multiSpecialty =
     voiceTriage && voiceTriage.secondary_department_id
       ? {
@@ -195,14 +230,6 @@ export default function SymptomsStep({
           note: voiceTriage.multi_specialty_note ?? null,
         }
       : null;
-
-  const clarificationQuestion = (clarification?.clarifying_question ?? "").trim();
-  const clarificationOptions = clarification?.clarification_options ?? [];
-  const clarificationStepIndex = Math.max(0, clarificationSteps.length - 1);
-  const showClarification =
-    clarification?.needs_clarification === true &&
-    Boolean(clarificationQuestion) &&
-    Boolean(onClarificationAnswer);
 
   function handleChipSelect(value: string) {
     onChange(symptoms.trim() ? `${symptoms.trimEnd()}, ${value}` : value);
@@ -217,8 +244,7 @@ export default function SymptomsStep({
 
   function handleClarificationBackClick() {
     setCustomAnswer("");
-    if (clarificationSteps.length <= 1) onClarificationReset?.();
-    else onClarificationBack?.();
+    onClarificationBack?.();
   }
 
   // The card prints `Nam` / `Nữ`; the form stores the enum behind a select, so
@@ -303,12 +329,60 @@ export default function SymptomsStep({
         onRecorded={onVoiceClip}
         onCancelled={onVoiceCancel}
         isAnalysing={isAnalysingVoice}
-        defaultAgeGroup={defaultAgeGroup}
-        defaultPatientHistory={defaultPatientHistory}
-        targetDate={triageDate}
+        isAnalysingText={isAnalysingText}
+        onAnalyzeText={onAnalyzeText}
+        triageError={triageError}
+        onRetryTriage={onRetryTriage}
       />
 
-      {showClarification && (
+      {isClarifying && preliminaryResult && (
+        <section
+          className="space-y-3 rounded-xl border border-clinical-200 bg-gradient-to-r from-clinical-50 via-white to-sky-50 p-4"
+          aria-label="Tóm tắt phân luồng bước đầu"
+        >
+          <div className="flex items-start gap-2.5">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-clinical-600 shadow-sm">
+              <Sparkles className="h-4 w-4" aria-hidden="true" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-bold text-slate-900">
+                AI đã hiểu triệu chứng của bạn
+              </p>
+              <p className="mt-1 text-sm leading-relaxed text-slate-700">
+                {preliminaryResult.chief_complaint_summary ||
+                  symptoms.trim() ||
+                  "Đang tổng hợp triệu chứng..."}
+              </p>
+            </div>
+            <span className="shrink-0 rounded-full border border-clinical-200 bg-white px-2.5 py-1 text-xs font-bold text-clinical-700">
+              {preliminaryResult.priority_level ?? "P3"}
+            </span>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <span className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700">
+              <Stethoscope className="h-3.5 w-3.5 text-clinical-600" aria-hidden="true" />
+              {preliminaryResult.department_name || "Đang xác định chuyên khoa"}
+            </span>
+            {(preliminaryResult.secondary_department_name ||
+              preliminaryResult.multi_specialty_note) && (
+              <span className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                Đa cơ quan · khám kèm:{" "}
+                {preliminaryResult.secondary_department_name || "Khoa khám kèm"}
+              </span>
+            )}
+          </div>
+
+          {preliminaryResult.multi_specialty_note && (
+            <p className="rounded-lg border border-sky-200 bg-sky-50 p-3 text-xs font-medium leading-relaxed text-sky-900">
+              {preliminaryResult.multi_specialty_note}
+            </p>
+          )}
+        </section>
+      )}
+
+      {isClarifying && (
         <section
           key={clarificationQuestion}
           className="space-y-3 rounded-xl border border-slate-200/80 bg-white p-4 shadow-card"
@@ -318,7 +392,7 @@ export default function SymptomsStep({
             <button
               type="button"
               onClick={handleClarificationBackClick}
-              disabled={isRefiningVoice}
+              disabled={isRefiningVoice || clarificationSteps.length <= 1}
               className="inline-flex items-center gap-1 self-start text-xs font-semibold text-slate-600 transition-colors hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <ArrowLeft size={14} aria-hidden="true" />
@@ -412,6 +486,15 @@ export default function SymptomsStep({
               Tiếp tục
             </button>
           </div>
+
+          <button
+            type="button"
+            onClick={onClarificationSkip}
+            disabled={isRefiningVoice}
+            className="inline-flex text-xs font-semibold text-clinical-700 underline decoration-clinical-300 underline-offset-2 transition-colors hover:text-clinical-900 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Bỏ qua hỏi thêm &amp; xem gợi ý ngay
+          </button>
         </section>
       )}
 
@@ -493,17 +576,17 @@ export default function SymptomsStep({
           path the multi-specialty alert rides above the dispatcher, which is
           where the booking slot selector lives - and renders nothing at all
           when the verdict flagged no second department. */}
-      {voiceTriage ? (
+      {!isClarifying && finalTriage ? (
         <>
           <TriageResultCard
-            suggestion={null}
+            suggestion={voiceSuggestion}
             multiSpecialty={multiSpecialty}
-            isOutOfDataset={voiceTriage?.is_out_of_dataset === true}
+            isOutOfDataset={finalTriage.is_out_of_dataset === true}
             acknowledged={triageAck}
             onAcknowledge={setTriageAck}
           />
           <ShiftDispatcherCard
-            triage={voiceTriage}
+            triage={finalTriage}
             selected={shiftSelection}
             onSelect={(session, doctorId, slot) =>
               onSelectShift?.(session, doctorId, slot)
@@ -583,9 +666,9 @@ export default function SymptomsStep({
             Chưa chắc nên chọn chuyên khoa nào?
           </p>
           <p className="mt-1 text-base leading-relaxed text-slate-600">
-            Chạm micro ở trên để nói triệu chứng, hoặc gõ tay như bình thường - Trợ
-            lý Ảo Y khoa AI sẽ tự động gợi ý chuyên khoa phù hợp nhất cùng mức độ
-            ưu tiên khám và lịch khám còn trống.
+            Chạm micro ở trên để nói triệu chứng, gõ tay hoặc bấm "Phân tích &amp;
+            gợi ý chẩn đoán" - Trợ lý Ảo Y khoa AI sẽ gợi ý chuyên khoa phù hợp
+            nhất cùng mức độ ưu tiên khám và lịch khám còn trống.
           </p>
         </div>
       </div>

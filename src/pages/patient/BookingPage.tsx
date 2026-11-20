@@ -47,6 +47,7 @@ import {
 } from "./data/bookingSlots";
 import { formatDoctorName, formatRoom } from "./data/bookingDisplay";
 import {
+  analyzeTextTriageApi,
   refineVoiceTriageApi,
   sessionScheduleFor,
   submitVoiceTriageApi,
@@ -259,6 +260,8 @@ export default function BookingPage() {
   const [clarificationSteps, setClarificationSteps] = useState<ClarificationStep[]>([]);
   const [clarificationResults, setClarificationResults] = useState<VoiceTriageResult[]>([]);
   const [isRefiningVoice, setIsRefiningVoice] = useState(false);
+  const [isAnalysingText, setIsAnalysingText] = useState(false);
+  const [triageError, setTriageError] = useState<string | null>(null);
   /**
    * The recorded clip.
    *
@@ -546,13 +549,8 @@ export default function BookingPage() {
     );
   }
 
-  function finishClarification(
-    result: VoiceScheduleTriageResponse,
-    symptomText: string,
-  ) {
-    if (result.detected_age_group) setClarifiedAgeGroup(result.detected_age_group);
+  function finishClarification() {
     clearClarification();
-    applyVoiceTriage(result, voiceClip ?? undefined, symptomText);
     toast.success("Đã phân luồng lại với thông tin bạn vừa xác nhận.");
   }
 
@@ -560,26 +558,58 @@ export default function BookingPage() {
     setVoiceClip(clip);
     setIsAnalysing(true);
     setScheduleUnavailable(false);
+    setTriageError(null);
     clearClarification();
     try {
       const result = await submitVoiceTriageApi(clip, triageDate, {
         ageGroup: defaultAgeGroup,
         patientHistory: defaultPatientHistory,
       });
-      const transcript = result.transcription.trim();
-      if (transcript) setSymptoms(transcript);
+      applyVoiceTriage(result, clip);
       if (result.needs_clarification && result.clarifying_question?.trim()) {
         setPendingClarification(result);
         setClarificationSteps([clarificationStepFrom(result)]);
         setClarificationResults([result]);
-      } else {
-        applyVoiceTriage(result, clip);
       }
     } catch (error) {
       handleVoiceTriageFailure(error);
     } finally {
       setIsAnalysing(false);
     }
+  }
+
+  async function analyseTextTriage(text?: string) {
+    const source = (text ?? symptoms).trim();
+    if (!source) {
+      setTriageError("Vui lòng nhập triệu chứng trước khi phân tích.");
+      return;
+    }
+    clearClarification();
+    setIsAnalysingText(true);
+    setScheduleUnavailable(false);
+    setTriageError(null);
+    try {
+      const result = await analyzeTextTriageApi({
+        transcription: source,
+        target_date: triageDate,
+        age_group: asAgeGroupValue(defaultAgeGroup),
+        patient_history: defaultPatientHistory,
+      });
+      applyVoiceTriage(result, voiceClip ?? undefined, source);
+      if (result.needs_clarification && result.clarifying_question?.trim()) {
+        setPendingClarification(result);
+        setClarificationSteps([clarificationStepFrom(result)]);
+        setClarificationResults([result]);
+      }
+    } catch (error) {
+      handleVoiceTriageFailure(error);
+    } finally {
+      setIsAnalysingText(false);
+    }
+  }
+
+  function handleRetryTriage() {
+    void analyseTextTriage(symptoms);
   }
 
   async function handleClarificationAnswer({
@@ -612,6 +642,7 @@ export default function BookingPage() {
         : step,
     );
     setClarificationSteps(updatedSteps);
+    setTriageError(null);
     setIsRefiningVoice(true);
     try {
       const history: ClarificationTurn[] = updatedSteps
@@ -642,6 +673,7 @@ export default function BookingPage() {
         pendingClarification.transcription,
         updatedSteps,
       );
+      applyVoiceTriage(refined, voiceClip ?? undefined, symptomText);
       if (
         refined.needs_clarification &&
         refined.clarifying_question?.trim() &&
@@ -651,37 +683,95 @@ export default function BookingPage() {
         setClarificationSteps([...updatedSteps, clarificationStepFrom(refined)]);
         setClarificationResults([...clarificationResults, refined]);
       } else {
-        finishClarification(refined, symptomText);
+        finishClarification();
       }
     } catch (error) {
-      toast.error("Không thể chẩn đoán lại. Vui lòng thử lại.", {
-        description: error instanceof Error ? error.message : undefined,
-      });
+      handleVoiceTriageFailure(error);
     } finally {
       setIsRefiningVoice(false);
     }
   }
 
   function handleClarificationBack() {
-    if (clarificationSteps.length <= 1) return;
     const previousIndex = clarificationSteps.length - 2;
+    const remainingSteps = clarificationSteps.slice(0, -1);
+    if (previousIndex < 0) {
+      clearClarification();
+      if (voiceTriage) {
+        applyVoiceTriage(
+          { ...voiceTriage, needs_clarification: false },
+          voiceClip ?? undefined,
+          symptomTextFromClarification(voiceTriage.transcription, []),
+        );
+      }
+      return;
+    }
+    const previous = clarificationResults[previousIndex] ?? null;
     setClarificationSteps(
-      clarificationSteps
-        .slice(0, -1)
-        .map((step, index) =>
-          index === previousIndex
-            ? { ...step, selectedAnswer: "", selectedOptionId: undefined }
-            : step,
-        ),
+      remainingSteps.map((step, index) =>
+        index === previousIndex
+          ? { ...step, selectedAnswer: "", selectedOptionId: undefined }
+          : step,
+      ),
     );
     setClarificationResults(clarificationResults.slice(0, -1));
-    setPendingClarification(clarificationResults[previousIndex] ?? null);
+    setPendingClarification(previous);
+    if (previous) {
+      applyVoiceTriage(
+        previous,
+        voiceClip ?? undefined,
+        symptomTextFromClarification(previous.transcription, remainingSteps),
+      );
+    }
   }
 
-  function handleSkipClarification() {
+  async function handleSkipClarification() {
     const current = pendingClarification;
-    clearClarification();
-    if (current) applyVoiceTriage(current, voiceClip ?? undefined);
+    if (!current) {
+      clearClarification();
+      return;
+    }
+    const symptomText = symptomTextFromClarification(
+      current.transcription,
+      clarificationSteps,
+    );
+    setIsRefiningVoice(true);
+    setTriageError(null);
+    try {
+      const history: ClarificationTurn[] = clarificationSteps
+        .filter((step) => step.selectedAnswer)
+        .map((step) => ({ question: step.question, answer: step.selectedAnswer }));
+      const forced = await refineVoiceTriageApi({
+        transcription: current.transcription,
+        selected_options: [],
+        extra_note: undefined,
+        age_group: resolvedClarificationAgeGroup(
+          clarificationSteps,
+          current.detected_age_group,
+        ),
+        patient_history: defaultPatientHistory,
+        target_date: triageDate || current.target_date,
+        clarification_history: history,
+        round_index: 4,
+      });
+      applyVoiceTriage(
+        { ...forced, needs_clarification: false },
+        voiceClip ?? undefined,
+        symptomText,
+      );
+      clearClarification();
+      toast.success("Đã hiển thị gợi ý chẩn đoán dựa trên thông tin hiện có.");
+    } catch (error) {
+      applyVoiceTriage(
+        { ...current, needs_clarification: false },
+        voiceClip ?? undefined,
+        symptomText,
+      );
+      clearClarification();
+      handleVoiceTriageFailure(error);
+    } finally {
+      setIsRefiningVoice(false);
+    }
   }
 
   /**
@@ -705,6 +795,7 @@ export default function BookingPage() {
     symptomText?: string,
   ) {
     setVoiceTriage(result);
+    setTriageError(null);
     const transcript = (symptomText ?? result.transcription).trim();
     if (transcript) {
       setSymptoms(transcript);
@@ -764,6 +855,7 @@ export default function BookingPage() {
       setTriageSourceText("");
       setVoiceClip(null);
     }
+    setTriageError(null);
     setSymptoms(next);
   }
 
@@ -781,6 +873,7 @@ export default function BookingPage() {
    */
   function handleVoiceTriageFailure(error: unknown) {
     if (error instanceof VoiceTriageError) {
+      setTriageError(error.message);
       // Retryable by the patient - gentle, because nothing is broken.
       if (error.kind === "silent") {
         toast.warning(error.message);
@@ -790,7 +883,9 @@ export default function BookingPage() {
       if (error.detail) console.warn("Voice triage:", error.detail);
       return;
     }
-    toast.error("Không phân tích được đoạn ghi âm. Vui lòng thử lại.");
+    const message = "Không phân tích được triệu chứng. Vui lòng thử lại.";
+    setTriageError(message);
+    toast.error(message);
   }
 
   /**
@@ -1076,6 +1171,8 @@ export default function BookingPage() {
     clearClarification();
     setClarifiedAgeGroup(null);
     setIsRefiningVoice(false);
+    setIsAnalysingText(false);
+    setTriageError(null);
     setVoiceClip(null);
     setShiftSelection(null);
     setSelectedDoctorId(null);
@@ -1392,14 +1489,16 @@ export default function BookingPage() {
                   onRequestRescan={() => setRescanRequested(true)}
                   voiceTriage={voiceTriage}
                   isAnalysingVoice={isAnalysing}
+                  isAnalysingText={isAnalysingText}
+                  onAnalyzeText={(text) => void analyseTextTriage(text)}
+                  triageError={triageError}
+                  onRetryTriage={handleRetryTriage}
                   clarification={pendingClarification}
                   clarificationSteps={clarificationSteps}
                   isRefiningVoice={isRefiningVoice}
                   onClarificationAnswer={handleClarificationAnswer}
                   onClarificationBack={handleClarificationBack}
-                  onClarificationReset={handleSkipClarification}
-                  defaultAgeGroup={defaultAgeGroup}
-                  defaultPatientHistory={defaultPatientHistory}
+                  onClarificationSkip={handleSkipClarification}
                   onVoiceClip={analyseVoiceClip}
                   onVoiceCancel={handleVoiceCancel}
                   shiftSelection={shiftSelection}

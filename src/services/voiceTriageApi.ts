@@ -23,6 +23,7 @@ export const RAG_FALLBACK_URL: string = (
 
 /** Endpoint path, relative to whichever base is in use. */
 const TRIAGE_PATH = "/api/v1/triage/voice-schedule";
+const TEXT_TRIAGE_PATH = "/api/v1/triage/text-schedule";
 const REFINE_PATH = "/api/v1/triage/refine";
 
 export const ragApi = axios.create({
@@ -137,6 +138,13 @@ export interface RefineVoiceTriagePayload {
 }
 
 export type RefineTriagePayload = RefineVoiceTriagePayload;
+
+export interface AnalyzeTextTriagePayload {
+  transcription: string;
+  target_date?: string;
+  age_group?: AgeGroupValue | null;
+  patient_history?: string;
+}
 
 export interface VoiceTriageResult {
   success: boolean;
@@ -406,6 +414,56 @@ export async function submitVoiceTriageApi(
 
 /** Existing call-site name for the voice triage upload. */
 export const sendVoiceScheduleTriage = submitVoiceTriageApi;
+
+/**
+ * Triage a text-only complaint (typed, chip-built, or an edited transcription).
+ */
+export async function analyzeTextTriageApi(
+  payload: AnalyzeTextTriagePayload,
+): Promise<VoiceScheduleTriageResponse> {
+  async function post(base: string): Promise<VoiceScheduleTriageResponse> {
+    const response = await axios.post<VoiceScheduleTriageResponse>(
+      `${base}${TEXT_TRIAGE_PATH}`,
+      payload,
+      { timeout: 120000 },
+    );
+    return response.data;
+  }
+
+  function classified(error: unknown): VoiceTriageError {
+    const result = error instanceof VoiceTriageError ? error : classify(error);
+    if (result.kind === "silent") {
+      return new VoiceTriageError(
+        "Nội dung triệu chứng chưa hợp lệ. Vui lòng kiểm tra lại và thử lại.",
+        "server",
+        result.status,
+        result.detail,
+      );
+    }
+    return result;
+  }
+
+  let firstError: unknown;
+  try {
+    return requireSuccess(await post(RAG_BASE_URL));
+  } catch (error) {
+    firstError = error;
+  }
+
+  if (
+    RAG_FALLBACK_URL &&
+    RAG_FALLBACK_URL !== RAG_BASE_URL &&
+    isRetryable(firstError)
+  ) {
+    try {
+      return requireSuccess(await post(RAG_FALLBACK_URL));
+    } catch {
+      throw classified(firstError);
+    }
+  }
+
+  throw classified(firstError);
+}
 
 /**
  * Re-run triage after the patient answers a clarification round.
