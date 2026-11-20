@@ -23,6 +23,7 @@ export const RAG_FALLBACK_URL: string = (
 
 /** Endpoint path, relative to whichever base is in use. */
 const TRIAGE_PATH = "/api/v1/triage/voice-schedule";
+const REFINE_PATH = "/api/v1/triage/refine";
 
 export const ragApi = axios.create({
   baseURL: RAG_BASE_URL,
@@ -99,7 +100,28 @@ export interface SessionSchedule {
   doctors: DoctorShiftInfo[];
 }
 
-export interface VoiceScheduleTriageResponse {
+export interface ClarificationOption {
+  id: string;
+  label: string;
+  category: "age_group" | "medical_history" | "symptom_detail";
+  age_group_value?: "tre_em" | "nguoi_truong_thanh" | "nguoi_cao_tuoi" | "tat_ca" | null;
+}
+
+export interface VoiceTriageContext {
+  ageGroup?: string;
+  patientHistory?: string;
+}
+
+export interface RefineVoiceTriagePayload {
+  transcription: string;
+  selected_options: string[];
+  extra_note?: string;
+  age_group?: string;
+  patient_history?: string;
+  target_date?: string;
+}
+
+export interface VoiceTriageResult {
   success: boolean;
   /** Whisper output, in the patient's own words. */
   transcription: string;
@@ -147,7 +169,14 @@ export interface VoiceScheduleTriageResponse {
   target_date: string;
   warnings?: string[];
   latency_ms?: number;
+  needs_clarification?: boolean;
+  clarifying_question?: string;
+  clarification_options?: ClarificationOption[];
+  detected_age_group?: string | null;
 }
+
+/** Backward-compatible name used by the existing patient booking flow. */
+export type VoiceScheduleTriageResponse = VoiceTriageResult;
 
 /**
  * Why a triage call failed, so the caller can react rather than show one generic
@@ -288,10 +317,11 @@ function isRetryable(error: unknown): boolean {
  * nothing by patient, so there is no cheaper way to ask "what about tomorrow?"
  * while keeping the transcription.
  */
-export async function sendVoiceScheduleTriage(
+export async function submitVoiceTriageApi(
   audioBlob: Blob,
   targetDate?: string,
-): Promise<VoiceScheduleTriageResponse> {
+  context?: VoiceTriageContext,
+): Promise<VoiceTriageResult> {
   /**
    * Built per attempt: reusing one `FormData` across two requests is only safe
    * while the underlying blob is untouched, and it costs nothing to be sure.
@@ -312,11 +342,13 @@ export async function sendVoiceScheduleTriage(
             : "webm";
     form.append("file", audioBlob, `voice_record.${extension}`);
     if (targetDate) form.append("target_date", targetDate);
+    if (context?.ageGroup) form.append("age_group", context.ageGroup);
+    if (context?.patientHistory) form.append("patient_history", context.patientHistory);
     return form;
   }
 
-  async function post(base: string): Promise<VoiceScheduleTriageResponse> {
-    const response = await axios.post<VoiceScheduleTriageResponse>(
+  async function post(base: string): Promise<VoiceTriageResult> {
+    const response = await axios.post<VoiceTriageResult>(
       `${base}${TRIAGE_PATH}`,
       body(),
       { timeout: 120000 },
@@ -351,6 +383,23 @@ export async function sendVoiceScheduleTriage(
   throw classify(firstError);
 }
 
+/** Existing call-site name for the voice triage upload. */
+export const sendVoiceScheduleTriage = submitVoiceTriageApi;
+
+/**
+ * Re-run triage after the patient answers a clarification round.
+ */
+export async function refineVoiceTriageApi(
+  payload: RefineVoiceTriagePayload,
+): Promise<VoiceTriageResult> {
+  try {
+    const response = await ragApi.post<VoiceTriageResult>(REFINE_PATH, payload);
+    return requireSuccess(response.data);
+  } catch (error) {
+    throw classify(error);
+  }
+}
+
 /**
  * `success: false` is a 200 the gateway still wants treated as a failure.
  *
@@ -369,7 +418,16 @@ function requireSuccess(payload: VoiceScheduleTriageResponse): VoiceScheduleTria
       detailOf(payload) || undefined,
     );
   }
-  return normalizeScheduleDoctors(payload);
+  return normalizeTriagePayload(payload);
+}
+
+function normalizeTriagePayload(payload: VoiceTriageResult): VoiceTriageResult {
+  return normalizeScheduleDoctors({
+    ...payload,
+    needs_clarification: payload.needs_clarification === true,
+    clarification_options: payload.clarification_options ?? [],
+    detected_age_group: payload.detected_age_group ?? null,
+  });
 }
 
 /**

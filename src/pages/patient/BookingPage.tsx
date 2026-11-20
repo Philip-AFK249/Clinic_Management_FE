@@ -46,9 +46,14 @@ import {
 } from "./data/bookingSlots";
 import { formatDoctorName, formatRoom } from "./data/bookingDisplay";
 import {
-  sendVoiceScheduleTriage,
+  refineVoiceTriageApi,
   sessionScheduleFor,
+  submitVoiceTriageApi,
   VoiceTriageError,
+} from "../../services/voiceTriageApi";
+import type {
+  RefineVoiceTriagePayload,
+  VoiceTriageResult,
 } from "../../services/voiceTriageApi";
 import type { BookingIdentityFieldsValue } from "./components/BookingIdentityFields";
 import type { Service } from "./data/clinicContent";
@@ -96,6 +101,36 @@ function dateLabelFrom(iso: string): string {
 function dayMonthLabelFrom(iso: string): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
   return m ? `${m[3]}/${m[2]}` : iso;
+}
+
+function ageGroupFromDateOfBirth(dateOfBirth?: string | null): string | undefined {
+  if (!dateOfBirth) return undefined;
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateOfBirth);
+  if (!match) return undefined;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const now = new Date();
+  let age = now.getFullYear() - year;
+  if (
+    now.getMonth() + 1 < month ||
+    (now.getMonth() + 1 === month && now.getDate() < day)
+  ) {
+    age -= 1;
+  }
+  if (!Number.isFinite(age) || age < 0) return undefined;
+  if (age < 16) return "tre_em";
+  if (age < 60) return "nguoi_truong_thanh";
+  return "nguoi_cao_tuoi";
+}
+
+function patientHistoryFromUser(user: User | null): string {
+  return [
+    user?.medicalHistory?.trim(),
+    user?.allergies?.trim() ? `Dị ứng: ${user.allergies.trim()}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 function appendUniqueLines(current: string | undefined, additions: string[]): string {
@@ -153,6 +188,8 @@ function formFromSession(user: User | null): BookingFormData {
 
 export default function BookingPage() {
   const { user, updateUser } = useAuth();
+  const defaultAgeGroup = ageGroupFromDateOfBirth(user?.dateOfBirth);
+  const defaultPatientHistory = patientHistoryFromUser(user);
   const navigate = useNavigate();
   const [step, setStep] = useState(0);
   const [symptoms, setSymptoms] = useState("");
@@ -199,6 +236,9 @@ export default function BookingPage() {
   // has to be there to answer "why this doctor?" if the patient steps back.
   const [voiceTriage, setVoiceTriage] =
     useState<VoiceScheduleTriageResponse | null>(null);
+  const [pendingClarification, setPendingClarification] =
+    useState<VoiceTriageResult | null>(null);
+  const [isRefiningVoice, setIsRefiningVoice] = useState(false);
   /**
    * The recorded clip.
    *
@@ -455,14 +495,52 @@ export default function BookingPage() {
     setVoiceClip(clip);
     setIsAnalysing(true);
     setScheduleUnavailable(false);
+    setPendingClarification(null);
     try {
-      const result = await sendVoiceScheduleTriage(clip, triageDate);
-      applyVoiceTriage(result, clip);
+      const result = await submitVoiceTriageApi(clip, triageDate, {
+        ageGroup: defaultAgeGroup,
+        patientHistory: defaultPatientHistory,
+      });
+      const transcript = result.transcription.trim();
+      if (transcript) setSymptoms(transcript);
+      if (result.needs_clarification && (result.clarification_options?.length ?? 0) > 0) {
+        setPendingClarification(result);
+      } else {
+        applyVoiceTriage(result, clip);
+      }
     } catch (error) {
       handleVoiceTriageFailure(error);
     } finally {
       setIsAnalysing(false);
     }
+  }
+
+  async function handleRefineClarification(payload: RefineVoiceTriagePayload) {
+    if (!pendingClarification) return;
+    setIsRefiningVoice(true);
+    try {
+      const refined = await refineVoiceTriageApi(payload);
+      const symptomText = appendUniqueLines(payload.transcription, [
+        ...payload.selected_options,
+        ...(payload.extra_note ? [payload.extra_note] : []),
+      ]);
+      setPendingClarification(null);
+      applyVoiceTriage(refined, voiceClip ?? undefined, symptomText);
+      toast.success("Đã phân luồng lại với thông tin bạn vừa xác nhận.");
+    } catch (error) {
+      toast.error("Không thể chẩn đoán lại. Vui lòng thử lại.", {
+        description: error instanceof Error ? error.message : undefined,
+      });
+    } finally {
+      setIsRefiningVoice(false);
+    }
+  }
+
+  function handleSkipClarification() {
+    if (!pendingClarification) return;
+    const current = pendingClarification;
+    setPendingClarification(null);
+    applyVoiceTriage(current, voiceClip ?? undefined);
   }
 
   /**
@@ -483,9 +561,10 @@ export default function BookingPage() {
   function applyVoiceTriage(
     result: VoiceScheduleTriageResponse,
     clip?: Blob,
+    symptomText?: string,
   ) {
     setVoiceTriage(result);
-    const transcript = result.transcription.trim();
+    const transcript = (symptomText ?? result.transcription).trim();
     if (transcript) {
       setSymptoms(transcript);
       setTriageSourceText(transcript);
@@ -598,7 +677,10 @@ export default function BookingPage() {
     if (!clip) return;
     setIsRefreshingSchedule(true);
     try {
-      const result = await sendVoiceScheduleTriage(clip, date);
+      const result = await submitVoiceTriageApi(clip, date, {
+        ageGroup: defaultAgeGroup,
+        patientHistory: defaultPatientHistory,
+      });
       setVoiceTriage(result);
       setScheduleUnavailable(result.schedule_connected === false);
       // The rota just changed underneath the pick: a doctor who is off duty
@@ -844,6 +926,8 @@ export default function BookingPage() {
     setScannedThisSession(false);
     setBillOcrResult(null);
     setVoiceTriage(null);
+    setPendingClarification(null);
+    setIsRefiningVoice(false);
     setVoiceClip(null);
     setShiftSelection(null);
     setSelectedDoctorId(null);
@@ -1157,6 +1241,12 @@ export default function BookingPage() {
                   onRequestRescan={() => setRescanRequested(true)}
                   voiceTriage={voiceTriage}
                   isAnalysingVoice={isAnalysing}
+                  clarification={pendingClarification}
+                  isRefiningVoice={isRefiningVoice}
+                  onRefineClarification={handleRefineClarification}
+                  onSkipClarification={handleSkipClarification}
+                  defaultAgeGroup={defaultAgeGroup}
+                  defaultPatientHistory={defaultPatientHistory}
                   onVoiceClip={analyseVoiceClip}
                   onVoiceCancel={handleVoiceCancel}
                   shiftSelection={shiftSelection}

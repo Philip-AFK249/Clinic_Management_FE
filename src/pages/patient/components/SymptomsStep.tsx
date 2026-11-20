@@ -20,8 +20,10 @@ import { triageSymptoms } from "../data/patientMockRecords";
 import { dobLabelFrom, GENDER_OPTIONS, genderFrom, hospitalLabelFrom } from "../data/patientProfile";
 import type { BhyTelemetry } from "../data/patientMockRecords";
 import type {
+  RefineVoiceTriagePayload,
   SessionName,
   VoiceScheduleTriageResponse,
+  VoiceTriageResult,
 } from "../../../services/voiceTriageApi";
 import type { TimeSlotResponse } from "../../../services/intakeApi";
 import type { ShiftSelection } from "./ShiftDispatcherCard";
@@ -56,6 +58,12 @@ interface SymptomsStepProps {
   /** The voice triage verdict, or `null` until a recording has been analysed. */
   voiceTriage?: VoiceScheduleTriageResponse | null;
   isAnalysingVoice?: boolean;
+  clarification?: VoiceTriageResult | null;
+  isRefiningVoice?: boolean;
+  onRefineClarification?: (payload: RefineVoiceTriagePayload) => void;
+  onSkipClarification?: () => void;
+  defaultAgeGroup?: string;
+  defaultPatientHistory?: string;
   /** The recorded clip, which the parent re-uploads to re-query another date. */
   onVoiceClip?: (clip: Blob) => void;
   onVoiceCancel?: () => void;
@@ -109,6 +117,12 @@ export default function SymptomsStep({
   onRequestRescan,
   voiceTriage = null,
   isAnalysingVoice = false,
+  clarification = null,
+  isRefiningVoice = false,
+  onRefineClarification,
+  onSkipClarification,
+  defaultAgeGroup,
+  defaultPatientHistory,
   onVoiceClip,
   onVoiceCancel,
   shiftSelection = null,
@@ -250,6 +264,13 @@ export default function SymptomsStep({
         onRecorded={onVoiceClip}
         onCancelled={onVoiceCancel}
         isAnalysing={isAnalysingVoice}
+        clarification={clarification}
+        isRefining={isRefiningVoice}
+        onRefineClarification={onRefineClarification}
+        onSkipClarification={onSkipClarification}
+        defaultAgeGroup={defaultAgeGroup}
+        defaultPatientHistory={defaultPatientHistory}
+        targetDate={triageDate}
       />
 
       <div>
