@@ -1,4 +1,4 @@
-import { AlertTriangle, Bot, CheckSquare, Sparkles } from "lucide-react";
+import { AlertTriangle, Bot, CheckSquare, Info, Sparkles } from "lucide-react";
 import type {
   TriagePriority,
   TriageSuggestion,
@@ -31,6 +31,7 @@ interface TriageResultCardProps {
    * selector even though the keyword suggestion is not in play.
    */
   multiSpecialty?: MultiSpecialtyAdvisory | null;
+  isOutOfDataset?: boolean;
 }
 
 const PRIORITY_STYLES: Record<
@@ -56,8 +57,9 @@ export default function TriageResultCard({
   acknowledged,
   onAcknowledge,
   multiSpecialty = null,
+  isOutOfDataset = false,
 }: TriageResultCardProps) {
-  if (!suggestion && !multiSpecialty) return null;
+  if (!suggestion && !multiSpecialty && !isOutOfDataset) return null;
 
   const priorityStyle = suggestion ? PRIORITY_STYLES[suggestion.priority] : null;
 
@@ -67,6 +69,18 @@ export default function TriageResultCard({
         <Sparkles className="h-4 w-4 text-clinical-600" aria-hidden="true" />
         Gợi ý phân luồng Y khoa (AI Triage)
       </p>
+
+      {isOutOfDataset && (
+        <div
+          role="status"
+          className="flex items-start gap-2 rounded-xl border border-sky-200 bg-sky-50 p-3 text-sky-900"
+        >
+          <Info className="mt-0.5 h-4 w-4 shrink-0 text-sky-600" aria-hidden="true" />
+          <p className="text-sm font-medium leading-relaxed">
+            Triệu chứng nằm ngoài danh mục gợi ý sẵn có — hệ thống đã chọn chuyên khoa sát nhất và gắn cờ lưu dữ liệu để bác sĩ ưu tiên thăm khám.
+          </p>
+        </div>
+      )}
 
       {/* Multi-organ alert - deliberately the first thing under the header so
           it sits above the booking slot selector whatever renders below. */}

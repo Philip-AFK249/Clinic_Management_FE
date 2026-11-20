@@ -1045,6 +1045,9 @@ export default function BookingPage() {
       intakeSource: "ONLINE_BOOKING",
       preferredDoctorId,
       chiefComplaint: symptoms.trim() || undefined,
+      triageFlagId: voiceTriage?.flag_id ?? undefined,
+      isOutOfDataset: Boolean(voiceTriage?.is_out_of_dataset),
+      flagReason: voiceTriage?.flag_reason ?? undefined,
       // Multi-organ verdict: the co-consult routing rides along so reception,
       // the printed ticket and the doctor's EHR can all flag the second clinic
       // the patient has to visit after the primary exam.

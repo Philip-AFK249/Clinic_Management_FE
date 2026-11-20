@@ -95,6 +95,43 @@ export interface RawPipelineFile {
   has_parsed_md?: boolean;
 }
 
+export interface FlaggedSymptomItem {
+  flag_id: string;
+  created_at: string;
+  patient_description: string;
+  age_group: string | null;
+  ai_department_id: number | null;
+  ai_department_name?: string | null;
+  ai_priority_level?: string | null;
+  ai_suggested_icd10?: string | null;
+  ai_suggested_disease?: string | null;
+  similarity_score?: number | null;
+  flag_reason?: string | null;
+  status: "PENDING" | "DOCTOR_CONFIRMED" | "TRAINED";
+  confirmed_icd10_code?: string | null;
+  confirmed_disease_name?: string | null;
+  medical_symptom_standard?: string | null;
+  reception_action?: string | null;
+  trained_at?: string | null;
+}
+
+export interface FlaggedSymptomCluster {
+  label: string;
+  count: number;
+}
+
+export interface FlaggedSymptomsStats {
+  total: number;
+  doctor_confirmed: number;
+  trained: number;
+  top_clusters: FlaggedSymptomCluster[];
+}
+
+export interface FlaggedSymptomsResponse {
+  items: FlaggedSymptomItem[];
+  stats: FlaggedSymptomsStats;
+}
+
 export type ParserType = "docling" | "llama" | "auto";
 export type TargetAudienceOverride = "auto" | "tiep_don" | "bac_si";
 
@@ -294,5 +331,54 @@ export async function runIngestPipelineApi(payload: {
     },
   );
   return data;
+}
+
+export async function getFlaggedSymptomsApi(): Promise<FlaggedSymptomsResponse> {
+  const { data } = await aiGatewayAdminApi.get<FlaggedSymptomsResponse>(
+    "/api/v1/admin/flagged-symptoms",
+  );
+  return data;
+}
+
+export async function updateFlaggedSymptomApi(
+  flagId: string,
+  patch: Partial<FlaggedSymptomItem>,
+): Promise<FlaggedSymptomItem> {
+  const { data } = await aiGatewayAdminApi.patch<FlaggedSymptomItem>(
+    `/api/v1/admin/flagged-symptoms/${encodeURIComponent(flagId)}`,
+    patch,
+  );
+  return data;
+}
+
+export async function deleteFlaggedSymptomApi(flagId: string): Promise<void> {
+  await aiGatewayAdminApi.delete(
+    `/api/v1/admin/flagged-symptoms/${encodeURIComponent(flagId)}`,
+  );
+}
+
+export async function trainFlaggedSymptomsRagApi(
+  flagIds: string[],
+): Promise<{
+  success: boolean;
+  trained_count: number;
+  chunks_created: number;
+  message: string;
+}> {
+  const { data } = await aiGatewayAdminApi.post<{
+    success: boolean;
+    trained_count: number;
+    chunks_created: number;
+    message: string;
+  }>("/api/v1/admin/flagged-symptoms/train-rag", {
+    flag_ids: flagIds,
+  });
+  return data;
+}
+
+export function getFlaggedSymptomsExportUrl(
+  format: "csv" | "md" | "json",
+): string {
+  return `${RAG_ADMIN_BASE}/api/v1/admin/flagged-symptoms/export?format=${encodeURIComponent(format)}`;
 }
 

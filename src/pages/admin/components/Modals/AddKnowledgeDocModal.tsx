@@ -92,6 +92,7 @@ export default function AddKnowledgeDocModal({
   const [isLoadingFiles, setIsLoadingFiles] = useState(true);
   const [filesError, setFilesError] = useState("");
   const [selectedFile, setSelectedFile] = useState<string>("");
+  const [uploadedFilename, setUploadedFilename] = useState<string>("");
   const [manualFilename, setManualFilename] = useState("");
   const [parserType, setParserType] = useState<ParserType>("docling");
   const [audience, setAudience] = useState<TargetAudienceOverride>("auto");
@@ -140,12 +141,21 @@ export default function AddKnowledgeDocModal({
       );
       try {
         const files = await getRawPipelineFilesApi();
-        setRawFiles(files);
+        const uploadedFile = files.find((item) => item.filename === storedName) ?? {
+          filename: storedName,
+          size_kb: uploaded.size_kb ?? 0,
+          ext: storedName.match(/\.[^.]+$/)?.[0] ?? "",
+        };
+        setRawFiles([
+          uploadedFile,
+          ...files.filter((item) => item.filename !== storedName),
+        ]);
         setFilesError("");
       } catch (cause: unknown) {
         setFilesError(gatewayErrorDetail(cause));
       }
       setSelectedFile(storedName);
+      setUploadedFilename(storedName);
       setManualFilename("");
       setPipelineResult(null);
     } catch (cause: unknown) {
@@ -485,6 +495,11 @@ export default function AddKnowledgeDocModal({
             </div>
           )}
 
+          {uploadedFilename && filename === uploadedFilename && (
+            <div className="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] leading-relaxed text-emerald-800">
+              Tệp đã nằm trong data/raw_docs/. Bấm 'Chạy Pipeline & Chỉ mục RAG' bên dưới để nhúng vector vào cơ sở tri thức.
+            </div>
+          )}
           <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
             <button
               type="button"

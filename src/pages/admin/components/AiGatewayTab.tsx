@@ -25,6 +25,7 @@ import type {
 } from "../../../services/aiGatewayAdminApi";
 import AddKnowledgeDocModal from "./Modals/AddKnowledgeDocModal";
 import ChunkInspectorModal from "./Modals/ChunkInspectorModal";
+import FlaggedSymptomsPanel from "./FlaggedSymptomsPanel";
 
 interface AiGatewayTabProps {
   documents: RealKnowledgeDoc[];
@@ -490,6 +491,8 @@ export default function AiGatewayTab({
           )}
         </form>
       </div>
+
+      <FlaggedSymptomsPanel onKnowledgeBaseUpdated={onRefreshDocuments} />
 
       {showAddModal && (
         <AddKnowledgeDocModal

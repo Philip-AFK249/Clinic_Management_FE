@@ -173,6 +173,10 @@ export interface VoiceTriageResult {
   clarifying_question?: string;
   clarification_options?: ClarificationOption[];
   detected_age_group?: string | null;
+  is_out_of_dataset?: boolean;
+  flag_reason?: string;
+  flag_id?: string | null;
+  similarity_score?: number | null;
 }
 
 /** Backward-compatible name used by the existing patient booking flow. */
@@ -427,6 +431,9 @@ function normalizeTriagePayload(payload: VoiceTriageResult): VoiceTriageResult {
     needs_clarification: payload.needs_clarification === true,
     clarification_options: payload.clarification_options ?? [],
     detected_age_group: payload.detected_age_group ?? null,
+    is_out_of_dataset: payload.is_out_of_dataset === true,
+    flag_id: payload.flag_id ?? null,
+    similarity_score: payload.similarity_score ?? null,
   });
 }
 

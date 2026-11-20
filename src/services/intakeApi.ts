@@ -105,6 +105,9 @@ export interface AdministrativeIntakeRequest {
   receiptNumber?: string | null;
   receiptAmount?: number | null;
   isReceiptVerified?: boolean;
+  triageFlagId?: string;
+  isOutOfDataset?: boolean;
+  flagReason?: string;
 }
 
 export interface IntakeResponse {

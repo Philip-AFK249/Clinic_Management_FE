@@ -356,6 +356,7 @@ export default function SymptomsStep({
           <TriageResultCard
             suggestion={null}
             multiSpecialty={multiSpecialty}
+            isOutOfDataset={voiceTriage?.is_out_of_dataset === true}
             acknowledged={triageAck}
             onAcknowledge={setTriageAck}
           />
