@@ -42,6 +42,11 @@ interface EditDraft {
   reception_action: string;
 }
 
+interface FlaggedSymptomRow extends FlaggedSymptomItem {
+  /** Present on flags that were raised from a clinic queue ticket. */
+  ticket_number?: string | null;
+}
+
 const EMPTY_STATS: FlaggedSymptomsStats = {
   total: 0,
   doctor_confirmed: 0,
@@ -447,7 +452,7 @@ export default function FlaggedSymptomsPanel({
       )}
 
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[1180px] text-left text-xs">
+        <table className="w-full table-fixed text-left text-xs">
           <thead className="bg-slate-50 text-[10px] font-bold uppercase tracking-wide text-slate-500">
             <tr>
               <th className="w-10 px-4 py-2.5">
@@ -460,11 +465,15 @@ export default function FlaggedSymptomsPanel({
                   className="accent-violet-700"
                 />
               </th>
-              <th className="px-3 py-2.5">Mã cờ &amp; Thời gian</th>
-              <th className="px-3 py-2.5">Triệu chứng bệnh nhân mô tả</th>
-              <th className="px-3 py-2.5">Dự đoán ICD-10 (Kiến thức AI)</th>
-              <th className="px-3 py-2.5">Nhóm tuổi</th>
-              <th className="px-3 py-2.5">Thao tác</th>
+              <th className="w-[16%] px-3 py-2.5">Mã cờ &amp; Phiếu / Thời gian</th>
+              <th className="w-[27%] px-3 py-2.5">Triệu chứng bệnh nhân mô tả</th>
+              <th className="w-[25%] px-3 py-2.5">
+                Dự đoán ICD-10 (Kiến thức AI)
+              </th>
+              <th className="w-[14%] px-3 py-2.5">Nhóm tuổi</th>
+              <th className="sticky right-0 z-10 w-[168px] border-l border-slate-100 bg-slate-50 px-3 py-2.5 shadow-[-4px_0_10px_-8px_rgba(15,23,42,0.25)]">
+                Thao tác
+              </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -483,14 +492,19 @@ export default function FlaggedSymptomsPanel({
               </tr>
             ) : (
               filteredItems.map((item) => {
-                const status = normalizedStatus(item);
+                const row = item as FlaggedSymptomRow;
+                const status = normalizedStatus(row);
                 const description =
-                  item.transcription || item.patient_description || "—";
-                const predictedIcd = item.ai_icd10_code || item.ai_suggested_icd10;
+                  row.transcription || row.patient_description || "—";
+                const predictedIcd =
+                  row.ai_icd10_code || row.ai_suggested_icd10;
                 const confirmed =
-                  item.confirmed_icd10_code || item.confirmed_disease_name;
+                  row.confirmed_icd10_code || row.confirmed_disease_name;
                 return (
-                  <tr key={item.flag_id} className="align-top hover:bg-slate-50/60">
+                  <tr
+                    key={row.flag_id}
+                    className="group align-top hover:bg-slate-50/60"
+                  >
                     <td className="px-4 py-3">
                       <input
                         type="checkbox"
@@ -502,22 +516,30 @@ export default function FlaggedSymptomsPanel({
                     </td>
                     <td className="px-3 py-3">
                       <p className="font-mono text-[11px] font-bold text-slate-800">
-                        {item.flag_id}
+                        {row.flag_id}
                       </p>
                       <p className="mt-1 text-[10px] text-slate-400">
-                        {formatTimestamp(item.created_at)}
+                        {formatTimestamp(row.created_at)}
                       </p>
+                      {row.ticket_number?.trim() && (
+                        <span
+                          className="mt-1.5 inline-flex max-w-full items-center rounded-md border border-indigo-200 bg-indigo-50 px-1.5 py-0.5 font-mono text-[10px] font-bold text-indigo-700"
+                          title={`Phiếu khám liên kết: ${row.ticket_number}`}
+                        >
+                          Phiếu {row.ticket_number.trim()}
+                        </span>
+                      )}
                       <div className="mt-1.5 flex flex-wrap gap-1">
                         <span className="rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">
-                          {flagReasonLabel(item.flag_reason)}
+                          {flagReasonLabel(row.flag_reason)}
                         </span>
                         <span className={`inline-flex rounded-full border px-1.5 py-0.5 text-[10px] font-bold ${statusTone(status)}`}>
                           {statusLabel(status)}
                         </span>
                       </div>
-                      {item.flag_reason && (
-                        <p className="mt-1 max-w-[180px] truncate text-[10px] text-slate-400" title={item.flag_reason}>
-                          {item.flag_reason}
+                      {row.flag_reason && (
+                        <p className="mt-1 max-w-[180px] truncate text-[10px] text-slate-400" title={row.flag_reason}>
+                          {row.flag_reason}
                         </p>
                       )}
                     </td>
@@ -563,9 +585,23 @@ export default function FlaggedSymptomsPanel({
                           </p>
                         )}
                       {confirmed && (
-                        <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1.5 text-[11px] font-semibold leading-relaxed text-emerald-800">
-                          BS thực tế chốt: {item.confirmed_icd10_code || "—"} -{" "}
-                          {item.confirmed_disease_name || "—"}
+                        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                          <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700">
+                            Chẩn đoán BS
+                          </span>
+                          {item.confirmed_icd10_code && (
+                            <span className="inline-flex items-center rounded-md border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 font-mono text-[10px] font-bold text-emerald-700">
+                              {item.confirmed_icd10_code}
+                            </span>
+                          )}
+                          {item.confirmed_disease_name && (
+                            <span
+                              className="max-w-[160px] truncate text-[10px] font-semibold text-emerald-800"
+                              title={item.confirmed_disease_name}
+                            >
+                              {item.confirmed_disease_name}
+                            </span>
+                          )}
                         </div>
                       )}
                     </td>
@@ -574,35 +610,35 @@ export default function FlaggedSymptomsPanel({
                         {ageGroupLabel(item)}
                       </span>
                     </td>
-                    <td className="px-3 py-3">
-                      <div className="flex flex-col items-start gap-1.5">
+                    <td className="sticky right-0 z-10 border-l border-slate-100 bg-white px-3 py-3 shadow-[-4px_0_10px_-8px_rgba(15,23,42,0.25)] group-hover:bg-slate-50">
+                      <div className="flex w-full flex-col items-start gap-1.5">
                         <button
                           type="button"
                           onClick={() => {
-                            setEditingItem(item);
-                            setDraft(draftFrom(item));
+                            setEditingItem(row);
+                            setDraft(draftFrom(row));
                           }}
-                          className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-700 hover:text-slate-900"
+                          className="inline-flex whitespace-nowrap items-center gap-1 text-[11px] font-semibold text-slate-700 hover:text-slate-900"
                         >
                           <Pencil size={11} aria-hidden="true" />
                           Sửa / Chuẩn hóa
                         </button>
                         <button
                           type="button"
-                          onClick={() => void handleTrain([item.flag_id])}
+                          onClick={() => void handleTrain([row.flag_id])}
                           disabled={isTraining}
-                          className="inline-flex items-center gap-1 text-[11px] font-semibold text-violet-700 hover:text-violet-900 disabled:opacity-50"
+                          className="inline-flex whitespace-nowrap items-center gap-1 text-[11px] font-semibold text-violet-700 hover:text-violet-900 disabled:opacity-50"
                         >
                           <Sparkles size={11} aria-hidden="true" />
                           Nạp RAG ngay
                         </button>
                         <button
                           type="button"
-                          onClick={() => void handleDelete(item)}
-                          disabled={deletingId === item.flag_id}
-                          className="inline-flex items-center gap-1 text-[11px] font-semibold text-red-600 hover:text-red-800 disabled:opacity-50"
+                          onClick={() => void handleDelete(row)}
+                          disabled={deletingId === row.flag_id}
+                          className="inline-flex whitespace-nowrap items-center gap-1 text-[11px] font-semibold text-red-600 hover:text-red-800 disabled:opacity-50"
                         >
-                          {deletingId === item.flag_id ? (
+                          {deletingId === row.flag_id ? (
                             <Loader2 size={11} className="animate-spin" aria-hidden="true" />
                           ) : (
                             <Trash2 size={11} aria-hidden="true" />
