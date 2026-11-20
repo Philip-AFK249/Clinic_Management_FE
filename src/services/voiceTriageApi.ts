@@ -100,11 +100,24 @@ export interface SessionSchedule {
   doctors: DoctorShiftInfo[];
 }
 
+export type AgeGroupValue =
+  | "tre_em"
+  | "nguoi_truong_thanh"
+  | "nguoi_cao_tuoi"
+  | "tat_ca";
+
 export interface ClarificationOption {
   id: string;
   label: string;
   category: "age_group" | "medical_history" | "symptom_detail";
-  age_group_value?: "tre_em" | "nguoi_truong_thanh" | "nguoi_cao_tuoi" | "tat_ca" | null;
+  age_group_value?: AgeGroupValue | null;
+}
+
+export interface ClarificationTurn {
+  question: string;
+  answer: string;
+  optionId?: string;
+  ageGroupValue?: AgeGroupValue | null;
 }
 
 export interface VoiceTriageContext {
@@ -119,7 +132,11 @@ export interface RefineVoiceTriagePayload {
   age_group?: string;
   patient_history?: string;
   target_date?: string;
+  clarification_history?: Array<{ question: string; answer: string }>;
+  round_index?: number;
 }
+
+export type RefineTriagePayload = RefineVoiceTriagePayload;
 
 export interface VoiceTriageResult {
   success: boolean;

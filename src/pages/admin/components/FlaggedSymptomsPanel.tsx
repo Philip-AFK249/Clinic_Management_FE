@@ -103,6 +103,26 @@ function statusTone(status: FlaggedStatus): string {
   return "border-amber-200 bg-amber-50 text-amber-700";
 }
 
+function flagReasonLabel(reason?: string | null): string {
+  const lowered = (reason ?? "").toLowerCase();
+  if (/(ngoài|ngoai|chuyên khoa|chuyen khoa|specialty|department)/.test(lowered)) {
+    return "Ngoài chuyên khoa";
+  }
+  return "Triệu chứng mới";
+}
+
+function ageGroupLabel(item: FlaggedSymptomItem): string {
+  if (item.age_group_label?.trim()) return item.age_group_label.trim();
+  const labels: Record<string, string> = {
+    tre_em: "Trẻ em (< 16 tuổi)",
+    nguoi_truong_thanh: "Người trưởng thành (16–59 tuổi)",
+    nguoi_cao_tuoi: "Người cao tuổi (≥ 60 tuổi)",
+    tat_ca: "Mọi lứa tuổi",
+  };
+  const value = item.age_group?.trim() ?? "";
+  return labels[value] || value || "Chưa rõ";
+}
+
 function deriveStats(
   items: FlaggedSymptomItem[],
   stats: FlaggedSymptomsStats,
@@ -427,7 +447,7 @@ export default function FlaggedSymptomsPanel({
       )}
 
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[1120px] text-left text-xs">
+        <table className="w-full min-w-[1180px] text-left text-xs">
           <thead className="bg-slate-50 text-[10px] font-bold uppercase tracking-wide text-slate-500">
             <tr>
               <th className="w-10 px-4 py-2.5">
@@ -441,30 +461,34 @@ export default function FlaggedSymptomsPanel({
                 />
               </th>
               <th className="px-3 py-2.5">Mã cờ &amp; Thời gian</th>
-              <th className="px-3 py-2.5">Lời bệnh nhân mô tả &amp; Nhóm tuổi</th>
-              <th className="px-3 py-2.5">AI gợi ý sát nhất</th>
-              <th className="px-3 py-2.5">Bác sĩ chẩn đoán thực tế (ICD-10)</th>
-              <th className="px-3 py-2.5">Trạng thái</th>
+              <th className="px-3 py-2.5">Triệu chứng bệnh nhân mô tả</th>
+              <th className="px-3 py-2.5">Dự đoán ICD-10 (Kiến thức AI)</th>
+              <th className="px-3 py-2.5">Nhóm tuổi</th>
               <th className="px-3 py-2.5">Thao tác</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {isLoading ? (
               <tr>
-                <td colSpan={7} className="px-5 py-10 text-center text-xs text-slate-500">
+                <td colSpan={6} className="px-5 py-10 text-center text-xs text-slate-500">
                   <Loader2 size={14} className="mr-2 inline animate-spin" aria-hidden="true" />
                   Đang tải dữ liệu ngoài thu thập từ AI Gateway...
                 </td>
               </tr>
             ) : filteredItems.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-5 py-10 text-center text-xs text-slate-500">
+                <td colSpan={6} className="px-5 py-10 text-center text-xs text-slate-500">
                   Không có ca nào khớp bộ lọc hiện tại.
                 </td>
               </tr>
             ) : (
               filteredItems.map((item) => {
                 const status = normalizedStatus(item);
+                const description =
+                  item.transcription || item.patient_description || "—";
+                const predictedIcd = item.ai_icd10_code || item.ai_suggested_icd10;
+                const confirmed =
+                  item.confirmed_icd10_code || item.confirmed_disease_name;
                 return (
                   <tr key={item.flag_id} className="align-top hover:bg-slate-50/60">
                     <td className="px-4 py-3">
@@ -483,6 +507,14 @@ export default function FlaggedSymptomsPanel({
                       <p className="mt-1 text-[10px] text-slate-400">
                         {formatTimestamp(item.created_at)}
                       </p>
+                      <div className="mt-1.5 flex flex-wrap gap-1">
+                        <span className="rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">
+                          {flagReasonLabel(item.flag_reason)}
+                        </span>
+                        <span className={`inline-flex rounded-full border px-1.5 py-0.5 text-[10px] font-bold ${statusTone(status)}`}>
+                          {statusLabel(status)}
+                        </span>
+                      </div>
                       {item.flag_reason && (
                         <p className="mt-1 max-w-[180px] truncate text-[10px] text-slate-400" title={item.flag_reason}>
                           {item.flag_reason}
@@ -490,27 +522,39 @@ export default function FlaggedSymptomsPanel({
                       )}
                     </td>
                     <td className="px-3 py-3">
-                      <p className="max-w-[320px] leading-relaxed text-slate-700" title={item.patient_description}>
-                        {item.patient_description}
+                      <p className="max-w-[380px] whitespace-pre-wrap leading-relaxed text-slate-700" title={description}>
+                        {description}
                       </p>
-                      {item.age_group && (
-                        <span className="mt-1 inline-flex rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">
-                          {item.age_group}
-                        </span>
+                      {item.medical_symptom_standard && (
+                        <div className="mt-2 max-w-[380px] rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5">
+                          <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                            Đã chuẩn hóa
+                          </p>
+                          <p className="mt-0.5 text-[11px] leading-relaxed text-slate-600">
+                            {item.medical_symptom_standard}
+                          </p>
+                        </div>
                       )}
                     </td>
                     <td className="px-3 py-3">
-                      <p className="font-semibold text-slate-800">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {predictedIcd && (
+                          <span className="rounded-full border border-sky-200 bg-sky-50 px-1.5 py-0.5 font-mono text-[10px] font-bold text-sky-700">
+                            {predictedIcd}
+                          </span>
+                        )}
+                        <span className="font-semibold text-slate-800">
+                          {item.ai_disease_guess ||
+                            item.ai_suggested_disease ||
+                            "Chưa có dự đoán"}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-[11px] text-slate-500">
+                        Chuyên khoa gần nhất:{" "}
                         {item.ai_department_name ||
                           (item.ai_department_id !== null
                             ? `Khoa #${item.ai_department_id}`
                             : "Chưa xác định")}
-                      </p>
-                      <p className="mt-1 text-[10px] text-slate-500">
-                        {item.ai_priority_level || "—"}
-                        {item.ai_suggested_icd10
-                          ? ` · ${item.ai_suggested_icd10}`
-                          : ""}
                       </p>
                       {item.similarity_score !== null &&
                         item.similarity_score !== undefined && (
@@ -518,24 +562,16 @@ export default function FlaggedSymptomsPanel({
                             Độ tương đồng: {(item.similarity_score * 100).toFixed(1)}%
                           </p>
                         )}
-                    </td>
-                    <td className="px-3 py-3">
-                      {item.confirmed_icd10_code || item.confirmed_disease_name ? (
-                        <>
-                          <p className="font-mono font-bold text-slate-800">
-                            {item.confirmed_icd10_code || "—"}
-                          </p>
-                          <p className="mt-1 text-[11px] text-slate-600">
-                            {item.confirmed_disease_name || "Chưa đặt tên bệnh"}
-                          </p>
-                        </>
-                      ) : (
-                        <span className="text-slate-400">Chưa có</span>
+                      {confirmed && (
+                        <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1.5 text-[11px] font-semibold leading-relaxed text-emerald-800">
+                          BS thực tế chốt: {item.confirmed_icd10_code || "—"} -{" "}
+                          {item.confirmed_disease_name || "—"}
+                        </div>
                       )}
                     </td>
                     <td className="px-3 py-3">
-                      <span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-bold ${statusTone(status)}`}>
-                        {statusLabel(status)}
+                      <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-700">
+                        {ageGroupLabel(item)}
                       </span>
                     </td>
                     <td className="px-3 py-3">

@@ -19,6 +19,7 @@ import type {
 import PatientNavbar from "./components/PatientNavbar";
 import PatientFooter from "./components/PatientFooter";
 import SymptomsStep from "./components/SymptomsStep";
+import type { ClarificationStep } from "./components/SymptomsStep";
 import BookingIdentityFields from "./components/BookingIdentityFields";
 import BookingTicketModal from "./components/BookingTicketModal";
 import MedicalBillOcrModal from "./components/MedicalBillOcrModal";
@@ -52,6 +53,8 @@ import {
   VoiceTriageError,
 } from "../../services/voiceTriageApi";
 import type {
+  AgeGroupValue,
+  ClarificationTurn,
   RefineVoiceTriagePayload,
   VoiceTriageResult,
 } from "../../services/voiceTriageApi";
@@ -66,6 +69,19 @@ import type {
 import type { ActiveAppointment, BhyTelemetry } from "./data/patientMockRecords";
 
 const STEP_LABELS = ["Triệu chứng & Chọn lịch", "Xác nhận"];
+
+const AGE_GROUP_VALUES: AgeGroupValue[] = [
+  "tre_em",
+  "nguoi_truong_thanh",
+  "nguoi_cao_tuoi",
+  "tat_ca",
+];
+
+function asAgeGroupValue(value?: string | null): AgeGroupValue | null {
+  return AGE_GROUP_VALUES.includes(value as AgeGroupValue)
+    ? (value as AgeGroupValue)
+    : null;
+}
 
 /**
  * Whether `doctorId` is on duty on `triage`'s rota.
@@ -188,7 +204,9 @@ function formFromSession(user: User | null): BookingFormData {
 
 export default function BookingPage() {
   const { user, updateUser } = useAuth();
-  const defaultAgeGroup = ageGroupFromDateOfBirth(user?.dateOfBirth);
+  const derivedAgeGroup = ageGroupFromDateOfBirth(user?.dateOfBirth);
+  const [clarifiedAgeGroup, setClarifiedAgeGroup] = useState<string | null>(null);
+  const defaultAgeGroup = clarifiedAgeGroup ?? derivedAgeGroup;
   const defaultPatientHistory = patientHistoryFromUser(user);
   const navigate = useNavigate();
   const [step, setStep] = useState(0);
@@ -238,6 +256,8 @@ export default function BookingPage() {
     useState<VoiceScheduleTriageResponse | null>(null);
   const [pendingClarification, setPendingClarification] =
     useState<VoiceTriageResult | null>(null);
+  const [clarificationSteps, setClarificationSteps] = useState<ClarificationStep[]>([]);
+  const [clarificationResults, setClarificationResults] = useState<VoiceTriageResult[]>([]);
   const [isRefiningVoice, setIsRefiningVoice] = useState(false);
   /**
    * The recorded clip.
@@ -491,11 +511,56 @@ export default function BookingPage() {
    * beside it: the patient dictated this text, so it is their own description, and
    * they can still edit it before continuing.
    */
+  function clarificationStepFrom(result: VoiceTriageResult): ClarificationStep {
+    return {
+      question: result.clarifying_question ?? "",
+      options: result.clarification_options ?? [],
+      selectedAnswer: "",
+      detectedAgeGroup: result.detected_age_group ?? null,
+    };
+  }
+
+  function clearClarification() {
+    setPendingClarification(null);
+    setClarificationSteps([]);
+    setClarificationResults([]);
+  }
+
+  function resolvedClarificationAgeGroup(
+    steps: ClarificationStep[],
+    fallback?: string | null,
+  ): string | undefined {
+    for (let index = steps.length - 1; index >= 0; index -= 1) {
+      if (steps[index].detectedAgeGroup) return steps[index].detectedAgeGroup ?? undefined;
+    }
+    return fallback ?? defaultAgeGroup ?? undefined;
+  }
+
+  function symptomTextFromClarification(
+    transcription: string,
+    steps: ClarificationStep[],
+  ): string {
+    return appendUniqueLines(
+      transcription,
+      steps.map((step) => step.selectedAnswer).filter((answer) => answer.trim()),
+    );
+  }
+
+  function finishClarification(
+    result: VoiceScheduleTriageResponse,
+    symptomText: string,
+  ) {
+    if (result.detected_age_group) setClarifiedAgeGroup(result.detected_age_group);
+    clearClarification();
+    applyVoiceTriage(result, voiceClip ?? undefined, symptomText);
+    toast.success("Đã phân luồng lại với thông tin bạn vừa xác nhận.");
+  }
+
   async function analyseVoiceClip(clip: Blob) {
     setVoiceClip(clip);
     setIsAnalysing(true);
     setScheduleUnavailable(false);
-    setPendingClarification(null);
+    clearClarification();
     try {
       const result = await submitVoiceTriageApi(clip, triageDate, {
         ageGroup: defaultAgeGroup,
@@ -503,8 +568,10 @@ export default function BookingPage() {
       });
       const transcript = result.transcription.trim();
       if (transcript) setSymptoms(transcript);
-      if (result.needs_clarification && (result.clarification_options?.length ?? 0) > 0) {
+      if (result.needs_clarification && result.clarifying_question?.trim()) {
         setPendingClarification(result);
+        setClarificationSteps([clarificationStepFrom(result)]);
+        setClarificationResults([result]);
       } else {
         applyVoiceTriage(result, clip);
       }
@@ -515,18 +582,77 @@ export default function BookingPage() {
     }
   }
 
-  async function handleRefineClarification(payload: RefineVoiceTriagePayload) {
-    if (!pendingClarification) return;
+  async function handleClarificationAnswer({
+    answer,
+    optionId,
+  }: {
+    answer: string;
+    optionId?: string;
+  }) {
+    if (!pendingClarification || isRefiningVoice || clarificationSteps.length === 0) {
+      return;
+    }
+    const stepIndex = clarificationSteps.length - 1;
+    const option = optionId
+      ? (pendingClarification.clarification_options ?? []).find(
+          (item) => item.id === optionId,
+        )
+      : undefined;
+    const updatedSteps = clarificationSteps.map((step, index) =>
+      index === stepIndex
+        ? {
+            ...step,
+            selectedAnswer: answer,
+            selectedOptionId: optionId,
+            detectedAgeGroup:
+              option?.age_group_value ??
+              step.detectedAgeGroup ??
+              pendingClarification.detected_age_group,
+          }
+        : step,
+    );
+    setClarificationSteps(updatedSteps);
     setIsRefiningVoice(true);
     try {
+      const history: ClarificationTurn[] = updatedSteps
+        .filter((step) => step.selectedAnswer)
+        .map((step) => ({
+          question: step.question,
+          answer: step.selectedAnswer,
+          ageGroupValue: asAgeGroupValue(step.detectedAgeGroup),
+        }));
+      const payload: RefineVoiceTriagePayload = {
+        transcription: pendingClarification.transcription,
+        selected_options: option ? [option.label] : [],
+        extra_note: option ? undefined : answer,
+        age_group: resolvedClarificationAgeGroup(
+          updatedSteps,
+          pendingClarification.detected_age_group,
+        ),
+        patient_history: defaultPatientHistory,
+        target_date: triageDate || pendingClarification.target_date,
+        clarification_history: history.map(({ question, answer: text }) => ({
+          question,
+          answer: text,
+        })),
+        round_index: stepIndex + 1,
+      };
       const refined = await refineVoiceTriageApi(payload);
-      const symptomText = appendUniqueLines(payload.transcription, [
-        ...payload.selected_options,
-        ...(payload.extra_note ? [payload.extra_note] : []),
-      ]);
-      setPendingClarification(null);
-      applyVoiceTriage(refined, voiceClip ?? undefined, symptomText);
-      toast.success("Đã phân luồng lại với thông tin bạn vừa xác nhận.");
+      const symptomText = symptomTextFromClarification(
+        pendingClarification.transcription,
+        updatedSteps,
+      );
+      if (
+        refined.needs_clarification &&
+        refined.clarifying_question?.trim() &&
+        updatedSteps.length < 4
+      ) {
+        setPendingClarification(refined);
+        setClarificationSteps([...updatedSteps, clarificationStepFrom(refined)]);
+        setClarificationResults([...clarificationResults, refined]);
+      } else {
+        finishClarification(refined, symptomText);
+      }
     } catch (error) {
       toast.error("Không thể chẩn đoán lại. Vui lòng thử lại.", {
         description: error instanceof Error ? error.message : undefined,
@@ -536,11 +662,26 @@ export default function BookingPage() {
     }
   }
 
+  function handleClarificationBack() {
+    if (clarificationSteps.length <= 1) return;
+    const previousIndex = clarificationSteps.length - 2;
+    setClarificationSteps(
+      clarificationSteps
+        .slice(0, -1)
+        .map((step, index) =>
+          index === previousIndex
+            ? { ...step, selectedAnswer: "", selectedOptionId: undefined }
+            : step,
+        ),
+    );
+    setClarificationResults(clarificationResults.slice(0, -1));
+    setPendingClarification(clarificationResults[previousIndex] ?? null);
+  }
+
   function handleSkipClarification() {
-    if (!pendingClarification) return;
     const current = pendingClarification;
-    setPendingClarification(null);
-    applyVoiceTriage(current, voiceClip ?? undefined);
+    clearClarification();
+    if (current) applyVoiceTriage(current, voiceClip ?? undefined);
   }
 
   /**
@@ -607,6 +748,12 @@ export default function BookingPage() {
    * discard a choice the patient made themselves for no visible reason.
    */
   function handleSymptomsChange(next: string) {
+    if (
+      pendingClarification &&
+      next.trim() !== pendingClarification.transcription.trim()
+    ) {
+      clearClarification();
+    }
     if (voiceTriage && triageSourceText && next.trim() !== triageSourceText) {
       setVoiceTriage(null);
       setShiftSelection(null);
@@ -926,7 +1073,8 @@ export default function BookingPage() {
     setScannedThisSession(false);
     setBillOcrResult(null);
     setVoiceTriage(null);
-    setPendingClarification(null);
+    clearClarification();
+    setClarifiedAgeGroup(null);
     setIsRefiningVoice(false);
     setVoiceClip(null);
     setShiftSelection(null);
@@ -1245,9 +1393,11 @@ export default function BookingPage() {
                   voiceTriage={voiceTriage}
                   isAnalysingVoice={isAnalysing}
                   clarification={pendingClarification}
+                  clarificationSteps={clarificationSteps}
                   isRefiningVoice={isRefiningVoice}
-                  onRefineClarification={handleRefineClarification}
-                  onSkipClarification={handleSkipClarification}
+                  onClarificationAnswer={handleClarificationAnswer}
+                  onClarificationBack={handleClarificationBack}
+                  onClarificationReset={handleSkipClarification}
                   defaultAgeGroup={defaultAgeGroup}
                   defaultPatientHistory={defaultPatientHistory}
                   onVoiceClip={analyseVoiceClip}

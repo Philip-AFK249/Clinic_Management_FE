@@ -98,9 +98,13 @@ export interface RawPipelineFile {
 export interface FlaggedSymptomItem {
   flag_id: string;
   created_at: string;
-  patient_description: string;
+  transcription?: string;
+  patient_description?: string;
   age_group: string | null;
+  age_group_label?: string;
   ai_department_id: number | null;
+  ai_icd10_code?: string;
+  ai_disease_guess?: string;
   ai_department_name?: string | null;
   ai_priority_level?: string | null;
   ai_suggested_icd10?: string | null;

@@ -1,6 +1,8 @@
 import { useState } from "react";
 import {
+  ArrowLeft,
   ArrowRight,
+  Check,
   CalendarClock,
   FileText,
   RefreshCw,
@@ -20,7 +22,7 @@ import { triageSymptoms } from "../data/patientMockRecords";
 import { dobLabelFrom, GENDER_OPTIONS, genderFrom, hospitalLabelFrom } from "../data/patientProfile";
 import type { BhyTelemetry } from "../data/patientMockRecords";
 import type {
-  RefineVoiceTriagePayload,
+  ClarificationOption,
   SessionName,
   VoiceScheduleTriageResponse,
   VoiceTriageResult,
@@ -30,6 +32,14 @@ import type { ShiftSelection } from "./ShiftDispatcherCard";
 import BookingSlotChips from "./BookingSlotChips";
 import { isMorningSessionElapsed, isSlotElapsed } from "../data/bookingSlots";
 import { CLINIC_SERVICES } from "../data/clinicContent";
+
+export interface ClarificationStep {
+  question: string;
+  options: ClarificationOption[];
+  selectedAnswer: string;
+  selectedOptionId?: string;
+  detectedAgeGroup?: string | null;
+}
 
 interface SymptomsStepProps {
   symptoms: string;
@@ -59,9 +69,14 @@ interface SymptomsStepProps {
   voiceTriage?: VoiceScheduleTriageResponse | null;
   isAnalysingVoice?: boolean;
   clarification?: VoiceTriageResult | null;
+  clarificationSteps?: ClarificationStep[];
   isRefiningVoice?: boolean;
-  onRefineClarification?: (payload: RefineVoiceTriagePayload) => void;
-  onSkipClarification?: () => void;
+  onClarificationAnswer?: (answer: {
+    answer: string;
+    optionId?: string;
+  }) => void;
+  onClarificationBack?: () => void;
+  onClarificationReset?: () => void;
   defaultAgeGroup?: string;
   defaultPatientHistory?: string;
   /** The recorded clip, which the parent re-uploads to re-query another date. */
@@ -118,9 +133,11 @@ export default function SymptomsStep({
   voiceTriage = null,
   isAnalysingVoice = false,
   clarification = null,
+  clarificationSteps = [],
   isRefiningVoice = false,
-  onRefineClarification,
-  onSkipClarification,
+  onClarificationAnswer,
+  onClarificationBack,
+  onClarificationReset,
   defaultAgeGroup,
   defaultPatientHistory,
   onVoiceClip,
@@ -145,6 +162,7 @@ export default function SymptomsStep({
   afterHours = false,
 }: SymptomsStepProps) {
   const [triageAck, setTriageAck] = useState(false);
+  const [customAnswer, setCustomAnswer] = useState("");
 
   /**
    * Only one department recommendation may be on screen.
@@ -178,8 +196,29 @@ export default function SymptomsStep({
         }
       : null;
 
+  const clarificationQuestion = (clarification?.clarifying_question ?? "").trim();
+  const clarificationOptions = clarification?.clarification_options ?? [];
+  const clarificationStepIndex = Math.max(0, clarificationSteps.length - 1);
+  const showClarification =
+    clarification?.needs_clarification === true &&
+    Boolean(clarificationQuestion) &&
+    Boolean(onClarificationAnswer);
+
   function handleChipSelect(value: string) {
     onChange(symptoms.trim() ? `${symptoms.trimEnd()}, ${value}` : value);
+  }
+
+  function submitCustomAnswer() {
+    const answer = customAnswer.trim();
+    if (!answer || isRefiningVoice || !onClarificationAnswer) return;
+    setCustomAnswer("");
+    onClarificationAnswer({ answer });
+  }
+
+  function handleClarificationBackClick() {
+    setCustomAnswer("");
+    if (clarificationSteps.length <= 1) onClarificationReset?.();
+    else onClarificationBack?.();
   }
 
   // The card prints `Nam` / `Nữ`; the form stores the enum behind a select, so
@@ -264,14 +303,117 @@ export default function SymptomsStep({
         onRecorded={onVoiceClip}
         onCancelled={onVoiceCancel}
         isAnalysing={isAnalysingVoice}
-        clarification={clarification}
-        isRefining={isRefiningVoice}
-        onRefineClarification={onRefineClarification}
-        onSkipClarification={onSkipClarification}
         defaultAgeGroup={defaultAgeGroup}
         defaultPatientHistory={defaultPatientHistory}
         targetDate={triageDate}
       />
+
+      {showClarification && (
+        <section
+          key={clarificationQuestion}
+          className="space-y-3 rounded-xl border border-slate-200/80 bg-white p-4 shadow-card"
+          aria-label="Làm rõ triệu chứng"
+        >
+          <div className="flex flex-col gap-3 border-b border-slate-100 pb-3 sm:flex-row sm:items-center sm:justify-between">
+            <button
+              type="button"
+              onClick={handleClarificationBackClick}
+              disabled={isRefiningVoice}
+              className="inline-flex items-center gap-1 self-start text-xs font-semibold text-slate-600 transition-colors hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <ArrowLeft size={14} aria-hidden="true" />
+              ← Quay lại
+            </button>
+            <div className="sm:text-right">
+              <p className="text-xs font-bold text-slate-800">
+                Làm rõ triệu chứng · Câu {clarificationStepIndex + 1}
+              </p>
+              <p className="mt-0.5 text-[11px] text-slate-400">
+                AI đang thu hẹp triệu chứng dựa trên dữ liệu y khoa
+              </p>
+              <div className="mt-2 flex justify-start gap-1 sm:justify-end" aria-hidden="true">
+                {[0, 1, 2, 3].map((dot) => (
+                  <span
+                    key={dot}
+                    className={`h-1.5 rounded-full transition-all ${
+                      dot <= clarificationStepIndex
+                        ? "w-4 bg-slate-800"
+                        : "w-1.5 bg-slate-200"
+                    }`}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <p className="text-sm font-semibold leading-relaxed text-slate-900">
+            {clarificationQuestion}
+          </p>
+
+          {clarificationOptions.length > 0 && (
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2" role="radiogroup" aria-label={clarificationQuestion}>
+              {clarificationOptions.slice(0, 4).map((option) => {
+                const selected =
+                  clarificationSteps[clarificationStepIndex]?.selectedOptionId ===
+                  option.id;
+                return (
+                  <button
+                    key={option.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    disabled={isRefiningVoice}
+                    onClick={() => onClarificationAnswer?.({ answer: option.label, optionId: option.id })}
+                    className={`flex items-start gap-2 rounded-lg border px-3 py-2.5 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                      selected
+                        ? "border-slate-800 bg-slate-50"
+                        : "border-slate-200 bg-white hover:border-slate-400 hover:bg-slate-50"
+                    }`}
+                  >
+                    <span
+                      className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${
+                        selected ? "border-slate-800 bg-slate-800" : "border-slate-300"
+                      }`}
+                      aria-hidden="true"
+                    >
+                      {selected && <Check size={10} className="text-white" />}
+                    </span>
+                    <span className="text-xs font-semibold leading-relaxed text-slate-700">
+                      {option.label}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          <div className="flex flex-col gap-2 border-t border-slate-100 pt-3 sm:flex-row">
+            <input
+              type="text"
+              value={customAnswer}
+              onChange={(event) => setCustomAnswer(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") submitCustomAnswer();
+              }}
+              disabled={isRefiningVoice}
+              placeholder="Hoặc nhập câu trả lời khác..."
+              aria-label="Hoặc nhập câu trả lời khác..."
+              className="h-9 flex-1 rounded-lg border border-slate-200 px-3 text-xs text-slate-800 placeholder:text-slate-400 focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-200 disabled:bg-slate-50"
+            />
+            <button
+              type="button"
+              onClick={submitCustomAnswer}
+              disabled={isRefiningVoice || !customAnswer.trim()}
+              className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-slate-800 px-4 text-xs font-semibold text-white transition-colors hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isRefiningVoice ? (
+                <RefreshCw size={13} className="animate-spin" aria-hidden="true" />
+              ) : null}
+              Tiếp tục
+            </button>
+          </div>
+        </section>
+      )}
 
       <div>
         <p className="mb-2 text-base font-medium text-slate-900">
