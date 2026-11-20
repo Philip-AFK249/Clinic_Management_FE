@@ -114,6 +114,13 @@ export interface ClarificationOption {
   age_group_value?: AgeGroupValue | null;
 }
 
+export interface ClarifyingQuestionItem {
+  id: string;
+  question: string;
+  options: string[];
+  allow_custom?: boolean;
+}
+
 export interface ClarificationTurn {
   question: string;
   answer: string;
@@ -135,6 +142,7 @@ export interface RefineVoiceTriagePayload {
   target_date?: string;
   clarification_history?: Array<{ question: string; answer: string }>;
   round_index?: number;
+  qa_pairs?: Array<{ question: string; answer: string }>;
 }
 
 export type RefineTriagePayload = RefineVoiceTriagePayload;
@@ -197,6 +205,7 @@ export interface VoiceTriageResult {
   needs_clarification?: boolean;
   clarifying_question?: string;
   clarification_options?: ClarificationOption[];
+  clarifying_questions?: ClarifyingQuestionItem[];
   detected_age_group?: string | null;
   is_out_of_dataset?: boolean;
   flag_reason?: string;
@@ -505,6 +514,7 @@ function normalizeTriagePayload(payload: VoiceTriageResult): VoiceTriageResult {
     ...payload,
     needs_clarification: payload.needs_clarification === true,
     clarification_options: payload.clarification_options ?? [],
+    clarifying_questions: payload.clarifying_questions ?? [],
     detected_age_group: payload.detected_age_group ?? null,
     is_out_of_dataset: payload.is_out_of_dataset === true,
     flag_id: payload.flag_id ?? null,

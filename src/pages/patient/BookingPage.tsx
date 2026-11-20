@@ -259,9 +259,14 @@ export default function BookingPage() {
     useState<VoiceTriageResult | null>(null);
   const [clarificationSteps, setClarificationSteps] = useState<ClarificationStep[]>([]);
   const [clarificationResults, setClarificationResults] = useState<VoiceTriageResult[]>([]);
+  const [activeClarificationIndex, setActiveClarificationIndex] = useState(0);
+  const [clarificationAnswers, setClarificationAnswers] = useState<
+    Record<string, string>
+  >({});
   const [isRefiningVoice, setIsRefiningVoice] = useState(false);
   const [isAnalysingText, setIsAnalysingText] = useState(false);
   const [triageError, setTriageError] = useState<string | null>(null);
+  const [retryRefineClarification, setRetryRefineClarification] = useState(false);
   /**
    * The recorded clip.
    *
@@ -527,6 +532,36 @@ export default function BookingPage() {
     setPendingClarification(null);
     setClarificationSteps([]);
     setClarificationResults([]);
+    setActiveClarificationIndex(0);
+    setClarificationAnswers({});
+    setRetryRefineClarification(false);
+  }
+
+  function stageClarification(result: VoiceScheduleTriageResponse) {
+    setActiveClarificationIndex(0);
+    setClarificationAnswers({});
+    setRetryRefineClarification(false);
+    if (
+      result.needs_clarification === true &&
+      (result.clarifying_questions?.length ?? 0) > 0
+    ) {
+      setPendingClarification(result);
+      setClarificationResults([result]);
+      setClarificationSteps([]);
+      return;
+    }
+    if (
+      result.needs_clarification === true &&
+      Boolean(result.clarifying_question?.trim())
+    ) {
+      setPendingClarification(result);
+      setClarificationResults([result]);
+      setClarificationSteps([clarificationStepFrom(result)]);
+      return;
+    }
+    setPendingClarification(null);
+    setClarificationResults([]);
+    setClarificationSteps([]);
   }
 
   function resolvedClarificationAgeGroup(
@@ -566,11 +601,7 @@ export default function BookingPage() {
         patientHistory: defaultPatientHistory,
       });
       applyVoiceTriage(result, clip);
-      if (result.needs_clarification && result.clarifying_question?.trim()) {
-        setPendingClarification(result);
-        setClarificationSteps([clarificationStepFrom(result)]);
-        setClarificationResults([result]);
-      }
+      stageClarification(result);
     } catch (error) {
       handleVoiceTriageFailure(error);
     } finally {
@@ -596,11 +627,7 @@ export default function BookingPage() {
         patient_history: defaultPatientHistory,
       });
       applyVoiceTriage(result, voiceClip ?? undefined, source);
-      if (result.needs_clarification && result.clarifying_question?.trim()) {
-        setPendingClarification(result);
-        setClarificationSteps([clarificationStepFrom(result)]);
-        setClarificationResults([result]);
-      }
+      stageClarification(result);
     } catch (error) {
       handleVoiceTriageFailure(error);
     } finally {
@@ -609,6 +636,13 @@ export default function BookingPage() {
   }
 
   function handleRetryTriage() {
+    if (
+      retryRefineClarification &&
+      (pendingClarification?.clarifying_questions?.length ?? 0) > 0
+    ) {
+      void submitClarificationAnswers();
+      return;
+    }
     void analyseTextTriage(symptoms);
   }
 
@@ -675,6 +709,14 @@ export default function BookingPage() {
       );
       applyVoiceTriage(refined, voiceClip ?? undefined, symptomText);
       if (
+        refined.needs_clarification &&
+        (refined.clarifying_questions?.length ?? 0) > 0
+      ) {
+        setPendingClarification(refined);
+        setActiveClarificationIndex(0);
+        setClarificationAnswers({});
+        setClarificationResults([...clarificationResults, refined]);
+      } else if (
         refined.needs_clarification &&
         refined.clarifying_question?.trim() &&
         updatedSteps.length < 4
@@ -768,6 +810,93 @@ export default function BookingPage() {
         symptomText,
       );
       clearClarification();
+      handleVoiceTriageFailure(error);
+    } finally {
+      setIsRefiningVoice(false);
+    }
+  }
+
+  function handleClarificationAnswerChange(questionId: string, answer: string) {
+    setClarificationAnswers((previous) => ({ ...previous, [questionId]: answer }));
+  }
+
+  function handleClarificationSkipCurrent() {
+    const questions = pendingClarification?.clarifying_questions ?? [];
+    if (questions.length === 0) return;
+    const index = Math.min(Math.max(activeClarificationIndex, 0), questions.length - 1);
+    const nextAnswers = { ...clarificationAnswers, [questions[index].id]: "" };
+    setClarificationAnswers(nextAnswers);
+    if (index < questions.length - 1) {
+      setActiveClarificationIndex(index + 1);
+      return;
+    }
+    void submitClarificationAnswers(nextAnswers);
+  }
+
+  function handleClarificationClose() {
+    clearClarification();
+    if (voiceTriage) {
+      applyVoiceTriage(
+        { ...voiceTriage, needs_clarification: false },
+        voiceClip ?? undefined,
+      );
+    }
+  }
+
+  async function submitClarificationAnswers(
+    overrides?: Record<string, string>,
+  ) {
+    const current = pendingClarification;
+    if (!current) return;
+    const questions = current.clarifying_questions ?? [];
+    const answers = overrides ?? clarificationAnswers;
+    const qaPairs = questions
+      .map((question) => ({
+        question: question.question,
+        answer: (answers[question.id] ?? "").trim(),
+      }))
+      .filter((pair) => pair.answer.length > 0);
+    const chiefComplaint = symptoms.trim() || current.transcription;
+    const symptomText = appendUniqueLines(
+      chiefComplaint,
+      qaPairs.map((pair) => `${pair.question}: ${pair.answer}`),
+    );
+
+    setIsRefiningVoice(true);
+    setTriageError(null);
+    setRetryRefineClarification(false);
+    try {
+      const refined = await refineVoiceTriageApi({
+        transcription: chiefComplaint,
+        selected_options: [],
+        extra_note: undefined,
+        age_group: defaultAgeGroup ?? undefined,
+        patient_history: defaultPatientHistory,
+        target_date: triageDate || current.target_date,
+        clarification_history: qaPairs,
+        qa_pairs: qaPairs,
+        round_index: 4,
+      });
+      applyVoiceTriage(refined, voiceClip ?? undefined, symptomText);
+      if (
+        refined.needs_clarification &&
+        (refined.clarifying_questions?.length ?? 0) > 0
+      ) {
+        setPendingClarification(refined);
+        setActiveClarificationIndex(0);
+        setClarificationAnswers({});
+      } else if (
+        refined.needs_clarification &&
+        refined.clarifying_question?.trim()
+      ) {
+        setPendingClarification(refined);
+        setClarificationSteps([clarificationStepFrom(refined)]);
+      } else {
+        clearClarification();
+        toast.success("Đã phân luồng lại với thông tin bạn vừa xác nhận.");
+      }
+    } catch (error) {
+      setRetryRefineClarification(true);
       handleVoiceTriageFailure(error);
     } finally {
       setIsRefiningVoice(false);
@@ -1499,6 +1628,13 @@ export default function BookingPage() {
                   onClarificationAnswer={handleClarificationAnswer}
                   onClarificationBack={handleClarificationBack}
                   onClarificationSkip={handleSkipClarification}
+                  activeClarificationIndex={activeClarificationIndex}
+                  clarificationAnswers={clarificationAnswers}
+                  onClarificationIndexChange={setActiveClarificationIndex}
+                  onClarificationAnswerChange={handleClarificationAnswerChange}
+                  onClarificationClose={handleClarificationClose}
+                  onClarificationSkipCurrent={handleClarificationSkipCurrent}
+                  onClarificationSubmit={() => void submitClarificationAnswers()}
                   onVoiceClip={analyseVoiceClip}
                   onVoiceCancel={handleVoiceCancel}
                   shiftSelection={shiftSelection}

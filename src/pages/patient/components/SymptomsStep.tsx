@@ -3,14 +3,19 @@ import {
   AlertTriangle,
   ArrowLeft,
   ArrowRight,
+  ArrowUp,
   Check,
   CalendarClock,
+  ChevronLeft,
+  ChevronRight,
   FileText,
+  Loader2,
   RefreshCw,
   ShieldCheck,
   Sparkles,
   Stethoscope,
   UserRound,
+  X,
 } from "lucide-react";
 import VoiceInputCard from "./VoiceInputCard";
 import QuickSymptomChips from "./QuickSymptomChips";
@@ -25,6 +30,7 @@ import { dobLabelFrom, GENDER_OPTIONS, genderFrom, hospitalLabelFrom } from "../
 import type { BhyTelemetry, TriageSuggestion } from "../data/patientMockRecords";
 import type {
   ClarificationOption,
+  ClarifyingQuestionItem,
   SessionName,
   VoiceScheduleTriageResponse,
   VoiceTriageResult,
@@ -89,6 +95,13 @@ interface SymptomsStepProps {
   }) => void;
   onClarificationBack?: () => void;
   onClarificationSkip?: () => void;
+  activeClarificationIndex?: number;
+  clarificationAnswers?: Record<string, string>;
+  onClarificationIndexChange?: (index: number) => void;
+  onClarificationAnswerChange?: (questionId: string, answer: string) => void;
+  onClarificationClose?: () => void;
+  onClarificationSkipCurrent?: () => void;
+  onClarificationSubmit?: () => void;
   /** The recorded clip, which the parent re-uploads to re-query another date. */
   onVoiceClip?: (clip: Blob) => void;
   onVoiceCancel?: () => void;
@@ -152,6 +165,13 @@ export default function SymptomsStep({
   onClarificationAnswer,
   onClarificationBack,
   onClarificationSkip,
+  activeClarificationIndex = 0,
+  clarificationAnswers = {},
+  onClarificationIndexChange,
+  onClarificationAnswerChange,
+  onClarificationClose,
+  onClarificationSkipCurrent,
+  onClarificationSubmit,
   onVoiceClip,
   onVoiceCancel,
   shiftSelection = null,
@@ -178,17 +198,34 @@ export default function SymptomsStep({
 
   const clarificationQuestion = (clarification?.clarifying_question ?? "").trim();
   const clarificationOptions = clarification?.clarification_options ?? [];
+  const clarifyingQuestions: ClarifyingQuestionItem[] =
+    clarification?.clarifying_questions ?? [];
+  const hasMultiQuestionCard =
+    clarification?.needs_clarification === true && clarifyingQuestions.length > 0;
+  const activeClarificationIndexSafe = hasMultiQuestionCard
+    ? Math.min(
+        Math.max(activeClarificationIndex, 0),
+        clarifyingQuestions.length - 1,
+      )
+    : 0;
+  const activeQuestion = hasMultiQuestionCard
+    ? clarifyingQuestions[activeClarificationIndexSafe]
+    : null;
+  const answeredCount = clarifyingQuestions.filter((question) =>
+    Boolean((clarificationAnswers[question.id] ?? "").trim()),
+  ).length;
+  const hasLegacyCard =
+    clarification?.needs_clarification === true &&
+    !hasMultiQuestionCard &&
+    (Boolean(clarificationQuestion) || clarificationOptions.length > 0) &&
+    Boolean(onClarificationAnswer);
   const clarificationStepIndex = Math.min(
     3,
     Math.max(0, clarificationSteps.length - 1),
   );
   const preliminaryResult =
     voiceTriage?.needs_clarification === true ? voiceTriage : clarification;
-  const isClarifying =
-    (voiceTriage?.needs_clarification === true ||
-      clarification?.needs_clarification === true) &&
-    (Boolean(clarificationQuestion) || clarificationOptions.length > 0) &&
-    Boolean(onClarificationAnswer);
+  const isClarifying = hasMultiQuestionCard || hasLegacyCard;
 
   const voiceSuggestion: TriageSuggestion | null =
     voiceTriage && !isClarifying
@@ -245,6 +282,13 @@ export default function SymptomsStep({
   function handleClarificationBackClick() {
     setCustomAnswer("");
     onClarificationBack?.();
+  }
+
+  function pickQuestionOption(question: ClarifyingQuestionItem, option: string) {
+    onClarificationAnswerChange?.(question.id, option);
+    if (activeClarificationIndexSafe < clarifyingQuestions.length - 1) {
+      onClarificationIndexChange?.(activeClarificationIndexSafe + 1);
+    }
   }
 
   // The card prints `Nam` / `Nữ`; the form stores the enum behind a select, so
@@ -335,7 +379,7 @@ export default function SymptomsStep({
         onRetryTriage={onRetryTriage}
       />
 
-      {isClarifying && preliminaryResult && (
+      {isClarifying && preliminaryResult && !hasMultiQuestionCard && (
         <section
           className="space-y-3 rounded-xl border border-clinical-200 bg-gradient-to-r from-clinical-50 via-white to-sky-50 p-4"
           aria-label="Tóm tắt phân luồng bước đầu"
@@ -382,7 +426,141 @@ export default function SymptomsStep({
         </section>
       )}
 
-      {isClarifying && (
+      {hasMultiQuestionCard && activeQuestion && (
+        <section
+          key={activeQuestion.id}
+          className="animate-fade-rise overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg motion-reduce:animate-none"
+          aria-label="Làm rõ triệu chứng"
+        >
+          <div className="flex flex-col gap-3 border-b border-slate-100 px-5 py-4 sm:flex-row sm:items-start sm:justify-between">
+            <h3 className="min-w-0 text-base font-semibold leading-snug text-slate-900">
+              {activeQuestion.question}
+            </h3>
+            <div className="flex shrink-0 items-center gap-2">
+              <div className="inline-flex h-8 items-center rounded-lg border border-slate-200 bg-slate-50 text-xs font-semibold text-slate-600">
+                <button
+                  type="button"
+                  aria-label="Câu trước"
+                  onClick={() =>
+                    onClarificationIndexChange?.(activeClarificationIndexSafe - 1)
+                  }
+                  disabled={activeClarificationIndexSafe === 0 || isRefiningVoice}
+                  className="flex h-8 w-7 items-center justify-center rounded-l-lg transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <ChevronLeft size={14} aria-hidden="true" />
+                </button>
+                <span className="px-1.5 tabular-nums">
+                  {activeClarificationIndexSafe + 1} of {clarifyingQuestions.length}
+                </span>
+                <button
+                  type="button"
+                  aria-label="Câu sau"
+                  onClick={() =>
+                    onClarificationIndexChange?.(activeClarificationIndexSafe + 1)
+                  }
+                  disabled={
+                    activeClarificationIndexSafe === clarifyingQuestions.length - 1 ||
+                    isRefiningVoice
+                  }
+                  className="flex h-8 w-7 items-center justify-center rounded-r-lg transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <ChevronRight size={14} aria-hidden="true" />
+                </button>
+              </div>
+              <button
+                type="button"
+                aria-label="Đóng làm rõ"
+                onClick={onClarificationClose}
+                disabled={isRefiningVoice}
+                className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <X size={15} aria-hidden="true" />
+              </button>
+            </div>
+          </div>
+
+          <div>
+            {activeQuestion.options.slice(0, 4).map((option, index) => {
+              const selected =
+                (clarificationAnswers[activeQuestion.id] ?? "") === option;
+              return (
+                <button
+                  key={`${activeQuestion.id}-${index}`}
+                  type="button"
+                  aria-pressed={selected}
+                  disabled={isRefiningVoice}
+                  onClick={() => pickQuestionOption(activeQuestion, option)}
+                  className={`flex w-full items-center gap-3 border-b border-slate-100 px-5 py-3 text-left transition-colors last:border-b-0 disabled:cursor-not-allowed disabled:opacity-60 ${
+                    selected ? "bg-amber-50/70" : "hover:bg-slate-50"
+                  }`}
+                >
+                  <span
+                    className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-xs font-bold ${
+                      selected
+                        ? "bg-cta text-white"
+                        : "bg-stone-100 text-stone-500"
+                    }`}
+                  >
+                    {index + 1}
+                  </span>
+                  <span className="text-sm text-slate-800">{option}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {activeQuestion.allow_custom !== false && (
+            <div className="px-5 py-3">
+              <input
+                type="text"
+                value={clarificationAnswers[activeQuestion.id] ?? ""}
+                onChange={(event) =>
+                  onClarificationAnswerChange?.(
+                    activeQuestion.id,
+                    event.target.value,
+                  )
+                }
+                disabled={isRefiningVoice}
+                placeholder="Hoặc nhập câu trả lời khác cho câu hỏi này..."
+                aria-label="Hoặc nhập câu trả lời khác cho câu hỏi này..."
+                className="h-9 w-full rounded-lg border border-slate-200 bg-slate-50/60 px-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-cta focus:bg-white focus:outline-none focus:ring-2 focus:ring-cta/15 disabled:cursor-not-allowed disabled:opacity-60"
+              />
+            </div>
+          )}
+
+          <div className="flex flex-col gap-3 border-t border-slate-100 bg-slate-50/60 px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-xs text-slate-500">
+              AI đặt {clarifyingQuestions.length} câu hỏi làm rõ dựa trên mô tả của
+              bạn · Đã trả lời {answeredCount}/{clarifyingQuestions.length}
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={onClarificationSkipCurrent}
+                disabled={isRefiningVoice}
+                className="inline-flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-white px-4 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Bỏ qua
+              </button>
+              <button
+                type="button"
+                onClick={onClarificationSubmit}
+                disabled={isRefiningVoice}
+                className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-cta px-4 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-cta-hover disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isRefiningVoice ? (
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                ) : (
+                  <ArrowUp size={15} aria-hidden="true" />
+                )}
+                {isRefiningVoice ? "Đang gửi..." : "Hoàn tất"}
+              </button>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {hasLegacyCard && (
         <section
           key={clarificationQuestion}
           className="space-y-3 rounded-xl border border-slate-200/80 bg-white p-4 shadow-card"
