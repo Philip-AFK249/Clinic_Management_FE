@@ -14,6 +14,23 @@ export interface KioskPatient {
   checkoutCode: string;
 }
 
+/**
+ * The values the kiosk patient confirms after a card scan.
+ *
+ * Kept separate from `KioskPatient` so the OCR review can be edited without
+ * mutating the module-level preset, and so `useKioskSession` can tell whether a
+ * card was actually reviewed before marking the check-in verified.
+ */
+export interface KioskCardVerification {
+  fullName: string;
+  insuranceCode: string;
+  /** Printed `dd/mm/yyyy`. */
+  dateOfBirth: string;
+  gender: "Nam" | "Nữ";
+  initialHospitalCode: string;
+  insuranceValidUntil: string;
+}
+
 export interface SymptomOption {
   id: string;
   icon: string;

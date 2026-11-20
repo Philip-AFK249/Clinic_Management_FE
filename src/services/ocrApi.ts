@@ -137,6 +137,203 @@ function text(value: string | null | undefined): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
+/** Compact form of a printed BHYT number: `DN 4 79 ...` -> `DN479...`. */
+export function normalizeBhytInsuranceCode(
+  value: string | null | undefined,
+): string {
+  return text(value).replace(/[\s-]+/g, "").toUpperCase();
+}
+
+/**
+ * The editable subset shown after a scan.
+ *
+ * These are the values the user verifies/corrects before anything is written to
+ * a form. They are deliberately plain strings: the review UI needs text inputs
+ * and date inputs, not the mixed snake_case/camelCase OCR payload.
+ */
+export interface BhytReviewValues {
+  fullName: string;
+  /** As printed (may carry spaces), e.g. `DN 4 79 79 12345678`. */
+  insuranceCode: string;
+  /** `YYYY-MM-DD`, ready for `<input type="date">`. */
+  dateOfBirth: string;
+  /** Printed label: `Nam` / `Nữ` / `Khác`. */
+  gender: string;
+  /** Bare facility code, e.g. `79-014`. */
+  initialHospitalCode: string;
+  /** Facility name without the code, e.g. `BV Đa Khoa Sài Gòn`. */
+  initialHospitalName: string;
+  validFrom: string;
+  validUntil: string;
+}
+
+function reviewGender(value: string | null | undefined): string {
+  const raw = text(value);
+  if (!raw) return "";
+  const upper = raw.toUpperCase();
+  if (["NAM", "MALE", "M", "N"].includes(upper)) return "Nam";
+  if (["NỮ", "NU", "FEMALE", "F"].includes(upper)) return "Nữ";
+  if (["KHÁC", "KHAC", "OTHER", "O"].includes(upper)) return "Khác";
+  return raw;
+}
+
+function hospitalCodeFrom(value: string): string {
+  return /^(\d{2}-\d{3})/.exec(value.trim())?.[1] ?? "";
+}
+
+function hospitalNameFrom(value: string): string {
+  const match = /^\d{2}-\d{3}\s*\((.*)\)\s*$/.exec(value.trim());
+  return match ? match[1].trim() : "";
+}
+
+/**
+ * The facility as the OCR payload represents it: full `code (name)` when
+ * possible, falling back through the three snake_case keys the gateway may use.
+ */
+function initialHospitalFull(data: BhytOcrData): string {
+  const full = text(data.noi_kcb_ban_dau_full);
+  if (full) return full;
+
+  const code = text(data.ma_noi_dkkcb_ban_dau);
+  const name = text(data.noi_kham_chua_benh_ban_dau);
+  if (code && name) return `${code} (${name})`;
+  return code || name || text(data.initialHospitalCode);
+}
+
+function isoToDmy(iso: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : "";
+}
+
+function validityDisplayFrom(validFrom: string, validUntil: string): string {
+  const from = isoToDmy(validFrom);
+  const until = isoToDmy(validUntil);
+  if (from && until) return `Từ ${from} đến ${until}`;
+  if (from) return `Từ ${from}`;
+  if (until) return `Đến ${until}`;
+  return "";
+}
+
+/**
+ * Flatten a gateway payload into the fields the verification form edits.
+ *
+ * Hospital mapping tries every representation the gateway may return:
+ * `noi_kcb_ban_dau_full`, then `ma_noi_dkkcb_ban_dau`, then the camelCase
+ * mirror - so a card that only filled one of them still lands in the selector.
+ */
+export function toBhytReview(data: BhytOcrData): BhytReviewValues {
+  const fullHospital = initialHospitalFull(data);
+  const rawCode = text(data.ma_noi_dkkcb_ban_dau);
+  const code =
+    hospitalCodeFrom(rawCode) ||
+    rawCode ||
+    hospitalCodeFrom(fullHospital) ||
+    hospitalCodeFrom(text(data.initialHospitalCode));
+  const name =
+    text(data.noi_kham_chua_benh_ban_dau) ||
+    hospitalNameFrom(fullHospital) ||
+    (!code ? fullHospital || text(data.initialHospitalCode) : "");
+
+  return {
+    fullName: text(data.ho_ten) || text(data.fullName),
+    insuranceCode:
+      text(data.ma_so_bhyt_formatted) ||
+      text(data.ma_so_bhyt) ||
+      text(data.insuranceCode),
+    dateOfBirth:
+      toIsoDate(data.ngay_sinh_iso) ||
+      toIsoDate(data.dateOfBirth) ||
+      toIsoDate(data.ngay_sinh),
+    gender: reviewGender(text(data.gioi_tinh) || data.gender),
+    initialHospitalCode: code,
+    initialHospitalName: name,
+    validFrom:
+      toIsoDate(data.gia_tri_su_dung_tu) || toIsoDate(data.validFrom),
+    validUntil:
+      toIsoDate(data.gia_tri_su_dung_den) || toIsoDate(data.validUntil),
+  };
+}
+
+/** Whether the card is expired, including a review-corrected validity date. */
+export function isBhytCardExpired(
+  data: BhytOcrData,
+  review?: BhytReviewValues,
+): boolean {
+  if (data.isExpired === true || data.con_han === false) return true;
+
+  const until =
+    review?.validUntil ||
+    toIsoDate(data.gia_tri_su_dung_den) ||
+    toIsoDate(data.validUntil);
+  if (!until) return false;
+  return until < new Date().toISOString().slice(0, 10);
+}
+
+/**
+ * Fold the reviewed values back into the gateway's payload shape.
+ *
+ * Only call this after the user has explicitly confirmed the review: every
+ * identity field is overwritten from `review`, and `isOcrVerified` is set true
+ * for the confirmed card.
+ */
+export function fromBhytReview(
+  data: BhytOcrData,
+  review: BhytReviewValues,
+): BhytOcrData {
+  const insuranceCode = review.insuranceCode.trim();
+  const compact = normalizeBhytInsuranceCode(insuranceCode);
+  const code = review.initialHospitalCode.trim();
+  const name = review.initialHospitalName.trim();
+  const fullHospital = code && name ? `${code} (${name})` : code || name;
+  const expired = isBhytCardExpired(data, review);
+
+  return {
+    ...data,
+    ho_ten: review.fullName.trim(),
+    fullName: review.fullName.trim(),
+    ma_so_bhyt: compact || null,
+    ma_so_bhyt_formatted: insuranceCode || null,
+    insuranceCode,
+    ngay_sinh: isoToDmy(review.dateOfBirth) || null,
+    ngay_sinh_iso: review.dateOfBirth || null,
+    dateOfBirth: review.dateOfBirth || null,
+    gioi_tinh: review.gender || null,
+    gender: review.gender || null,
+    ma_noi_dkkcb_ban_dau: code || null,
+    noi_kham_chua_benh_ban_dau: name || null,
+    noi_kcb_ban_dau_full: fullHospital || null,
+    initialHospitalCode: fullHospital || null,
+    gia_tri_su_dung_tu: review.validFrom || null,
+    gia_tri_su_dung_den: review.validUntil || null,
+    validFrom: review.validFrom || null,
+    validUntil: review.validUntil || null,
+    han_su_dung_display:
+      validityDisplayFrom(review.validFrom, review.validUntil) || null,
+    isExpired: expired,
+    con_han: !expired,
+    isOcrVerified: true,
+  };
+}
+
+/**
+ * Validation shared by every review surface: a BHYT number is 15 alphanumeric
+ * characters after dropping the cosmetic spaces/dashes. An empty value is only
+ * an error when the caller requires a card.
+ */
+export function bhytInsuranceCodeError(
+  value: string,
+  required = true,
+): string | null {
+  const compact = normalizeBhytInsuranceCode(value);
+  if (!compact) {
+    return required ? "Vui lòng nhập mã số thẻ BHYT." : null;
+  }
+  if (!/^[A-Z0-9]{15}$/.test(compact)) {
+    return "Mã số thẻ BHYT phải gồm đúng 15 ký tự chữ và số.";
+  }
+  return null;
+}
+
 /**
  * Normalise a card date to `YYYY-MM-DD` so it binds to `<input type="date">`.
  *
@@ -218,43 +415,42 @@ function toValidityDisplay(data: BhytOcrData): string {
  * deliberately prefers `snake_case` over the camelCase mirrors (see
  * `BhytOcrData`):
  *
- * - fullName            <- `ho_ten`
+ * - fullName            <- `ho_ten` (|| `fullName`)
  * - insuranceCode       <- `ma_so_bhyt_formatted` || `ma_so_bhyt` (grouped form)
- * - dateOfBirth         <- `ngay_sinh_iso` (|| `ngay_sinh`), forced to ISO
- * - gender              <- `gioi_tinh`
- * - address             <- `dia_chi`
- * - initialHospitalCode <- `noi_kcb_ban_dau_full` (code *and* facility name)
+ * - dateOfBirth         <- `ngay_sinh_iso` (|| `dateOfBirth` || `ngay_sinh`), ISO
+ * - gender              <- `gioi_tinh` (|| `gender`)
+ * - address             <- `dia_chi` (|| `address`)
+ * - initialHospitalCode <- `noi_kcb_ban_dau_full`, else `ma_noi_dkkcb_ban_dau`
+ *                          combined with `noi_kham_chua_benh_ban_dau`
  * - validityDisplay     <- `han_su_dung_display` (|| the raw date pair)
  * - phone               <- untouched: not printed on a BHYT card
  *
- * `isOcrVerified` is set true because reaching this point means the gateway
- * accepted and parsed the upload.
+ * `isOcrVerified` is set true because reaching this point means the user
+ * confirmed the review, not merely that the gateway answered.
  */
 export function toBhyTelemetry(data: BhytOcrData): BhytTelemetryView {
-  const fullName = text(data.ho_ten);
-  const insuranceCode = text(data.ma_so_bhyt_formatted) || text(data.ma_so_bhyt);
-  const initialHospitalCode = text(data.noi_kcb_ban_dau_full);
-  const dateOfBirth = toIsoDate(data.ngay_sinh_iso) || toIsoDate(data.ngay_sinh);
+  const review = toBhytReview(data);
+  const initialHospitalCode = initialHospitalFull(data);
 
   return {
-    fullName,
-    insuranceCode,
-    dateOfBirth,
+    fullName: review.fullName,
+    insuranceCode: review.insuranceCode,
+    dateOfBirth: review.dateOfBirth,
     dateOfBirthLabel: text(data.ngay_sinh),
-    gender: text(data.gioi_tinh),
-    address: text(data.dia_chi),
+    gender: review.gender,
+    address: text(data.dia_chi) || text(data.address),
     initialHospitalCode,
     hospital: initialHospitalCode,
-    validFrom: toIsoDate(data.gia_tri_su_dung_tu),
-    validUntil: toIsoDate(data.gia_tri_su_dung_den),
+    validFrom: review.validFrom,
+    validUntil: review.validUntil,
     validityDisplay: toValidityDisplay(data),
     isOcrVerified: true,
   };
 }
 
 /**
- * Upload a BHYT card / old prescription photo and return the raw gateway
- * payload (extracted fields, warnings, model diagnostics).
+ * Upload a BHYT card photo and return the raw gateway payload (extracted
+ * fields, warnings, model diagnostics).
  *
  * The gateway is a Groq VLM call, so this takes seconds and can fail on a blurry
  * photo; every failure mode is funnelled into a `BhytOcrError` so callers have
@@ -296,23 +492,4 @@ export async function uploadBhytCardApi(file: File): Promise<BhytOcrResponse> {
   }
 
   return payload;
-}
-
-/**
- * Upload a card and fold the payload into the booking form's telemetry view.
- *
- * A card the model could not read at all is a failure, not a blank form: the
- * caller needs to hear about it so it can offer manual entry.
- */
-export async function scanBhytCard(file: File): Promise<BhytTelemetryView> {
-  const payload = await uploadBhytCardApi(file);
-  const telemetry = toBhyTelemetry(payload.data);
-
-  if (!telemetry.fullName && !telemetry.insuranceCode) {
-    throw new BhytOcrError(
-      "Không đọc được thông tin trên thẻ. Vui lòng thử lại với ảnh rõ nét hơn.",
-    );
-  }
-
-  return telemetry;
 }

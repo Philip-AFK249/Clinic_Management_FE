@@ -3,8 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { AlertTriangle, Calendar, ChevronLeft, Check, PhoneCall } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "../../context/useAuth";
-import { updateMyProfileApi } from "../../services/authApi";
-import type { UpdatePatientRequestDto } from "../../services/authApi";
+import { normalizeBhytInsuranceCode } from "../../services/ocrApi";
 import {
   checkInPatient,
   getAvailableSlots,
@@ -57,76 +56,6 @@ import type {
   VoiceScheduleTriageResponse,
 } from "../../services/voiceTriageApi";
 import type { ActiveAppointment, BhyTelemetry } from "./data/patientMockRecords";
-
-/**
- * Push a card just read in the booking flow onto the patient's own profile, so
- * the next visit - here or on /patient/profile - can reuse it instead of asking
- * for the same photo again.
- *
- * Every field falls back to what the session already holds rather than to a blank:
- * a card that reads half its data must not erase the other half of someone's
- * profile, and `PUT /auth/me/profile` overwrites whatever it receives.
- *
- * Best effort by design. The scan has already been shown to the patient, so a
- * backend hiccup here is worth a console warning, not an error toast in the
- * middle of a booking - the appointment itself does not depend on it.
- *
- * Returns the session patch that was applied, or `null` if nothing was.
- */
-async function syncScannedCardToProfile(
-  info: BhyTelemetry,
-  clinicCode: string,
-  user: User | null,
-  updateUser: (patch: Partial<User>) => void,
-): Promise<void> {
-  if (!user) return;
-
-  // The card prints no phone number and none of these is typed here, so they
-  // carry over from the session rather than being cleared.
-  const patch: Partial<User> = {
-    fullName: info.fullName?.trim() || user.fullName,
-    phone: user.phone,
-    identityCardNumber: user.identityCardNumber,
-    insuranceCode: info.insuranceCode?.trim() || user.insuranceCode,
-    initialHospitalCode: clinicCode || user.initialHospitalCode,
-    dateOfBirth: info.dateOfBirth || user.dateOfBirth,
-    gender: info.gender?.trim() || user.gender,
-    address: info.address?.trim() || user.address,
-    isOcrVerified: true,
-  };
-  // Sending `undefined` for these would clear a column the backend does hold, so
-  // only include what the scan actually resolved.
-  const payload: UpdatePatientRequestDto = {
-    fullName: patch.fullName ?? user.fullName,
-    phone: patch.phone || null,
-    identityCardNumber: patch.identityCardNumber || null,
-    insuranceCode: patch.insuranceCode || null,
-    initialHospitalCode: patch.initialHospitalCode || null,
-    dateOfBirth: patch.dateOfBirth || null,
-    gender: patch.gender || null,
-    address: patch.address || null,
-    isOcrVerified: true,
-  };
-
-  try {
-    // No token argument: the bearer interceptor on `authApi` stamps the current
-    // session onto every request.
-    const saved = await updateMyProfileApi(payload);
-    // Prefer what the backend echoed back over what we sent, so a value it
-    // normalised or trimmed lands in the session rather than our guess of it.
-    updateUser({
-      ...patch,
-      insuranceCode: saved.insuranceCode ?? patch.insuranceCode,
-      initialHospitalCode: saved.initialHospitalCode ?? patch.initialHospitalCode,
-      dateOfBirth: saved.dateOfBirth ?? patch.dateOfBirth,
-      gender: saved.gender ?? patch.gender,
-      address: saved.address ?? patch.address,
-      isOcrVerified: saved.isOcrVerified ?? true,
-    });
-  } catch (error) {
-    console.warn("Booking: could not sync the scanned card to the profile.", error);
-  }
-}
 
 const STEP_LABELS = ["Triệu chứng & Chọn lịch", "Xác nhận"];
 
@@ -206,7 +135,7 @@ function formFromSession(user: User | null): BookingFormData {
 }
 
 export default function BookingPage() {
-  const { user, updateUser } = useAuth();
+  const { user } = useAuth();
   const navigate = useNavigate();
   const [step, setStep] = useState(0);
   const [symptoms, setSymptoms] = useState("");
@@ -397,7 +326,20 @@ export default function BookingPage() {
     field: K,
     next: BookingFormData[K],
   ) {
-    setFormData((prev) => ({ ...prev, [field]: next }));
+    setFormData((prev) => {
+      const updated = { ...prev, [field]: next };
+      // Verification is tied to the exact number that was scanned. Editing or
+      // clearing it means the card on screen is no longer that verified card.
+      if (
+        field === "insuranceCode" &&
+        prev.isOcrVerified &&
+        normalizeBhytInsuranceCode(String(next)) !==
+          normalizeBhytInsuranceCode(prev.insuranceCode)
+      ) {
+        updated.isOcrVerified = false;
+      }
+      return updated;
+    });
   }
 
   /**
@@ -422,6 +364,9 @@ export default function BookingPage() {
         hospitalCodeFrom(info.initialHospitalCode) ||
         hospitalCodeFrom(info.hospital ?? "");
 
+      // The patient has already confirmed the OCR review form; only now do the
+      // values reach the booking form. Nothing is saved to AuthService here -
+      // the booking itself is the only write this flow performs.
       setFormData((prev) => ({
         ...prev,
         fullName: info.fullName?.trim() || prev.fullName,
@@ -434,12 +379,8 @@ export default function BookingPage() {
         isOcrVerified: true,
       }));
       setScannedThisSession(true);
-
-      // Best effort: the scan is already on screen, so a failed profile write
-      // must not interrupt the booking.
-      void syncScannedCardToProfile(info, clinic, user, updateUser);
     },
-    [user, updateUser],
+    [],
   );
 
   /**

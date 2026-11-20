@@ -20,6 +20,7 @@ import BhyTOcrUpload from "./components/BhyTOcrUpload";
 import BhyCardPreview from "./components/BhyCardPreview";
 import { useAuth } from "../../context/useAuth";
 import { updateMyProfileApi } from "../../services/authApi";
+import { normalizeBhytInsuranceCode } from "../../services/ocrApi";
 import type { Gender, User } from "../../types/auth";
 import type { BhyTelemetry } from "./data/patientMockRecords";
 import {
@@ -139,6 +140,15 @@ export default function PatientProfilePage() {
     display: string;
     meetsFiveYears: boolean;
   } | null>(null);
+  /**
+   * The compact number of the card the patient confirmed in the OCR review.
+   *
+   * `User.isOcrVerified` only reflects what was last saved, so a fresh scan
+   * would otherwise look unverified on the very page that just read it. This
+   * tracks the confirmed scan until the number is saved, and stops matching as
+   * soon as the field is edited or cleared.
+   */
+  const [verifiedInsuranceCode, setVerifiedInsuranceCode] = useState("");
 
   /**
    * Adopt a session that changed underneath the form.
@@ -171,6 +181,20 @@ export default function PatientProfilePage() {
     });
   }
 
+  /**
+   * A card is verified only while the number on the form is exactly the one
+   * that was read and confirmed - either in this session or in the saved
+   * profile. Clearing or editing the number makes it false.
+   */
+  function isInsuranceVerified(value: string): boolean {
+    const code = normalizeBhytInsuranceCode(value);
+    if (!code) return false;
+    const saved =
+      user?.isOcrVerified === true &&
+      normalizeBhytInsuranceCode(user.insuranceCode) === code;
+    return saved || code === verifiedInsuranceCode;
+  }
+
   function validate(): boolean {
     const next: FormErrors = {};
 
@@ -185,7 +209,7 @@ export default function PatientProfilePage() {
       next.phone = "Số điện thoại phải có 9 - 11 chữ số.";
     }
 
-    const insurance = form.insuranceCode.replace(/\s/g, "");
+    const insurance = normalizeBhytInsuranceCode(form.insuranceCode);
     if (form.insuranceCode.trim()) {
       if (!/^[A-Z0-9]+$/.test(insurance)) {
         next.insuranceCode = "Mã số thẻ BHYT chỉ gồm chữ in hoa và số.";
@@ -223,11 +247,9 @@ export default function PatientProfilePage() {
     const gender = form.gender;
     const address = form.address.trim();
 
-    // Editing the number invalidates a previous scan of the old card: the scan
-    // verified one number, and this is a different one.
-    const isOcrVerified = insuranceCode
-      ? user?.isOcrVerified === true && user?.insuranceCode === insuranceCode
-      : false;
+    // Editing or clearing the number invalidates the scan: verification belongs
+    // to the exact card that was read, not to whatever is now in the field.
+    const isOcrVerified = isInsuranceVerified(insuranceCode);
 
     setSaving(true);
     try {
@@ -269,6 +291,9 @@ export default function PatientProfilePage() {
       initialHospitalCode: initialHospitalCode || undefined,
       isOcrVerified,
     });
+    setVerifiedInsuranceCode(
+      isOcrVerified ? normalizeBhytInsuranceCode(insuranceCode) : "",
+    );
 
     toast.success("Cập nhật thông tin hồ sơ và thẻ BHYT thành công!");
   }
@@ -294,6 +319,9 @@ export default function PatientProfilePage() {
       initialHospitalCode:
         hospitalCodeFrom(info.initialHospitalCode) || hospitalCodeFrom(info.hospital ?? "") || prev.initialHospitalCode,
     }));
+    // This is the number the patient just confirmed in the review form. It is
+    // only used to compute `isOcrVerified` while the field still matches it.
+    setVerifiedInsuranceCode(normalizeBhytInsuranceCode(info.insuranceCode));
     // Only the latest scan's window is meaningful: it describes the card that is
     // on the form right now, so a re-scan replaces it rather than adding to it.
     setValidity({
@@ -303,21 +331,19 @@ export default function PatientProfilePage() {
     setOcrOpen(false);
   }
 
-  const insuranceNumber = form.insuranceCode.replace(/\s/g, "");
+  const insuranceNumber = normalizeBhytInsuranceCode(form.insuranceCode);
   const insuranceFilled = insuranceNumber.length > 0;
   const trimmedInsurance = form.insuranceCode.trim();
-  /** True only while the stored scan still describes the number in the field. */
-  const verified =
-    user?.isOcrVerified === true &&
-    insuranceFilled &&
-    user?.insuranceCode === trimmedInsurance;
+  /** True only while the confirmed scan still describes the number in the field. */
+  const verified = insuranceFilled && isInsuranceVerified(form.insuranceCode);
   /**
    * The card was verified once and the number has since been edited, so what is
    * on screen is no longer the card that was read. Surfaced on the number itself
    * rather than in a panel, because it is that field that is now unverified.
    */
-  const insuranceEdited =
-    user?.isOcrVerified === true && insuranceFilled && !verified;
+  const hadVerifiedCard =
+    user?.isOcrVerified === true || verifiedInsuranceCode.length > 0;
+  const insuranceEdited = hadVerifiedCard && insuranceFilled && !verified;
 
   const selectedHospital = BHYT_INITIAL_HOSPITALS.find(
     (option) => option.code === form.initialHospitalCode,

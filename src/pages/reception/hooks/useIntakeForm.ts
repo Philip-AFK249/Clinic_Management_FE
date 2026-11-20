@@ -197,7 +197,17 @@ export function useIntakeForm() {
 
   const updateField = useCallback(
     <K extends keyof IntakeFormState>(field: K, value: IntakeFormState[K]) => {
-      setForm((current) => ({ ...current, [field]: value }));
+      setForm((current) => {
+        const next = { ...current, [field]: value };
+        // The verified flag belongs to the exact number the card was read
+        // against. Editing or clearing that number invalidates the scan.
+        if (field === "insuranceCode" && current.isOcrVerified) {
+          const edited = normalizeInsuranceCode(String(value));
+          const scanned = normalizeInsuranceCode(current.insuranceCode);
+          if (!edited || edited !== scanned) next.isOcrVerified = false;
+        }
+        return next;
+      });
     },
     [],
   );

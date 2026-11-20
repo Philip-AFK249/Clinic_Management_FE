@@ -9,7 +9,11 @@ import type {
 } from "../../../services/intakeApi";
 import { RECEPTION_DEPARTMENTS, SHIFT_BLOCKS, toIsoDate } from "../../reception/data/receptionMockData";
 import { KIOSK_PATIENT, ROOMS, TICKET_NUMBER } from "../data/kioskMockData";
-import type { KioskPatient, SymptomOption } from "../data/kioskMockData";
+import type {
+  KioskCardVerification,
+  KioskPatient,
+  SymptomOption,
+} from "../data/kioskMockData";
 
 export type KioskStep =
   | "IDLE"
@@ -155,6 +159,9 @@ export function useKioskSession() {
     viaQr: false,
   });
   const [ticket, setTicket] = useState<KioskIssuedTicket | null>(null);
+  /** Set only after the patient confirms the editable card review. */
+  const [cardVerification, setCardVerification] =
+    useState<KioskCardVerification | null>(null);
   const [isIssuing, setIsIssuing] = useState(false);
   const [issueError, setIssueError] = useState("");
   const issueRequest = useRef<AbortController | null>(null);
@@ -163,11 +170,13 @@ export function useKioskSession() {
   useEffect(() => () => issueRequest.current?.abort(), []);
 
   const startQrScan = useCallback(() => {
+    setCardVerification(null);
     setSelection({ symptom: null, viaQr: true });
     setStep("QR_SCAN");
   }, []);
 
   const startCardOcr = useCallback(() => {
+    setCardVerification(null);
     setSelection({ symptom: null, viaQr: false });
     setStep("CARD_OCR");
   }, []);
@@ -185,9 +194,23 @@ export function useKioskSession() {
     const controller = new AbortController();
     issueRequest.current = controller;
 
-    const patient = KIOSK_PATIENT;
-    const symptom = selection.symptom;
     const viaQr = selection.viaQr;
+    // A card check-in uses the values the patient just confirmed in the OCR
+    // review, not the untouched preset. QR check-ins never carry a card review.
+    const reviewed = viaQr ? null : cardVerification;
+    const patient: KioskPatient = reviewed
+      ? {
+          ...KIOSK_PATIENT,
+          patientName: reviewed.fullName,
+          insuranceCode: reviewed.insuranceCode,
+          insuranceSerial: reviewed.insuranceCode,
+          dob: reviewed.dateOfBirth,
+          gender: reviewed.gender,
+          initialHospitalCode: reviewed.initialHospitalCode,
+          insuranceValidUntil: reviewed.insuranceValidUntil,
+        }
+      : KIOSK_PATIENT;
+    const symptom = selection.symptom;
     const departmentId = symptom?.departmentId ?? DEFAULT_DEPARTMENT_ID;
     const appointmentDate = toIsoDate(new Date());
     const slotStartTime = currentSlotStartTime();
@@ -200,7 +223,7 @@ export function useKioskSession() {
       initialHospitalCode: patient.initialHospitalCode.trim() || undefined,
       dateOfBirth: vietnameseDateToIso(patient.dob),
       gender: patient.gender,
-      isOcrVerified: intakeSource === "KIOSK_OCR",
+      isOcrVerified: intakeSource === "KIOSK_OCR" && reviewed !== null,
       departmentId,
       departmentName: departmentNameOf(departmentId),
       appointmentDate,
@@ -236,7 +259,7 @@ export function useKioskSession() {
     } finally {
       if (!controller.signal.aborted) setIsIssuing(false);
     }
-  }, [selection]);
+  }, [cardVerification, selection]);
 
   const handleQrMatched = useCallback(() => {
     setStep("PRINTING_TICKET");
@@ -248,9 +271,13 @@ export function useKioskSession() {
     void issueTicket();
   }, [issueTicket]);
 
-  const handleCardOcrComplete = useCallback(() => {
-    setStep("SYMPTOM_TRIAGE");
-  }, []);
+  const handleCardOcrComplete = useCallback(
+    (verification: KioskCardVerification) => {
+      setCardVerification(verification);
+      setStep("SYMPTOM_TRIAGE");
+    },
+    [],
+  );
 
   const handleTicketIssued = useCallback(() => {
     setStep("SUCCESS_SUMMARY");
@@ -260,6 +287,7 @@ export function useKioskSession() {
     issueRequest.current?.abort();
     issueRequest.current = null;
     setSelection({ symptom: null, viaQr: false });
+    setCardVerification(null);
     setTicket(null);
     setIsIssuing(false);
     setIssueError("");
