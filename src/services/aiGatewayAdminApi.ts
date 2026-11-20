@@ -95,8 +95,15 @@ export interface RawPipelineFile {
   has_parsed_md?: boolean;
 }
 
-export type ParserType = "docling" | "llama";
+export type ParserType = "docling" | "llama" | "auto";
 export type TargetAudienceOverride = "auto" | "tiep_don" | "bac_si";
+
+export const SUPPORTED_RAW_DOC_ACCEPT =
+  ".pdf,.docx,.md,.markdown,.txt,.csv,.tsv,.xlsx,.xls,.json,.html,.htm";
+
+export function isDirectMarkdownFormat(filename: string): boolean {
+  return /\.(md|markdown|txt|csv|tsv|xlsx|xls|json|html|htm)$/i.test(filename.trim());
+}
 
 /** What `POST /api/v1/pipeline/run-single` reports once ingestion finishes. */
 export interface PipelineRunResult {

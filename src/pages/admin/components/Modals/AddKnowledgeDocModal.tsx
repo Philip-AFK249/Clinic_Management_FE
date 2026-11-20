@@ -15,6 +15,8 @@ import {
   getRawPipelineFilesApi,
   uploadRawDocApi,
   gatewayErrorDetail,
+  SUPPORTED_RAW_DOC_ACCEPT,
+  isDirectMarkdownFormat,
 } from "../../../../services/aiGatewayAdminApi";
 import type {
   ParserType,
@@ -61,6 +63,26 @@ const AUDIENCE_OPTIONS: { value: TargetAudienceOverride; label: string }[] = [
   { value: "tiep_don", label: "Tiếp nhận" },
   { value: "bac_si", label: "Bác sĩ" },
 ];
+
+const FILE_FORMAT_BADGES: Record<string, string> = {
+  pdf: "PDF",
+  docx: "DOCX",
+  md: "MD",
+  markdown: "MD",
+  txt: "TXT",
+  csv: "CSV",
+  tsv: "CSV",
+  xlsx: "XLSX",
+  xls: "XLSX",
+  json: "JSON",
+  html: "HTML",
+  htm: "HTML",
+};
+
+function fileFormatBadge(ext: string): string {
+  const normalized = ext.trim().toLowerCase().replace(/^\./, "");
+  return FILE_FORMAT_BADGES[normalized] ?? (normalized ? normalized.toUpperCase() : "FILE");
+}
 
 export default function AddKnowledgeDocModal({
   onClose,
@@ -136,6 +158,8 @@ export default function AddKnowledgeDocModal({
   // The effective filename: an explicit manual entry wins over the picked row,
   // so an admin can still ingest a file dropped in after the list loaded.
   const filename = manualFilename.trim() || selectedFile;
+  const isDirectMarkdownFile = isDirectMarkdownFormat(filename);
+  const effectiveParser: ParserType = isDirectMarkdownFile ? "auto" : parserType;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -147,7 +171,7 @@ export default function AddKnowledgeDocModal({
     setIsSubmitting(true);
     setPipelineResult(null);
     try {
-      const result = await onRunIngest(filename, parserType, {
+      const result = await onRunIngest(filename, effectiveParser, {
         forceReparse,
         targetAudienceOverride: audience,
       });
@@ -219,7 +243,7 @@ export default function AddKnowledgeDocModal({
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".pdf,.docx,.md"
+                accept={SUPPORTED_RAW_DOC_ACCEPT}
                 className="hidden"
                 onChange={(e) => {
                   const file = e.target.files?.[0];
@@ -240,9 +264,12 @@ export default function AddKnowledgeDocModal({
                 )}
                 {isUploading
                   ? "Đang tải lên gateway..."
-                  : "Chọn tệp .pdf / .docx hoặc kéo thả vào đây"}
+                  : "Chọn tệp (.pdf, .docx, .md, .csv, .xlsx, .txt, .json, .html) hoặc kéo thả vào đây"}
               </button>
             </div>
+            <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
+              Hỗ trợ tài liệu y khoa (.pdf, .docx, .md, .txt, .html) và dữ liệu bảng danh mục thuốc / ICD-10 / triệu chứng (.csv, .xlsx, .json).
+            </p>
           </div>
 
           <div>
@@ -274,6 +301,13 @@ export default function AddKnowledgeDocModal({
                       }`}
                     >
                       <FileText size={14} className="shrink-0" aria-hidden="true" />
+                      <span
+                        className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold ${
+                          active ? "bg-white/15 text-white" : "bg-slate-100 text-slate-600"
+                        }`}
+                      >
+                        {fileFormatBadge(file.ext)}
+                      </span>
                       <span className="min-w-0 flex-1 truncate text-xs font-semibold">
                         {file.filename}
                       </span>
@@ -314,14 +348,21 @@ export default function AddKnowledgeDocModal({
             <label className="mb-1 block text-xs font-semibold text-slate-700">
               Bộ phân tích (Parser) *
             </label>
+            {isDirectMarkdownFile && (
+              <div className="mb-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-[11px] leading-relaxed text-sky-800">
+                Tệp văn bản / bảng dữ liệu (.md, .csv, .xlsx, .txt, .json, .html) sẽ được chuẩn hóa trực tiếp thành bảng Markdown mà không cần chạy Docling hay LlamaParse.
+              </div>
+            )}
             <div className="space-y-2">
               {PARSER_OPTIONS.map((opt) => (
                 <label
                   key={opt.value}
-                  className={`flex cursor-pointer items-start gap-2.5 rounded-lg border px-3 py-2.5 transition-colors ${
-                    parserType === opt.value
-                      ? "border-slate-800 bg-slate-50"
-                      : "border-slate-200 bg-white hover:bg-slate-50"
+                  className={`flex items-start gap-2.5 rounded-lg border px-3 py-2.5 transition-colors ${
+                    isDirectMarkdownFile
+                      ? "cursor-not-allowed border-slate-200 bg-slate-50 opacity-60"
+                      : parserType === opt.value
+                        ? "cursor-pointer border-slate-800 bg-slate-50"
+                        : "cursor-pointer border-slate-200 bg-white hover:bg-slate-50"
                   }`}
                 >
                   <input
@@ -329,8 +370,9 @@ export default function AddKnowledgeDocModal({
                     name="parser-type"
                     value={opt.value}
                     checked={parserType === opt.value}
+                    disabled={isDirectMarkdownFile}
                     onChange={() => setParserType(opt.value)}
-                    className="mt-0.5 accent-slate-800"
+                    className="mt-0.5 accent-slate-800 disabled:cursor-not-allowed"
                   />
                   <span>
                     <span className="block text-xs font-bold text-slate-800">
