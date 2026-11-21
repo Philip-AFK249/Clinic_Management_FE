@@ -3,7 +3,7 @@ import type { PharmacyOrder } from "../data/pharmacyTypes";
 
 interface BillingSummaryCardProps {
   order: PharmacyOrder;
-  onGeneratePaymentQr: () => void;
+  onGenerateVietQr: () => void;
   onMarkCashSettled: () => void;
 }
 
@@ -13,7 +13,7 @@ function formatMoney(value: number): string {
 
 export default function BillingSummaryCard({
   order,
-  onGeneratePaymentQr,
+  onGenerateVietQr,
   onMarkCashSettled,
 }: BillingSummaryCardProps) {
   // ClinicalConsultationService already applied the per-drug BHYT split server
@@ -126,11 +126,11 @@ export default function BillingSummaryCard({
         <div className="flex flex-col gap-2 border-t border-slate-200/80 px-4 py-3">
           <button
             type="button"
-            onClick={onGeneratePaymentQr}
+            onClick={onGenerateVietQr}
             className="flex h-10 items-center justify-center gap-2 rounded-lg border border-emerald-600 bg-emerald-50 text-xs font-semibold text-emerald-700 transition-colors hover:bg-emerald-600 hover:text-white"
           >
             <CreditCard className="h-4 w-4" aria-hidden="true" />
-            Tạo Mã QR Thu Tiền ({formatMoney(coPay)})
+            Tạo VietQR Thu Tiền ({formatMoney(coPay)})
           </button>
           <button
             type="button"

@@ -178,16 +178,6 @@ export interface ActiveAppointment {
   doctorId?: number;
   /** Queue status as last seen; defaults to WAITING until polling says otherwise. */
   status?: QueueStatus;
-  /** Three-minute approval hold deadline returned by check-in, when pending. */
-  holdExpiresAt?: string;
-  /** Server countdown snapshot returned by check-in, when pending. */
-  remainingSeconds?: number;
-  /**
-   * The symptom text used for this booking (Whisper transcription or typed
-   * text). Kept so a rejected booking can re-open the slot picker with the
-   * triage answers already filled in.
-   */
-  symptoms?: string;
 }
 
 export interface KbEntry {
@@ -270,6 +260,8 @@ export const RAG_KNOWLEDGE_BASE: KbEntry[] = [
     id: "payment",
     keywords: [
       "thanh toan",
+      "vietqr",
+      "vnpay",
       "the tin dung",
       "tien mat",
       "quay thanh toan",
@@ -278,7 +270,7 @@ export const RAG_KNOWLEDGE_BASE: KbEntry[] = [
       "payment",
     ],
     answer:
-      "Phí khám được hiển thị rõ ràng trước khi bạn xác nhận đặt lịch. Bạn có thể thanh toán bằng tiền mặt hoặc thẻ tại quầy viện phí.",
+      "Phòng khám hỗ trợ thanh toán qua mã VietQR tự động, cổng VNPay, thẻ tín dụng/ghi nợ (Visa, Master) và tiền mặt tại quầy viện phí. Phí khám được hiển thị rõ ràng trước khi bạn xác nhận đặt lịch.",
     source: "Chính sách thanh toán Phòng khám 2026",
   },
 ];

@@ -183,7 +183,7 @@ export default function PharmacyPage() {
                 />
                 <BillingSummaryCard
                   order={selectedOrder}
-                  onGeneratePaymentQr={queue.toggleBillingQr}
+                  onGenerateVietQr={queue.toggleBillingQr}
                   onMarkCashSettled={handleMarkCashSettled}
                 />
               </div>
@@ -291,24 +291,24 @@ export default function PharmacyPage() {
         />
       )}
 
-      {/* Counter payment QR popup */}
+      {/* VietQR popup */}
       {activeView === "DISPENSE" && queue.billingQrOpen && selectedOrder && !isDispensed && (
         <div
           className="fixed inset-0 z-50"
           role="dialog"
           aria-modal="true"
-          aria-label="Mã QR thu tiền"
+          aria-label="VietQR thu tiền"
         >
           <button
             type="button"
-            aria-label="Đóng mã QR thu tiền"
+            aria-label="Đóng VietQR"
             onClick={queue.toggleBillingQr}
             className="absolute inset-0 bg-slate-900/40"
           />
           <div className="absolute inset-x-0 top-1/2 mx-auto w-full max-w-sm -translate-y-1/2 rounded-2xl border border-slate-200 bg-surface-light p-4 shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-200/80 pb-3">
               <p className="text-sm font-bold text-slate-900">
-                Mã QR - Thu Tiền Tại Quầy
+                VietQR - Thu Tiền Tại Quầy
               </p>
               <button
                 type="button"

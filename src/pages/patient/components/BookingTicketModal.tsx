@@ -1,8 +1,28 @@
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { QRCodeSVG } from "qrcode.react";
-import { FileText, QrCode, X } from "lucide-react";
+import {
+  CheckCircle2,
+  Clock,
+  FileText,
+  QrCode,
+  Sparkles,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 import type { ActiveAppointment } from "../data/patientMockRecords";
+
+type PaymentMode = "NONE" | "VIETQR" | "COUNTER";
+
+const CONSULTATION_FEE = "150,000 VND";
+const VIETQR_PAYLOAD =
+  "00020101021229370016A0000007270123000697040410123456789010SMARTCLINIC520457245802VN5909SMARTCLINC6007HANOI6304A12B";
+
+function formatCountdown(seconds: number): string {
+  const m = String(Math.floor(seconds / 60)).padStart(2, "0");
+  const s = String(seconds % 60).padStart(2, "0");
+  return `${m}:${s}`;
+}
 
 interface BookingTicketModalProps {
   appointment: ActiveAppointment;
@@ -13,6 +33,16 @@ export default function BookingTicketModal({
   appointment,
   onClose,
 }: BookingTicketModalProps) {
+  const [paymentMode, setPaymentMode] = useState<PaymentMode>("NONE");
+  const [seconds, setSeconds] = useState(300);
+  const paymentDone = seconds <= 0;
+
+  useEffect(() => {
+    if (paymentMode !== "VIETQR" || seconds <= 0) return;
+    const handle = window.setTimeout(() => setSeconds((s) => s - 1), 1000);
+    return () => window.clearTimeout(handle);
+  }, [paymentMode, seconds]);
+
   function handleDownloadPass() {
     toast.info(
       `PDF Pass ${appointment.ticketCode} đã được tạo. Kiểm tra email hoặc sinh mã QR tại kiosk tầng trệt.`,
@@ -109,6 +139,92 @@ export default function BookingTicketModal({
                   trong 5 giây.
                 </p>
               </div>
+            </div>
+
+            {/* Payment settlement */}
+            <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-card">
+              <p className="text-sm font-semibold text-slate-900">
+                Thanh toán viện phí
+              </p>
+              {paymentMode === "NONE" && (
+                <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMode("VIETQR")}
+                    className="inline-flex h-12 items-center justify-center gap-2 rounded-lg border border-clinical-200 bg-clinical-50 px-4 text-sm font-semibold text-clinical-700 transition-colors hover:bg-clinical-100"
+                  >
+                    <Sparkles className="h-4 w-4" aria-hidden="true" />
+                    Thanh toán qua VietQR ({CONSULTATION_FEE})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMode("COUNTER")}
+                    className="inline-flex h-12 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+                  >
+                    <Clock className="h-4 w-4" aria-hidden="true" />
+                    Thanh toán tại quầy tiếp đón
+                  </button>
+                </div>
+              )}
+
+              {paymentMode === "VIETQR" && !paymentDone && (
+                <div className="mt-3 flex flex-col items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-4 text-center">
+                  <div className="flex items-center justify-between gap-6">
+                    <QRCodeSVG value={VIETQR_PAYLOAD} size={128} level="M" />
+                    <div className="text-left">
+                      <p className="text-sm font-bold text-slate-900">
+                        Smart Clinic VietQR
+                      </p>
+                      <p className="text-xs text-slate-500">
+                        Phí khám
+                      </p>
+                      <p className="text-base font-bold text-clinical-700">
+                        {CONSULTATION_FEE}
+                      </p>
+                      <p className="mt-1 flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-0.5 text-xs font-semibold text-slate-700">
+                        <Clock className="h-3 w-3 text-clinical-600" aria-hidden="true" />
+                        Tự động xác nhận trong {formatCountdown(seconds)}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSeconds(0)}
+                    className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-teal-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-teal-700"
+                  >
+                    <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+                    Giả lập thanh toán thành công
+                  </button>
+                </div>
+              )}
+
+              {paymentMode === "VIETQR" && paymentDone && (
+                <div className="mt-3 flex items-center gap-3 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+                  <CheckCircle2 className="h-6 w-6 shrink-0 text-emerald-600" aria-hidden="true" />
+                  <div>
+                    <p className="text-sm font-bold text-emerald-800">
+                      Đã nhận thanh toán qua VietQR
+                    </p>
+                    <p className="text-sm text-emerald-700">
+                      {CONSULTATION_FEE} đã được thanh toán. Hóa đơn điện tử đã
+                      gửi tới điện thoại của bạn.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {paymentMode === "COUNTER" && (
+                <div className="mt-3 flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
+                  <Clock className="h-5 w-5 shrink-0 text-slate-500" aria-hidden="true" />
+                  <p className="text-sm leading-relaxed text-slate-600">
+                    Bạn đã chọn{" "}
+                    <span className="font-semibold text-slate-800">
+                      thanh toán tại quầy tiếp đón
+                    </span>
+                    . Vui lòng xuất trình vé QR khi đến phòng khám.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
 

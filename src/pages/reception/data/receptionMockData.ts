@@ -122,11 +122,6 @@ export interface StatusMeta {
 }
 
 export const QUEUE_STATUS_META: Record<QueueStatus, StatusMeta> = {
-  PENDING_APPROVAL: {
-    label: "Chờ duyệt thanh toán",
-    chipClass: "border-amber-200 bg-amber-50 text-amber-700",
-    actionable: false,
-  },
   WAITING: {
     label: "Đang chờ",
     chipClass: "border-amber-200 bg-amber-50 text-amber-700",

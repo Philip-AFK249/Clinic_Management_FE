@@ -28,20 +28,12 @@ attachBearerInterceptor(intakeApi);
 export type TriagePriority = "P1" | "P2" | "P3";
 
 export type QueueStatus =
-  /** Online booking with a transfer pending Admin/Receptionist confirmation. */
-  | "PENDING_APPROVAL"
   | "WAITING"
   | "CALLED"
   | "IN_CONSULTATION"
   | "COMPLETED"
   | "SKIPPED"
   | "CANCELLED";
-
-/**
- * How an online booking intends to pay. `ONLINE_PAYMENT` / `BANK_TRANSFER` are
- * both held in `PENDING_APPROVAL` until staff confirm the transfer manually.
- */
-export type OnlinePaymentMethod = "ONLINE_PAYMENT" | "BANK_TRANSFER" | "AT_COUNTER";
 
 export type IntakeSource =
   | "KIOSK_OCR"
@@ -116,12 +108,6 @@ export interface AdministrativeIntakeRequest {
   triageFlagId?: string;
   isOutOfDataset?: boolean;
   flagReason?: string;
-  /**
-   * Set by the patient portal for an online booking. When it is
-   * `ONLINE_PAYMENT` or `BANK_TRANSFER`, the intake service holds the ticket in
-   * `PENDING_APPROVAL` for a three-minute transfer window.
-   */
-  paymentMethod?: OnlinePaymentMethod;
 }
 
 export interface IntakeResponse {
@@ -150,14 +136,6 @@ export interface IntakeResponse {
   triageFlagId?: string | null;
   isOutOfDataset?: boolean;
   flagReason?: string | null;
-  /** The status minted by check-in; older builds always answered `WAITING`. */
-  status?: QueueStatus;
-  /** Three-minute hold deadline for `PENDING_APPROVAL` tickets (ISO datetime). */
-  holdExpiresAt?: string | null;
-  /** Server-calculated seconds left on the hold, when the service supplies it. */
-  remainingSeconds?: number | null;
-  /** Payment channel chosen on the booking confirmation screen. */
-  paymentMethod?: OnlinePaymentMethod | null;
 }
 
 export interface IntakePatient {
@@ -234,11 +212,6 @@ export interface QueueTicketDetailResponse {
   flagReason?: string | null;
   confirmedIcd10Code?: string | null;
   confirmedDiseaseName?: string | null;
-  /** Approval hold, present on `PENDING_APPROVAL` online bookings only. */
-  holdExpiresAt?: string | null;
-  /** Server-calculated hold countdown, when the service supplies it. */
-  remainingSeconds?: number | null;
-  paymentMethod?: OnlinePaymentMethod | null;
 }
 
 /**
@@ -292,10 +265,6 @@ export interface QueueTicket {
   flagReason?: string | null;
   confirmedIcd10Code?: string | null;
   confirmedDiseaseName?: string | null;
-  /** Approval hold, present on `PENDING_APPROVAL` online bookings only. */
-  holdExpiresAt?: string | null;
-  remainingSeconds?: number | null;
-  paymentMethod?: OnlinePaymentMethod | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -518,157 +487,6 @@ export async function checkInPatient(
       signal,
     });
     return data;
-  } catch (error) {
-    if (axios.isCancel(error)) throw error;
-    throw toApiError(error);
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Payment approval endpoints
-// ---------------------------------------------------------------------------
-
-/**
- * One row in the Admin/Receptionist approval board. The backend endpoint may
- * return the flattened ticket DTO or the serialized queue entity (nested
- * patient), so the normalizer below accepts both - and both a bare array and
- * `{ tickets: [...] }` / `{ data: [...] }` envelopes.
- */
-export interface PendingApprovalTicket {
-  ticketNumber: string;
-  patientName: string;
-  phone: string | null;
-  departmentName: string;
-  doctorName: string;
-  roomNumber: string;
-  appointmentDate: string;
-  slotStartTime: string;
-  checkInTime: string | null;
-  holdExpiresAt: string | null;
-  remainingSeconds: number | null;
-  paymentMethod: OnlinePaymentMethod | null;
-  patientId: number | null;
-}
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-}
-
-function asText(value: unknown, fallback = ""): string {
-  if (typeof value === "string") return value.trim();
-  if (typeof value === "number" && Number.isFinite(value)) return String(value);
-  return fallback;
-}
-
-function asNullableText(value: unknown): string | null {
-  return asText(value) || null;
-}
-
-function asNumber(value: unknown): number | null {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value === "string" && value.trim() && Number.isFinite(Number(value))) {
-    return Number(value);
-  }
-  return null;
-}
-
-function asPaymentMethod(value: unknown): OnlinePaymentMethod | null {
-  const normalized = asText(value).toUpperCase();
-  if (normalized.includes("COUNTER")) return "AT_COUNTER";
-  if (normalized.includes("BANK") || normalized.includes("TRANSFER")) {
-    return "BANK_TRANSFER";
-  }
-  if (normalized.includes("ONLINE") || normalized.includes("CARD")) {
-    return "ONLINE_PAYMENT";
-  }
-  return null;
-}
-
-function normalizePendingApprovalTicket(raw: unknown): PendingApprovalTicket | null {
-  const item = asRecord(raw);
-  if (!item) return null;
-  const patient = asRecord(item.patient);
-  const ticketNumber = asText(item.ticketNumber ?? item.ticket ?? item.code);
-  if (!ticketNumber) return null;
-  return {
-    ticketNumber,
-    patientName: asText(
-      item.patientName ??
-        item.patientFullName ??
-        item.fullName ??
-        patient?.fullName ??
-        patient?.name,
-      "—",
-    ),
-    phone: asNullableText(
-      item.phone ?? item.phoneNumber ?? patient?.phone ?? item.mobile,
-    ),
-    departmentName: asText(item.departmentName ?? item.department, "—"),
-    doctorName: asText(item.doctorName ?? item.doctor, "—"),
-    roomNumber: asText(item.roomNumber ?? item.room, "—"),
-    appointmentDate: asText(item.appointmentDate ?? item.date),
-    slotStartTime: asText(item.slotStartTime ?? item.slotTime ?? item.slot),
-    checkInTime: asNullableText(item.checkInTime),
-    holdExpiresAt: asNullableText(item.holdExpiresAt),
-    remainingSeconds: asNumber(item.remainingSeconds),
-    paymentMethod: asPaymentMethod(item.paymentMethod ?? item.paymentMode),
-    patientId: asNumber(item.patientId ?? patient?.id),
-  };
-}
-
-/** `GET /api/v1/queue/admin/pending-approval`, polled by staff every 3 seconds. */
-export async function getPendingApprovalTicketsApi(
-  signal?: AbortSignal,
-): Promise<PendingApprovalTicket[]> {
-  try {
-    const { data } = await intakeApi.get<unknown>(
-      "/v1/queue/admin/pending-approval",
-      { signal },
-    );
-    const envelope = asRecord(data);
-    const rows = Array.isArray(data)
-      ? data
-      : (envelope?.tickets ?? envelope?.data ?? envelope?.items);
-    if (!Array.isArray(rows)) return [];
-    return rows
-      .map(normalizePendingApprovalTicket)
-      .filter((ticket): ticket is PendingApprovalTicket => ticket !== null);
-  } catch (error) {
-    if (axios.isCancel(error)) throw error;
-    throw toApiError(error);
-  }
-}
-
-/** `PATCH /api/v1/queue/tickets/{ticketNumber}/approve` - confirm the transfer. */
-export async function approveTicketApi(
-  ticketNumber: string,
-  signal?: AbortSignal,
-): Promise<void> {
-  try {
-    await intakeApi.patch(
-      `/v1/queue/tickets/${encodeURIComponent(ticketNumber)}/approve`,
-      undefined,
-      { signal },
-    );
-  } catch (error) {
-    if (axios.isCancel(error)) throw error;
-    throw toApiError(error);
-  }
-}
-
-/** `PATCH /api/v1/queue/tickets/{ticketNumber}/reject` - release the slot. */
-export async function rejectTicketApi(
-  ticketNumber: string,
-  signal?: AbortSignal,
-): Promise<void> {
-  try {
-    await intakeApi.patch(
-      `/v1/queue/tickets/${encodeURIComponent(ticketNumber)}/reject`,
-      undefined,
-      { signal },
-    );
   } catch (error) {
     if (axios.isCancel(error)) throw error;
     throw toApiError(error);
