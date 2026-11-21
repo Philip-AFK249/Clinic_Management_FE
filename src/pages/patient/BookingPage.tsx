@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { AlertTriangle, Calendar, ChevronLeft, Check, PhoneCall } from "lucide-react";
 import { toast } from "sonner";
@@ -14,6 +14,7 @@ import {
 } from "../../services/intakeApi";
 import type {
   AdministrativeIntakeRequest,
+  QueueTicketDetailResponse,
   TimeSlotResponse,
 } from "../../services/intakeApi";
 import PatientNavbar from "./components/PatientNavbar";
@@ -33,9 +34,11 @@ import {
 } from "./data/clinicContent";
 import { triageSymptoms } from "./data/patientMockRecords";
 import { hospitalCodeFrom } from "./data/patientProfile";
-import { writeActiveBooking } from "./data/activeBooking";
+import { readOwnedActiveBooking, writeActiveBooking } from "./data/activeBooking";
+import { identifierCandidates } from "./data/patientIdentifiers";
 import { BOOKING_CREATED_TOAST, formatCountdown } from "./data/ticketLifecycle";
 import { useBookingLock } from "./hooks/useBookingLock";
+import { usePatientTicket } from "./hooks/usePatientTicket";
 import {
   clinicDayOffsetIso,
   clinicNowHHmm,
@@ -228,6 +231,44 @@ export default function BookingPage() {
       (value): value is string => Boolean(value?.trim()),
     ),
   });
+  /**
+   * A live ticket already owns this patient's single booking slot. Check it on
+   * mount: the account's own cached booking seeds the lookup, and the hook
+   * confirms it by patient id / every identifier spelling, so a ticket booked
+   * on another device is caught here too - before check-in can return 409.
+   */
+  const [storedBooking] = useState(() =>
+    readOwnedActiveBooking(
+      user
+        ? { email: user.email, fullName: user.fullName, phone: user.phone }
+        : null,
+    ),
+  );
+  const ticketIdentifiers = useMemo(
+    () => identifierCandidates(user, [storedBooking?.phone]),
+    [user, storedBooking],
+  );
+  const { activateLock } = bookingLock;
+  const handleTicketRejected = useCallback(
+    (detail: QueueTicketDetailResponse) => activateLock(detail.rejectionReason),
+    [activateLock],
+  );
+  const patientTicket = usePatientTicket(
+    storedBooking,
+    ticketIdentifiers,
+    user?.email ?? null,
+    handleTicketRejected,
+  );
+  // With no ticket the hook reports WAITING as its fallback status, so the
+  // status alone must not block: a live answer or a valid cache entry is
+  // required before this page refuses to submit.
+  const hasActiveTicket =
+    !patientTicket.invalidTicket &&
+    (patientTicket.detail !== null || storedBooking !== null) &&
+    (patientTicket.status === "PENDING_CONFIRMATION" ||
+      patientTicket.status === "WAITING");
+  const activeTicketCode =
+    patientTicket.detail?.ticketNumber ?? storedBooking?.ticketCode ?? "";
   /**
    * Set while the final confirmation is in flight to PatientIntakeService.
    *
@@ -1401,6 +1442,9 @@ export default function BookingPage() {
    * the dashboard never shows an appointment the clinic does not know about.
    */
   async function submitBooking(): Promise<void> {
+    // Belt-and-braces: Enter in a text field can submit the form even when the
+    // button is disabled, and an active ticket must never reach check-in.
+    if (hasActiveTicket) return;
     const service: Service =
       deptIdx !== null ? CLINIC_SERVICES[deptIdx] : CLINIC_SERVICES[0];
     const doctor = resolveDoctorForService(service.title);
@@ -1618,6 +1662,40 @@ export default function BookingPage() {
             </div>
           )}
 
+          {/* Detected before check-in: a live ticket already owns this
+              patient's slot, so point them at it instead of letting the POST
+              fail with 409 Conflict. */}
+          {hasActiveTicket && (
+            <div
+              role="status"
+              className="mt-6 rounded-xl border border-amber-300 bg-amber-50 p-4 shadow-card"
+            >
+              <div className="flex items-start gap-3">
+                <AlertTriangle
+                  className="mt-0.5 h-5 w-5 shrink-0 text-amber-600"
+                  aria-hidden="true"
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-bold text-amber-900">
+                    Bạn đang có phiếu khám đang hoạt động
+                  </p>
+                  <p className="mt-1 text-sm leading-relaxed text-amber-800">
+                    Bạn đang có phiếu khám #{activeTicketCode} đang hoạt động.
+                    Vui lòng hoàn tất lượt khám hiện tại trước khi đặt lịch mới.
+                  </p>
+                  <div className="mt-3">
+                    <Link
+                      to="/patient/dashboard"
+                      className="inline-flex h-10 items-center justify-center rounded-lg bg-amber-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-amber-700"
+                    >
+                      Xem vé khám hiện tại
+                    </Link>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* The backend refused this day because an appointment is already
               active on it: keep the warning on screen (a toast expires) with
               the one action that unblocks the booking. */}
@@ -1823,7 +1901,7 @@ export default function BookingPage() {
 
                   <button
                     type="submit"
-                    disabled={isSubmitting || bookingLock.isLocked}
+                    disabled={isSubmitting || bookingLock.isLocked || hasActiveTicket}
                     className={`inline-flex h-11 items-center justify-center rounded-lg px-6 text-base font-semibold text-white shadow-card transition-all hover:shadow-elevated disabled:cursor-not-allowed disabled:opacity-70 ${
                       step === 1
                         ? "bg-cta hover:bg-cta-hover"

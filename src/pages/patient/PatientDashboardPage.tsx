@@ -138,6 +138,20 @@ const FINISHED_NOTICES: Record<QueueStatus, string> = {
   IN_CONSULTATION: "",
 };
 
+/**
+ * Statuses that still occupy the patient's one booking slot.
+ *
+ * A new check-in is refused with 409 while any of these is live, so the whole
+ * group has to disable the "book another visit" call to action - not just the
+ * temporary and waiting states.
+ */
+const ACTIVE_TICKET_STATUSES: readonly QueueStatus[] = [
+  "PENDING_CONFIRMATION",
+  "WAITING",
+  "CALLED",
+  "IN_CONSULTATION",
+];
+
 /** The three khoa the clinic runs, keyed by `departments.id`. */
 const DEPARTMENT_LABELS: Record<number, string> = {
   1: "Khoa Nội Tổng quát & Tim mạch",
@@ -334,6 +348,17 @@ export default function PatientDashboardPage() {
     detail !== null && isAppointmentDateExpired(detail.appointmentDate);
   const hasAppointment =
     !ownedBookingExpired && !detailExpired && ownedBooking !== null;
+  // The hook reports WAITING as a fallback status when there is no ticket at
+  // all, so a status alone must never be enough to block booking: a real
+  // backend answer or a non-invalid cached booking has to be there as well.
+  const hasActiveTicket =
+    ticket !== null &&
+    !ticket.invalidTicket &&
+    (ticket.detail !== null || ownedBooking !== null) &&
+    ACTIVE_TICKET_STATUSES.includes(ticket.status);
+  const isBookingBlocked = hasActiveTicket || bookingLock.isLocked;
+  const activeTicketCode =
+    ticket.detail?.ticketNumber ?? ownedBooking?.ticketCode ?? "";
 
   // The stored booking renders on its own while the first poll is in flight;
   // once it answers, the backend's copy wins everywhere it has an opinion.
@@ -742,6 +767,21 @@ export default function PatientDashboardPage() {
                     </button>
                   </div>
                 )}
+                {/* The slot is already taken: keep the disabled CTA and the
+                    reason next to the live ticket, where the patient looks. */}
+                {hasActiveTicket && (
+                  <div className="mt-4 border-t border-slate-100 pt-4">
+                    <button
+                      type="button"
+                      disabled
+                      title="Bạn đang có phiếu khám đang hoạt động"
+                      className="inline-flex h-11 cursor-not-allowed items-center justify-center rounded-lg border border-slate-200 bg-slate-100 px-6 text-sm font-semibold text-slate-400"
+                    >
+                      Đặt lịch khám mới
+                    </button>
+                    <ActiveTicketNotice ticketCode={activeTicketCode} />
+                  </div>
+                )}
               </section>
 
               {ticket.isInQueue ? (
@@ -808,15 +848,24 @@ export default function PatientDashboardPage() {
                       <FileText className="h-4 w-4" aria-hidden="true" />
                       Xem kết quả khám & chi phí
                     </button>
-                    {bookingLock.isLocked ? (
-                      <button
-                        type="button"
-                        disabled
-                        title="Tài khoản đang trong thời gian tạm khóa"
-                        className="inline-flex h-11 cursor-not-allowed items-center justify-center rounded-lg border border-slate-200 bg-slate-100 px-6 text-sm font-semibold text-slate-400"
-                      >
-                        Đặt lịch khám mới
-                      </button>
+                    {isBookingBlocked ? (
+                      <div>
+                        <button
+                          type="button"
+                          disabled
+                          title={
+                            hasActiveTicket
+                              ? "Bạn đang có phiếu khám đang hoạt động"
+                              : "Tài khoản đang trong thời gian tạm khóa"
+                          }
+                          className="inline-flex h-11 cursor-not-allowed items-center justify-center rounded-lg border border-slate-200 bg-slate-100 px-6 text-sm font-semibold text-slate-400"
+                        >
+                          Đặt lịch khám mới
+                        </button>
+                        {hasActiveTicket ? (
+                          <ActiveTicketNotice ticketCode={activeTicketCode} />
+                        ) : null}
+                      </div>
                     ) : (
                       <Link
                         to="/patient/booking"
@@ -839,14 +888,24 @@ export default function PatientDashboardPage() {
                 Các lịch khám trước đây đã hoàn tất hoặc hết hạn được lưu trong
                 Lịch sử đặt lịch.
               </p>
-              {bookingLock.isLocked ? (
-                <button
-                  type="button"
-                  disabled
-                  className="mt-6 inline-flex h-11 cursor-not-allowed items-center justify-center rounded-lg bg-slate-300 px-6 text-sm font-semibold text-slate-600"
-                >
-                  Đặt lịch khám ngay
-                </button>
+              {isBookingBlocked ? (
+                <div className="mt-6 flex flex-col items-center">
+                  <button
+                    type="button"
+                    disabled
+                    title={
+                      hasActiveTicket
+                        ? "Bạn đang có phiếu khám đang hoạt động"
+                        : "Tài khoản đang trong thời gian tạm khóa"
+                    }
+                    className="inline-flex h-11 cursor-not-allowed items-center justify-center rounded-lg bg-slate-300 px-6 text-sm font-semibold text-slate-600"
+                  >
+                    Đặt lịch khám ngay
+                  </button>
+                  {hasActiveTicket ? (
+                    <ActiveTicketNotice ticketCode={activeTicketCode} />
+                  ) : null}
+                </div>
               ) : (
                 <Link
                   to="/patient/booking"
@@ -1066,6 +1125,19 @@ function vitalsOf(
     vitals.push({ label: "Nhiệt độ", value: `${temperature} °C` });
   }
   return vitals;
+}
+
+/** Why the "book another visit" CTA is disabled while a ticket is live. */
+function ActiveTicketNotice({ ticketCode }: { ticketCode: string }) {
+  return (
+    <p
+      role="status"
+      className="mt-2 max-w-md text-xs leading-relaxed text-amber-700"
+    >
+      Bạn đang có phiếu khám #{ticketCode} đang hoạt động. Vui lòng hoàn tất
+      lượt khám hiện tại trước khi đặt lịch mới.
+    </p>
+  );
 }
 
 function SummaryStat({
