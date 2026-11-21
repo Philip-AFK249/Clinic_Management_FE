@@ -13,23 +13,17 @@ import {
   appointmentFromTicketDetail,
   clearActiveBooking,
   isAppointmentDateExpired,
-  RESUMABLE_BOOKING_STATUSES,
-  TERMINAL_BOOKING_STATUSES,
   writeActiveBooking,
 } from "../data/activeBooking";
 import type { ActiveAppointment } from "../data/patientMockRecords";
 
 const POLL_INTERVAL_MS = 10_000;
 
-/**
- * Still bookable: a physical queue state or a temporary reservation waiting
- * for its deposit. The latter must keep polling - the webhook flips it to
- * WAITING (or EXPIRED) without the browser doing anything.
- */
-const ACTIVE_STATUSES: readonly QueueStatus[] = RESUMABLE_BOOKING_STATUSES;
+/** Still in a queue somewhere: worth re-checking every few seconds. */
+const ACTIVE_STATUSES: readonly QueueStatus[] = ["WAITING", "CALLED", "IN_CONSULTATION"];
 
 /** Visit is over: keep the last answer on screen, stop asking for a new one. */
-const TERMINAL_STATUSES: readonly QueueStatus[] = TERMINAL_BOOKING_STATUSES;
+const TERMINAL_STATUSES: readonly QueueStatus[] = ["COMPLETED", "CANCELLED", "SKIPPED"];
 
 export interface PatientTicketState {
   /** The backend's view of the ticket; `null` until the first poll lands. */
@@ -106,9 +100,8 @@ export interface PatientTicketState {
  *
  * Lifecycle rules:
  *
- * - Poll only while the ticket is PENDING_PAYMENT/WAITING/CALLED/
- *   IN_CONSULTATION; once it is terminal (including EXPIRED), the last answer
- *   stays on screen and the interval stops.
+ * - Poll only while the ticket is WAITING/CALLED/IN_CONSULTATION; once it is
+ *   terminal, the last answer stays on screen and the interval stops.
  * - A number the backend does not know (HTTP 400/404 on the detail lookup) is
  *   not an error to keep retrying: the stored booking is purged, the poll
  *   stops, and the caller gets `invalidTicket` so the empty state can render

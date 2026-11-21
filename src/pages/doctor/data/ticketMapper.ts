@@ -1,5 +1,4 @@
 import type {
-  QueueStatus,
   QueueTicket,
   QueueTicketDetailResponse,
 } from "../../../services/intakeApi";
@@ -69,20 +68,6 @@ export function vitalsObjectiveLine(detail: QueueTicketDetailResponse): string {
 }
 
 const PRIORITY_SCORE: Record<TriageLevel, number> = { P1: 150, P2: 95, P3: 60 };
-
-/**
- * Statuses that must never appear in a doctor's working list. A
- * `PENDING_PAYMENT` reservation has not entered the waiting room yet, and an
- * `EXPIRED` one is closed; neither can be called into a consultation room.
- */
-const NON_CONSULTATION_STATUSES: readonly QueueStatus[] = [
-  "PENDING_PAYMENT",
-  "EXPIRED",
-];
-
-export function isDoctorQueueTicket(ticket: QueueTicket): boolean {
-  return !NON_CONSULTATION_STATUSES.includes(ticket.status);
-}
 
 const SOURCE_LABEL: Record<string, BookingSource> = {
   KIOSK_QR: "Kiosk QR",

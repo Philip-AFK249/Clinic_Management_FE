@@ -18,7 +18,7 @@ export type PrescriptionStatus =
   | "CANCELLED"; // Đơn bị hủy ở bước duyệt
 
 export type PaymentStatus =
-  | "PAID_ONLINE" // Đã thanh toán qua App / VietQR
+  | "PAID_ONLINE" // Đã thanh toán trực tuyến qua Cổng bệnh nhân
   | "PENDING_AT_COUNTER" // Chờ thanh toán tại quầy
   | "SETTLED_AT_COUNTER"; // Đã thu tiền mặt tại quầy
 

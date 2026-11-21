@@ -34,7 +34,6 @@ import PatientFooter from "./components/PatientFooter";
 import {
   clearActiveBooking,
   isAppointmentDateExpired,
-  isClosedBookingStatus,
   isStoredBookingExpired,
   readOwnedActiveBooking,
 } from "./data/activeBooking";
@@ -64,11 +63,6 @@ const STATUS_BADGES: Record<
   QueueStatus,
   { label: string; className: string; icon: typeof CheckCircle2 }
 > = {
-  PENDING_PAYMENT: {
-    label: "Chờ thanh toán cọc",
-    className: "border-amber-200 bg-amber-50 text-amber-700",
-    icon: Wallet,
-  },
   WAITING: {
     label: "Đang chờ tiếp đón",
     className: "border-amber-200 bg-amber-50 text-amber-700",
@@ -99,15 +93,9 @@ const STATUS_BADGES: Record<
     className: "border-slate-200 bg-slate-50 text-slate-600",
     icon: Clock,
   },
-  EXPIRED: {
-    label: "Hết hạn thanh toán",
-    className: "border-slate-200 bg-slate-100 text-slate-600",
-    icon: Ban,
-  },
 };
 
 const FINISHED_NOTICES: Record<QueueStatus, string> = {
-  PENDING_PAYMENT: "",
   COMPLETED:
     "Phiếu khám của bạn đã hoàn tất. Kết quả và đơn thuốc (nếu có) sẽ xuất hiện trong tab Hồ sơ sức khỏe điện tử.",
   SKIPPED:
@@ -117,8 +105,6 @@ const FINISHED_NOTICES: Record<QueueStatus, string> = {
   WAITING: "",
   CALLED: "",
   IN_CONSULTATION: "",
-  EXPIRED:
-    "Đặt lịch tạm thời đã hết hạn thanh toán cọc. Vé không còn hiệu lực; vui lòng đặt lịch mới nếu bạn vẫn muốn khám.",
 };
 
 /** The three khoa the clinic runs, keyed by `departments.id`. */
@@ -260,18 +246,16 @@ export default function PatientDashboardPage() {
   // The backend's own answer also counts as a real appointment, even when the
   // cache was lost - it was found by the signed-in patient's own identifier.
   const ownedBooking = ticket.invalidTicket ? null : storedBooking;
-  // A day that has already passed - or a temporary reservation closed as
-  // EXPIRED - is not an active appointment, whatever the cache or a lagging
-  // poll may still say: that visit belongs in "Lịch sử đặt lịch", never under
-  // the live queue board. The hook already purges the stored copy for both
-  // cases - this is the belt to its braces, so a booking that expired between
-  // the last poll and this render cannot slip through.
+  // A day that has already passed is not an active appointment, whatever the
+  // cache or a lagging poll may still say: that visit belongs in "Lịch sử đặt
+  // lịch", never under the live queue board. The hook already purges the
+  // stored copy for both cases - this is the belt to its braces, so a booking
+  // that expired between the last poll and this render cannot slip through.
   const ownedBookingExpired =
     ownedBooking !== null && isStoredBookingExpired(ownedBooking);
   const detailExpired =
     ticket.detail !== null &&
-    (isClosedBookingStatus(ticket.detail.status) ||
-      isAppointmentDateExpired(ticket.detail.appointmentDate));
+    isAppointmentDateExpired(ticket.detail.appointmentDate);
   const hasAppointment =
     !ownedBookingExpired &&
     !detailExpired &&

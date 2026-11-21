@@ -509,6 +509,6 @@ export const FAQS: Faq[] = [
   {
     question: "Phòng khám hỗ trợ những hình thức thanh toán nào?",
     answer:
-      "Hỗ trợ chuyển khoản quét mã VietQR tự động, thanh toán qua cổng VNPay, thẻ tín dụng/ghi nợ (Visa, Master) và tiền mặt tại quầy viện phí.",
+      "Phí khám được hiển thị rõ ràng trước khi bạn xác nhận đặt lịch. Bạn có thể thanh toán bằng tiền mặt hoặc thẻ tại quầy viện phí.",
   },
 ];

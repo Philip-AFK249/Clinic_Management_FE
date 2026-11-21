@@ -28,54 +28,13 @@ const ACTIVE_BOOKING_STORAGE_PREFIX = "patient_active_booking";
 const LEGACY_STORAGE_KEYS = ["clinic_active_booking", "patient_active_booking"];
 
 const QUEUE_STATUSES: readonly QueueStatus[] = [
-  "PENDING_PAYMENT",
   "WAITING",
   "CALLED",
   "IN_CONSULTATION",
   "COMPLETED",
   "SKIPPED",
   "CANCELLED",
-  "EXPIRED",
 ];
-
-/**
- * Statuses that still represent a booking the patient can return to and
- * resume. A temporary reservation awaiting its deposit belongs here: it holds
- * the slot until payment (-> WAITING) or timeout (-> EXPIRED), so dropping it
- * from the cache would strand the patient with no way back to the payment step.
- */
-export const RESUMABLE_BOOKING_STATUSES: readonly QueueStatus[] = [
-  "PENDING_PAYMENT",
-  "WAITING",
-  "CALLED",
-  "IN_CONSULTATION",
-];
-
-/** Statuses with nothing left to resume - the ticket is closed. */
-export const CLOSED_BOOKING_STATUSES: readonly QueueStatus[] = ["EXPIRED"];
-
-/**
- * Final states of a ticket. A deposit that timed out is just as final as a
- * finished or cancelled visit, so the patient portal stops polling on it.
- */
-export const TERMINAL_BOOKING_STATUSES: readonly QueueStatus[] = [
-  "COMPLETED",
-  "CANCELLED",
-  "SKIPPED",
-  "EXPIRED",
-];
-
-export function isResumableBookingStatus(
-  status: QueueStatus | null | undefined,
-): boolean {
-  return status != null && RESUMABLE_BOOKING_STATUSES.includes(status);
-}
-
-export function isClosedBookingStatus(
-  status: QueueStatus | null | undefined,
-): boolean {
-  return status != null && CLOSED_BOOKING_STATUSES.includes(status);
-}
 
 /** The storage key for one account; empty email has no key at all. */
 function scopedKey(ownerEmail: string | null | undefined): string | null {
@@ -194,19 +153,15 @@ function isoFromLabel(label: string | null | undefined): string | null {
 }
 
 /**
- * Whether a cached appointment is no longer bookable.
+ * Whether a cached appointment belongs to a day that has already passed.
  *
  * Prefers `appointmentDate` (what the backend stores) and falls back to the
  * `dd/MM/yyyy` display label, because a record written by an older build has
  * only the label - and an 18/10 appointment must stop being "active" on
- * 21/10 whichever of the two the cache happens to hold. A ticket the backend
- * closed as `EXPIRED` (temporary reservation whose deposit timed out) is
- * expired regardless of the day printed on it. `PENDING_PAYMENT` is deliberately
- * not in this test: it is still a resumable booking.
+ * 21/10 whichever of the two the cache happens to hold.
  */
 export function isStoredBookingExpired(booking: ActiveAppointment): boolean {
   return (
-    isClosedBookingStatus(booking.status) ||
     isAppointmentDateExpired(booking.appointmentDate) ||
     isAppointmentDateExpired(isoFromLabel(booking.date))
   );
@@ -220,11 +175,10 @@ export function isStoredBookingExpired(booking: ActiveAppointment): boolean {
  * the ownership check (a stale write from a previous build, or data left by a
  * deleted account) is purged on the spot rather than shown.
  *
- * A ticket whose day has passed - or whose status the backend closed as
- * `EXPIRED` - is expired: the cache is cleared and `null` returned, so a visit
- * that is no longer bookable can never render under "Lịch hẹn đang hoạt động"
- * again. The local copy outliving the backend is exactly how a stale
- * appointment survived a reload before.
+ * A ticket whose day has passed is expired: the cache is cleared and `null`
+ * returned, so a visit that is no longer bookable can never render under
+ * "Lịch hẹn đang hoạt động" again. The local copy outliving the backend is
+ * exactly how a stale appointment survived a reload before.
  */
 export function readOwnedActiveBooking(
   owner: BookingCacheOwner | null,

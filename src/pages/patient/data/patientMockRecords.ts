@@ -260,8 +260,6 @@ export const RAG_KNOWLEDGE_BASE: KbEntry[] = [
     id: "payment",
     keywords: [
       "thanh toan",
-      "vietqr",
-      "vnpay",
       "the tin dung",
       "tien mat",
       "quay thanh toan",
@@ -270,7 +268,7 @@ export const RAG_KNOWLEDGE_BASE: KbEntry[] = [
       "payment",
     ],
     answer:
-      "Phòng khám hỗ trợ thanh toán qua mã VietQR tự động, cổng VNPay, thẻ tín dụng/ghi nợ (Visa, Master) và tiền mặt tại quầy viện phí. Phí khám được hiển thị rõ ràng trước khi bạn xác nhận đặt lịch.",
+      "Phí khám được hiển thị rõ ràng trước khi bạn xác nhận đặt lịch. Bạn có thể thanh toán bằng tiền mặt hoặc thẻ tại quầy viện phí.",
     source: "Chính sách thanh toán Phòng khám 2026",
   },
 ];

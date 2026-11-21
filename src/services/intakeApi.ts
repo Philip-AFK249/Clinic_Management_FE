@@ -27,40 +27,19 @@ attachBearerInterceptor(intakeApi);
 /** P1 = emergency, P2 = needs to be seen soon, P3 = routine. */
 export type TriagePriority = "P1" | "P2" | "P3";
 
-/**
- * Queue lifecycle, including the two states added for online deposits:
- * `PENDING_PAYMENT` is a temporary reservation holding a slot until the deposit
- * is paid, after which it becomes `WAITING`; a reservation that is not paid in
- * time is closed as `EXPIRED`.
- */
 export type QueueStatus =
-  | "PENDING_PAYMENT"
   | "WAITING"
   | "CALLED"
   | "IN_CONSULTATION"
   | "COMPLETED"
   | "SKIPPED"
-  | "CANCELLED"
-  | "EXPIRED";
+  | "CANCELLED";
 
 export type IntakeSource =
   | "KIOSK_OCR"
   | "KIOSK_QR"
   | "RECEPTION_MANUAL"
   | "ONLINE_BOOKING";
-
-/**
- * Deposit settlement state reported alongside temporary online reservations.
- * `LATE_PAYMENT_CONFLICT` means money arrived after the reservation was already
- * released; `FORFEITED` / `REFUNDED` are the admin-oversight outcomes.
- */
-export type PaymentStatus =
-  | "UNPAID"
-  | "PAID"
-  | "EXPIRED"
-  | "FORFEITED"
-  | "LATE_PAYMENT_CONFLICT"
-  | "REFUNDED";
 
 // ---------------------------------------------------------------------------
 // DTOs
@@ -157,20 +136,6 @@ export interface IntakeResponse {
   triageFlagId?: string | null;
   isOutOfDataset?: boolean;
   flagReason?: string | null;
-  /**
-   * Optional deposit / admin-oversight columns added for temporary online
-   * reservations. Older responses simply omit them, so every field is optional.
-   */
-  status?: QueueStatus;
-  paymentStatus?: PaymentStatus | null;
-  paymentCode?: string | null;
-  depositAmount?: number | null;
-  paidAmount?: number | null;
-  paymentExpiresAt?: string | null;
-  paidAt?: string | null;
-  externalTxId?: string | null;
-  adminNote?: string | null;
-  qrUrl?: string | null;
 }
 
 export interface IntakePatient {
@@ -247,19 +212,6 @@ export interface QueueTicketDetailResponse {
   flagReason?: string | null;
   confirmedIcd10Code?: string | null;
   confirmedDiseaseName?: string | null;
-  /**
-   * Deposit / admin-oversight columns carried on the flattened ticket DTO for
-   * temporary online reservations. Absent on ordinary walk-in tickets.
-   */
-  paymentStatus?: PaymentStatus | null;
-  paymentCode?: string | null;
-  depositAmount?: number | null;
-  paidAmount?: number | null;
-  paymentExpiresAt?: string | null;
-  paidAt?: string | null;
-  externalTxId?: string | null;
-  adminNote?: string | null;
-  qrUrl?: string | null;
 }
 
 /**
@@ -313,19 +265,6 @@ export interface QueueTicket {
   flagReason?: string | null;
   confirmedIcd10Code?: string | null;
   confirmedDiseaseName?: string | null;
-  /**
-   * Deposit / admin-oversight columns on the serialized entity, so the
-   * reception and queue boards see the same state as the patient portal.
-   */
-  paymentStatus?: PaymentStatus | null;
-  paymentCode?: string | null;
-  depositAmount?: number | null;
-  paidAmount?: number | null;
-  paymentExpiresAt?: string | null;
-  paidAt?: string | null;
-  externalTxId?: string | null;
-  adminNote?: string | null;
-  qrUrl?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -590,10 +529,9 @@ export interface ActiveTicketLookup {
 }
 
 /**
- * The patient's most recent still-active ticket (PENDING_PAYMENT/WAITING/
- * CALLED/IN_CONSULTATION), for a future date included - the service matches
- * `appointmentDate >= today`. An unpaid reservation is still "active" here so
- * the patient can resume it once the deposit is paid.
+ * The patient's most recent still-active ticket (WAITING/CALLED/
+ * IN_CONSULTATION), for a future date included - the service matches
+ * `appointmentDate >= today`.
  *
  * "No active ticket" is an ordinary answer, not a fault: the current service
  * replies **204 No Content** (older builds: 400 / 404), and both that and an
