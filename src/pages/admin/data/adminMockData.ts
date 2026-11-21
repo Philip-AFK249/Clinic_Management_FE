@@ -1,5 +1,6 @@
 export type AdminTab =
   | "OVERVIEW"
+  | "APPROVALS"
   | "ROSTER"
   | "USERS"
   | "PATIENTS"

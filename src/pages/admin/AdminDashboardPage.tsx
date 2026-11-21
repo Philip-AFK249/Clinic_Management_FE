@@ -8,6 +8,7 @@ import UserManagementTab from "./components/UserManagementTab";
 import PatientManagementTab from "./components/PatientManagementTab";
 import MedicalCatalogTab from "./components/MedicalCatalogTab";
 import AiGatewayTab from "./components/AiGatewayTab";
+import PendingApprovalsBoard from "./components/PendingApprovalsBoard";
 import { useAdminMetrics } from "./hooks/useAdminMetrics";
 import { useKnowledgeBase } from "./hooks/useKnowledgeBase";
 
@@ -32,6 +33,7 @@ export default function AdminDashboardPage() {
         <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
           <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-5">
             {activeTab === "OVERVIEW" && <OverviewTab metrics={metrics.metrics} />}
+            {activeTab === "APPROVALS" && <PendingApprovalsBoard />}
             {activeTab === "ROSTER" && <DoctorRosterTab />}
             {activeTab === "USERS" && <UserManagementTab />}
             {activeTab === "PATIENTS" && <PatientManagementTab />}

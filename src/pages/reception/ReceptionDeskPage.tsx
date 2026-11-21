@@ -9,6 +9,7 @@ import type { DuplicateBookingNotice } from "./components/PatientIdentityForm";
 import SlotSelector from "./components/SlotSelector";
 import TriageSelector from "./components/TriageSelector";
 import QueueMonitorPanel from "./components/QueueMonitorPanel";
+import ReceptionPendingApprovalsPanel from "./components/ReceptionPendingApprovalsPanel";
 import TicketPrintModal from "./components/TicketPrintModal";
 import { ticketViewFromIntake, ticketViewFromQueue } from "./ticketView";
 import type { TicketView } from "./ticketView";
@@ -60,7 +61,12 @@ const FIELD_LABELS: Record<IntakeField, string> = {
 const FIELD_ORDER = Object.keys(FIELD_ANCHORS) as IntakeField[];
 
 /** Statuses that still hold a slot - the ones that block a second ticket. */
-const ACTIVE_STATUSES: QueueStatus[] = ["WAITING", "CALLED", "IN_CONSULTATION"];
+const ACTIVE_STATUSES: QueueStatus[] = [
+  "PENDING_APPROVAL",
+  "WAITING",
+  "CALLED",
+  "IN_CONSULTATION",
+];
 
 /**
  * Find the ticket the check-in conflict is about: same patient (phone first,
@@ -405,8 +411,9 @@ export default function ReceptionDeskPage() {
           </footer>
         </main>
 
-        {/* Right: live clinic queue monitor (40%) */}
+        {/* Right: pending transfer approvals above the live queue monitor (40%) */}
         <aside className="flex w-[40%] min-w-0 flex-col">
+          <ReceptionPendingApprovalsPanel onChanged={queue.refresh} />
           <QueueMonitorPanel
             tickets={queue.tickets}
             date={queueDate}

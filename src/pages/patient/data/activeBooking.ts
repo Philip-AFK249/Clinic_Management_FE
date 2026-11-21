@@ -28,6 +28,7 @@ const ACTIVE_BOOKING_STORAGE_PREFIX = "patient_active_booking";
 const LEGACY_STORAGE_KEYS = ["clinic_active_booking", "patient_active_booking"];
 
 const QUEUE_STATUSES: readonly QueueStatus[] = [
+  "PENDING_APPROVAL",
   "WAITING",
   "CALLED",
   "IN_CONSULTATION",
@@ -77,6 +78,23 @@ function isActiveAppointment(value: unknown): value is ActiveAppointment {
     (typeof source.status !== "string" ||
       !QUEUE_STATUSES.includes(source.status as QueueStatus))
   ) {
+    return false;
+  }
+  if (
+    source.holdExpiresAt !== undefined &&
+    source.holdExpiresAt !== null &&
+    typeof source.holdExpiresAt !== "string"
+  ) {
+    return false;
+  }
+  if (
+    source.remainingSeconds !== undefined &&
+    source.remainingSeconds !== null &&
+    typeof source.remainingSeconds !== "number"
+  ) {
+    return false;
+  }
+  if (source.symptoms !== undefined && typeof source.symptoms !== "string") {
     return false;
   }
   return true;
@@ -243,6 +261,8 @@ export function appointmentFromTicketDetail(
     patientId: detail.patientId,
     doctorId: detail.doctorId,
     status: detail.status,
+    holdExpiresAt: detail.holdExpiresAt ?? undefined,
+    remainingSeconds: detail.remainingSeconds ?? undefined,
   };
 }
 

@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { AlertTriangle, Calendar, ChevronLeft, Check, PhoneCall } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "../../context/useAuth";
@@ -14,6 +14,7 @@ import {
 } from "../../services/intakeApi";
 import type {
   AdministrativeIntakeRequest,
+  QueueTicketDetailResponse,
   TimeSlotResponse,
 } from "../../services/intakeApi";
 import PatientNavbar from "./components/PatientNavbar";
@@ -21,7 +22,7 @@ import PatientFooter from "./components/PatientFooter";
 import SymptomsStep from "./components/SymptomsStep";
 import type { ClarificationStep } from "./components/SymptomsStep";
 import BookingIdentityFields from "./components/BookingIdentityFields";
-import BookingTicketModal from "./components/BookingTicketModal";
+import AppointmentStatusScreen from "./components/AppointmentStatusScreen";
 import MedicalBillOcrModal from "./components/MedicalBillOcrModal";
 import type { MedicalBillOcrResult } from "./components/MedicalBillOcrModal";
 import RescheduleMorningModal from "./components/RescheduleMorningModal";
@@ -34,7 +35,12 @@ import {
 } from "./data/clinicContent";
 import { triageSymptoms } from "./data/patientMockRecords";
 import { hospitalCodeFrom } from "./data/patientProfile";
-import { writeActiveBooking } from "./data/activeBooking";
+import {
+  appointmentFromTicketDetail,
+  clearActiveBooking,
+  readOwnedActiveBooking,
+  writeActiveBooking,
+} from "./data/activeBooking";
 import {
   clinicDayOffsetIso,
   clinicNowHHmm,
@@ -206,10 +212,23 @@ function formFromSession(user: User | null): BookingFormData {
 export default function BookingPage() {
   const { user, updateUser } = useAuth();
   const derivedAgeGroup = ageGroupFromDateOfBirth(user?.dateOfBirth);
-  const [clarifiedAgeGroup, setClarifiedAgeGroup] = useState<string | null>(null);
-  const defaultAgeGroup = clarifiedAgeGroup ?? derivedAgeGroup;
+  const defaultAgeGroup = derivedAgeGroup;
   const defaultPatientHistory = patientHistoryFromUser(user);
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  /**
+   * `?status=1` re-opens the status screen for the booking already in this
+   * account's cache - the "Theo dõi trạng thái" link on the dashboard uses it
+   * after the patient leaves this page mid-approval.
+   */
+  const reopenStatus = searchParams.get("status") === "1";
+  const bookingOwner = useMemo(
+    () =>
+      user
+        ? { email: user.email, fullName: user.fullName, phone: user.phone }
+        : null,
+    [user],
+  );
   const [step, setStep] = useState(0);
   const [symptoms, setSymptoms] = useState("");
   const [deptIdx, setDeptIdx] = useState<number | null>(null);
@@ -217,7 +236,9 @@ export default function BookingPage() {
   const [formData, setFormData] = useState<BookingFormData>(() =>
     formFromSession(user),
   );
-  const [ticket, setTicket] = useState<ActiveAppointment | null>(null);
+  const [ticket, setTicket] = useState<ActiveAppointment | null>(() =>
+    reopenStatus ? readOwnedActiveBooking(bookingOwner) : null,
+  );
   /**
    * Set while the final confirmation is in flight to PatientIntakeService.
    *
@@ -1330,33 +1351,41 @@ export default function BookingPage() {
     setIsAnalysing(false);
   }
 
-  function resetBooking() {
-    setStep(0);
-    setSymptoms("");
-    setDeptIdx(null);
-    setTimeSlot(null);
-    setFormData(formFromSession(user));
+  /**
+   * Rejected/expired booking: drop the stale cache, return to step 1, but keep
+   * the Whisper/keyword symptom text and triage verdict so the patient only
+   * has to pick a new doctor and hour.
+   */
+  function handleRebook() {
+    clearActiveBooking(user?.email);
     setTicket(null);
-    setIsSubmitting(false);
-    setRescanRequested(false);
-    setScannedThisSession(false);
-    setBillOcrResult(null);
-    setVoiceTriage(null);
-    clearClarification();
-    setClarifiedAgeGroup(null);
-    setIsRefiningVoice(false);
-    setIsAnalysingText(false);
-    setTriageError(null);
-    setVoiceClip(null);
+    setStep(0);
+    setTimeSlot(null);
     setShiftSelection(null);
     setSelectedDoctorId(null);
-    setSelectedDepartmentId(null);
-    setTriageSourceText("");
-    setScheduleUnavailable(false);
-    setTriageDate(getInitialDate());
-    setMorningReschedule(null);
     setDuplicateDate(null);
+    toast.info("Triệu chứng đã được giữ lại. Vui lòng chọn lại bác sĩ và khung giờ.");
+    window.requestAnimationFrame(() => {
+      document
+        .getElementById("doctor-slot-selection")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
   }
+
+  /** Keep the cached booking's status/hold fields in step with live polling. */
+  const handleStatusDetail = useCallback(
+    (detail: QueueTicketDetailResponse) => {
+      const current = readOwnedActiveBooking(bookingOwner);
+      writeActiveBooking(
+        {
+          ...appointmentFromTicketDetail(detail),
+          ...(current?.symptoms ? { symptoms: current.symptoms } : {}),
+        },
+        user?.email,
+      );
+    },
+    [bookingOwner, user?.email],
+  );
 
   function validateStep(): boolean {
     if (step === 0) {
@@ -1463,6 +1492,9 @@ export default function BookingPage() {
         voiceTriage?.priority_level ?? triageSymptoms(symptoms)?.priority ?? "P3",
       intakeSource: "ONLINE_BOOKING",
       preferredDoctorId,
+      // Online bookings are held in PENDING_APPROVAL until staff confirm the
+      // transfer; the three-minute hold is minted by the intake service.
+      paymentMethod: "BANK_TRANSFER",
       chiefComplaint: symptoms.trim() || undefined,
       triageFlagId: voiceTriage?.flag_id ?? undefined,
       isOutOfDataset: Boolean(voiceTriage?.is_out_of_dataset),
@@ -1503,7 +1535,12 @@ export default function BookingPage() {
         // the doctor queue as the second key for "who is ahead of me".
         patientId: response.patientId,
         doctorId: response.doctorId,
-        status: "WAITING",
+        // Older backends still mint WAITING directly; newer ones hold the slot
+        // for three minutes so Admin can confirm the transfer first.
+        status: response.status ?? "WAITING",
+        holdExpiresAt: response.holdExpiresAt ?? undefined,
+        remainingSeconds: response.remainingSeconds ?? undefined,
+        symptoms: symptoms.trim() || voiceTriage?.transcription || undefined,
       };
       // The dashboard reads this back: without it the patient would land on
       // "Bạn chưa có lịch hẹn khám nào" right after booking. Scoped to this
@@ -1559,7 +1596,7 @@ export default function BookingPage() {
           <div className="text-center">
             <span className="inline-flex items-center gap-2 rounded-full border border-slate-200/80 bg-white px-3.5 py-1.5 text-sm font-medium text-slate-600 shadow-card">
               <Calendar className="h-4 w-4 text-clinical-600" />
-              Không cần thanh toán trước &middot; Tiếp nhận cả bệnh nhân vãng lai
+              Chuyển khoản trong 3 phút &middot; Admin xác nhận thủ công
             </span>
             <h1 className="mt-4 text-3xl font-bold tracking-tight text-slate-900">
               Đặt lịch khám
@@ -1651,56 +1688,58 @@ export default function BookingPage() {
           <div className="mt-8 rounded-xl border border-slate-200/80 bg-white p-6 shadow-card sm:p-8">
             <form onSubmit={handleSubmit} noValidate className="space-y-5">
               {step === 0 && (
-                <SymptomsStep
-                  symptoms={symptoms}
-                  onChange={handleSymptomsChange}
-                  onContinue={handleNext}
-                  onOcrExtracted={handleOcrExtracted}
-                  identity={formData}
-                  onIdentityChange={setFormField}
-                  cardOnFile={canSkipScan ? savedCardCode : null}
-                  cardVerified={formData.isOcrVerified}
-                  onRequestRescan={() => setRescanRequested(true)}
-                  voiceTriage={voiceTriage}
-                  isAnalysingVoice={isAnalysing}
-                  isAnalysingText={isAnalysingText}
-                  onAnalyzeText={(text) => void analyseTextTriage(text)}
-                  triageError={triageError}
-                  onRetryTriage={handleRetryTriage}
-                  clarification={pendingClarification}
-                  clarificationSteps={clarificationSteps}
-                  isRefiningVoice={isRefiningVoice}
-                  onClarificationAnswer={handleClarificationAnswer}
-                  onClarificationBack={handleClarificationBack}
-                  onClarificationSkip={handleSkipClarification}
-                  activeClarificationIndex={activeClarificationIndex}
-                  clarificationAnswers={clarificationAnswers}
-                  onClarificationIndexChange={setActiveClarificationIndex}
-                  onClarificationAnswerChange={handleClarificationAnswerChange}
-                  onClarificationClose={handleClarificationClose}
-                  onClarificationSkipCurrent={handleClarificationSkipCurrent}
-                  onClarificationSubmit={() => void submitClarificationAnswers()}
-                  onVoiceClip={analyseVoiceClip}
-                  onVoiceCancel={handleVoiceCancel}
-                  shiftSelection={shiftSelection}
-                  onSelectShift={handleSelectShift}
-                  selectedDoctorId={selectedDoctorId}
-                  onSelectDoctor={handleSelectDoctor}
-                  slotAvailability={slotAvailability}
-                  deptIdx={deptIdx}
-                  onDeptIdxChange={setDeptIdx}
-                  slotStartTime={timeSlot}
-                  onSlotPick={handleKeywordSlotPick}
-                  scheduleUnavailable={scheduleUnavailable}
-                  triageDate={triageDate}
-                  onTriageDateChange={handleTriageDateChange}
-                  isRefreshingSchedule={isRefreshingSchedule}
-                  onOpenBillOcr={() => setIsBillOcrOpen(true)}
-                  medicalBillSummary={billOcrResult?.clinicalSummary}
-                  detectedMedications={billOcrResult?.detectedMedications}
-                  allergyHints={billOcrResult?.allergyHints}
-                  afterHours={afterHours}
-                />
+                <div id="doctor-slot-selection">
+                  <SymptomsStep
+                    symptoms={symptoms}
+                    onChange={handleSymptomsChange}
+                    onContinue={handleNext}
+                    onOcrExtracted={handleOcrExtracted}
+                    identity={formData}
+                    onIdentityChange={setFormField}
+                    cardOnFile={canSkipScan ? savedCardCode : null}
+                    cardVerified={formData.isOcrVerified}
+                    onRequestRescan={() => setRescanRequested(true)}
+                    voiceTriage={voiceTriage}
+                    isAnalysingVoice={isAnalysing}
+                    isAnalysingText={isAnalysingText}
+                    onAnalyzeText={(text) => void analyseTextTriage(text)}
+                    triageError={triageError}
+                    onRetryTriage={handleRetryTriage}
+                    clarification={pendingClarification}
+                    clarificationSteps={clarificationSteps}
+                    isRefiningVoice={isRefiningVoice}
+                    onClarificationAnswer={handleClarificationAnswer}
+                    onClarificationBack={handleClarificationBack}
+                    onClarificationSkip={handleSkipClarification}
+                    activeClarificationIndex={activeClarificationIndex}
+                    clarificationAnswers={clarificationAnswers}
+                    onClarificationIndexChange={setActiveClarificationIndex}
+                    onClarificationAnswerChange={handleClarificationAnswerChange}
+                    onClarificationClose={handleClarificationClose}
+                    onClarificationSkipCurrent={handleClarificationSkipCurrent}
+                    onClarificationSubmit={() => void submitClarificationAnswers()}
+                    onVoiceClip={analyseVoiceClip}
+                    onVoiceCancel={handleVoiceCancel}
+                    shiftSelection={shiftSelection}
+                    onSelectShift={handleSelectShift}
+                    selectedDoctorId={selectedDoctorId}
+                    onSelectDoctor={handleSelectDoctor}
+                    slotAvailability={slotAvailability}
+                    deptIdx={deptIdx}
+                    onDeptIdxChange={setDeptIdx}
+                    slotStartTime={timeSlot}
+                    onSlotPick={handleKeywordSlotPick}
+                    scheduleUnavailable={scheduleUnavailable}
+                    triageDate={triageDate}
+                    onTriageDateChange={handleTriageDateChange}
+                    isRefreshingSchedule={isRefreshingSchedule}
+                    onOpenBillOcr={() => setIsBillOcrOpen(true)}
+                    medicalBillSummary={billOcrResult?.clinicalSummary}
+                    detectedMedications={billOcrResult?.detectedMedications}
+                    allergyHints={billOcrResult?.allergyHints}
+                    afterHours={afterHours}
+                  />
+                </div>
               )}
 
               {step === 1 && (
@@ -1849,9 +1888,11 @@ export default function BookingPage() {
       )}
 
       {ticket && (
-        <BookingTicketModal
+        <AppointmentStatusScreen
           appointment={ticket}
-          onClose={resetBooking}
+          onClose={() => navigate("/patient/dashboard")}
+          onRebook={handleRebook}
+          onStatusChange={handleStatusDetail}
         />
       )}
 

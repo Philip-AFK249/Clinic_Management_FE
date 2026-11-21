@@ -8,6 +8,7 @@ import {
   ChevronRight,
   Database,
   HeartPulse,
+  TicketCheck,
 } from "lucide-react";
 import type { AdminTab } from "../data/adminMockData";
 
@@ -20,6 +21,7 @@ interface AdminSidebarProps {
 
 const NAV_ITEMS: { tab: AdminTab; label: string; icon: typeof LayoutDashboard }[] = [
   { tab: "OVERVIEW", label: "Tổng quan Vận hành", icon: LayoutDashboard },
+  { tab: "APPROVALS", label: "Pending Approvals", icon: TicketCheck },
   { tab: "ROSTER", label: "Lịch trực & Phân ca Bác sĩ", icon: CalendarDays },
   { tab: "USERS", label: "Quản lý Nhân sự (RBAC)", icon: Users },
   { tab: "PATIENTS", label: "Quản lý Bệnh nhân & BHYT", icon: HeartPulse },

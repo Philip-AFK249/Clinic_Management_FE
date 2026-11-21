@@ -63,6 +63,11 @@ const STATUS_BADGES: Record<
   QueueStatus,
   { label: string; className: string; icon: typeof CheckCircle2 }
 > = {
+  PENDING_APPROVAL: {
+    label: "Chờ xác nhận thanh toán",
+    className: "border-amber-200 bg-amber-50 text-amber-700",
+    icon: Clock,
+  },
   WAITING: {
     label: "Đang chờ tiếp đón",
     className: "border-amber-200 bg-amber-50 text-amber-700",
@@ -102,6 +107,8 @@ const FINISHED_NOTICES: Record<QueueStatus, string> = {
     "Phiếu khám đã bị bỏ qua do không có mặt khi được gọi. Vui lòng liên hệ quầy tiếp đón để được xếp lại lịch.",
   CANCELLED:
     "Phiếu khám đã bị hủy. Bạn có thể đặt một lịch hẹn mới bất cứ lúc nào.",
+  PENDING_APPROVAL:
+    "Phiếu của bạn đang chờ xác nhận chuyển khoản. Hoàn tất chuyển khoản trong 3 phút để giữ slot.",
   WAITING: "",
   CALLED: "",
   IN_CONSULTATION: "",
@@ -503,6 +510,18 @@ export default function PatientDashboardPage() {
                   <Row label="Bác sĩ" value={display.doctor} />
                   <Row label="Phòng khám" value={display.room} />
                 </dl>
+                {/* A pending transfer still has a live 3-minute countdown on
+                    the booking page; give the patient a way back to it after
+                    leaving the screen mid-approval. */}
+                {activeTicketStatus === "PENDING_APPROVAL" && (
+                  <Link
+                    to="/patient/booking?status=1"
+                    className="mt-4 inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-amber-600 px-4 text-sm font-bold text-white shadow-card transition-colors hover:bg-amber-700"
+                  >
+                    <Clock className="h-4 w-4" aria-hidden="true" />
+                    Xem đếm ngược & trạng thái xác nhận
+                  </Link>
+                )}
                 {ticket.isActive && (
                   <div className="mt-4 flex items-start gap-3 rounded-lg border border-clinical-100 bg-clinical-50 p-3">
                     <QrCode

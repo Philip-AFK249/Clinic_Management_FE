@@ -178,6 +178,16 @@ export interface ActiveAppointment {
   doctorId?: number;
   /** Queue status as last seen; defaults to WAITING until polling says otherwise. */
   status?: QueueStatus;
+  /** Three-minute approval hold deadline returned by check-in, when pending. */
+  holdExpiresAt?: string;
+  /** Server countdown snapshot returned by check-in, when pending. */
+  remainingSeconds?: number;
+  /**
+   * The symptom text used for this booking (Whisper transcription or typed
+   * text). Kept so a rejected booking can re-open the slot picker with the
+   * triage answers already filled in.
+   */
+  symptoms?: string;
 }
 
 export interface KbEntry {

@@ -20,7 +20,12 @@ import type { ActiveAppointment } from "../data/patientMockRecords";
 const POLL_INTERVAL_MS = 10_000;
 
 /** Still in a queue somewhere: worth re-checking every few seconds. */
-const ACTIVE_STATUSES: readonly QueueStatus[] = ["WAITING", "CALLED", "IN_CONSULTATION"];
+const ACTIVE_STATUSES: readonly QueueStatus[] = [
+  "PENDING_APPROVAL",
+  "WAITING",
+  "CALLED",
+  "IN_CONSULTATION",
+];
 
 /** Visit is over: keep the last answer on screen, stop asking for a new one. */
 const TERMINAL_STATUSES: readonly QueueStatus[] = ["COMPLETED", "CANCELLED", "SKIPPED"];
