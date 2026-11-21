@@ -122,6 +122,13 @@ export interface StatusMeta {
 }
 
 export const QUEUE_STATUS_META: Record<QueueStatus, StatusMeta> = {
+  PENDING_PAYMENT: {
+    label: "Chờ thanh toán cọc",
+    chipClass: "border-amber-200 bg-amber-50 text-amber-700",
+    // Not in the physical waiting room until the deposit lands; the desk must
+    // not call or skip an unpaid reservation.
+    actionable: false,
+  },
   WAITING: {
     label: "Đang chờ",
     chipClass: "border-amber-200 bg-amber-50 text-amber-700",
@@ -150,6 +157,11 @@ export const QUEUE_STATUS_META: Record<QueueStatus, StatusMeta> = {
   CANCELLED: {
     label: "Đã huỷ",
     chipClass: "border-rose-200 bg-rose-50 text-rose-600",
+    actionable: false,
+  },
+  EXPIRED: {
+    label: "Hết hạn thanh toán",
+    chipClass: "border-slate-200 bg-slate-100 text-slate-600",
     actionable: false,
   },
 };

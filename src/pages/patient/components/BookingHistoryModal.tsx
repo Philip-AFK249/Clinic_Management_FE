@@ -91,6 +91,18 @@ interface StatusBadge {
 /** Status as the badge prints it, including the date-sensitive WAITING case. */
 function badgeFor(row: HistoryRow): StatusBadge {
   switch (row.status) {
+    case "PENDING_PAYMENT":
+      return {
+        label: "Chờ thanh toán cọc",
+        className: "border-amber-200 bg-amber-50 text-amber-700",
+        icon: Clock,
+      };
+    case "EXPIRED":
+      return {
+        label: "Hết hạn thanh toán",
+        className: "border-slate-200 bg-slate-100 text-slate-600",
+        icon: CalendarX,
+      };
     case "COMPLETED":
       return {
         label: "Đã khám xong",

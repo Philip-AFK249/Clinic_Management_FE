@@ -1503,7 +1503,10 @@ export default function BookingPage() {
         // the doctor queue as the second key for "who is ahead of me".
         patientId: response.patientId,
         doctorId: response.doctorId,
-        status: "WAITING",
+        // Online check-ins may come back as a temporary PENDING_PAYMENT
+        // reservation; keep the backend's own state so the dashboard treats it
+        // as resumable instead of pretending the deposit was already paid.
+        status: response.status ?? "WAITING",
       };
       // The dashboard reads this back: without it the patient would land on
       // "Bạn chưa có lịch hẹn khám nào" right after booking. Scoped to this

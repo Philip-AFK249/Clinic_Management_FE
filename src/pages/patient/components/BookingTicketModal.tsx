@@ -10,9 +10,26 @@ import {
   X,
 } from "lucide-react";
 import { toast } from "sonner";
+import type { QueueStatus } from "../../../services/intakeApi";
 import type { ActiveAppointment } from "../data/patientMockRecords";
 
 type PaymentMode = "NONE" | "VIETQR" | "COUNTER";
+
+/**
+ * Reservation state on the confirmation card. Only the two states introduced
+ * with online deposits need their own wording; the older queue states keep the
+ * "Đặt Lịch Khám Thành Công!" framing this modal has always used.
+ */
+const STATUS_BADGES: Partial<Record<QueueStatus, { label: string; className: string }>> = {
+  PENDING_PAYMENT: {
+    label: "Chờ thanh toán cọc",
+    className: "border-amber-200 bg-amber-100 text-amber-800",
+  },
+  EXPIRED: {
+    label: "Hết hạn thanh toán",
+    className: "border-slate-200 bg-slate-100 text-slate-600",
+  },
+};
 
 const CONSULTATION_FEE = "150,000 VND";
 const VIETQR_PAYLOAD =
@@ -36,6 +53,9 @@ export default function BookingTicketModal({
   const [paymentMode, setPaymentMode] = useState<PaymentMode>("NONE");
   const [seconds, setSeconds] = useState(300);
   const paymentDone = seconds <= 0;
+  const statusBadge = appointment.status
+    ? STATUS_BADGES[appointment.status]
+    : undefined;
 
   useEffect(() => {
     if (paymentMode !== "VIETQR" || seconds <= 0) return;
@@ -89,13 +109,22 @@ export default function BookingTicketModal({
           <div className="space-y-5 px-6 py-5">
             {/* Digital pass card */}
             <div className="overflow-hidden rounded-xl border border-slate-200/80 shadow-card">
-              <div className="flex items-center justify-between bg-gradient-to-r from-clinical-600 to-clinical-700 px-5 py-3 text-white">
+              <div className="flex flex-wrap items-center justify-between gap-2 bg-gradient-to-r from-clinical-600 to-clinical-700 px-5 py-3 text-white">
                 <p className="text-sm font-bold uppercase tracking-wide">
                   Vé Check-in Điện tử
                 </p>
-                <span className="rounded-full bg-white/20 px-2.5 py-0.5 text-xs font-bold">
-                  BHYT Đã xác thực
-                </span>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {statusBadge && (
+                    <span
+                      className={`rounded-full border px-2.5 py-0.5 text-xs font-bold ${statusBadge.className}`}
+                    >
+                      {statusBadge.label}
+                    </span>
+                  )}
+                  <span className="rounded-full bg-white/20 px-2.5 py-0.5 text-xs font-bold">
+                    BHYT Đã xác thực
+                  </span>
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-x-4 gap-y-2 bg-white p-5 sm:grid-cols-4">
                 <PassField label="Mã phiếu khám" value={appointment.ticketCode} />

@@ -10,7 +10,10 @@ import { IntakeApiError, isValidTicketNumber } from "../../../services/intakeApi
 import type { QueueTicket } from "../../../services/intakeApi";
 import type { PatientRecord } from "../data/doctorMockData";
 import { useDoctorSession } from "./useDoctorSession";
-import { ticketToPatientRecord } from "../data/ticketMapper";
+import {
+  isDoctorQueueTicket,
+  ticketToPatientRecord,
+} from "../data/ticketMapper";
 
 const POLL_INTERVAL_MS = 8_000;
 
@@ -136,12 +139,13 @@ export function useDoctorQueue(
             : await getDoctorQueue(doctorId, date, controller.signal);
         if (cancelled) return;
 
-        const records = tickets.map(ticketToPatientRecord);
+        const consultable = tickets.filter(isDoctorQueueTicket);
+        const records = consultable.map(ticketToPatientRecord);
 
         // The backend refuses a new call while any ticket is still CALLED or
         // IN_CONSULTATION. Restore that ticket into the consultation room so a
         // page refresh reopens the in-progress ca instead of the idle screen.
-        const ongoing = tickets.find(
+        const ongoing = consultable.find(
           (ticket) =>
             ticket.status === "IN_CONSULTATION" || ticket.status === "CALLED",
         );
