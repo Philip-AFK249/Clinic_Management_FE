@@ -58,7 +58,7 @@ export type QueueStatus =
  * hold in the first place.
  */
 export interface OnlineTicketLifecycleFields {
-  /** Absolute ISO deadline of the temporary 3-minute slot hold. */
+  /** Absolute ISO deadline of the temporary slot hold, when the service sends one. */
   expiresAt?: string | null;
   /** When an admin turned the temporary ticket into an official one. */
   confirmedAt?: string | null;
@@ -70,6 +70,22 @@ export interface OnlineTicketLifecycleFields {
   canCancel?: boolean;
   /** True while the ticket is only a temporary hold. */
   isTemporary?: boolean;
+  /** When the patient confirmed the online payment. */
+  paidAt?: string | null;
+  /** Channel recorded by the payment endpoint (`ONLINE_QR` by default). */
+  paymentMethod?: string | null;
+}
+
+/**
+ * Server answer for the short booking ban applied after a rejected ticket.
+ * The patient portal mirrors `lockedUntil` locally so the countdown survives a
+ * reload even when the queue service is briefly unavailable.
+ */
+export interface BookingLockStatusDto {
+  isLocked: boolean;
+  lockedUntil: string | null;
+  remainingSeconds: number;
+  reason: string | null;
 }
 
 export type IntakeSource =
@@ -560,7 +576,7 @@ export async function getTicketDetails(
 // ---------------------------------------------------------------------------
 
 /**
- * Admin's view of every online ticket still inside its 3-minute hold.
+ * Admin's view of the online tickets waiting for verification.
  * `GET /api/v1/queue/online-tickets/pending`.
  */
 export async function getPendingOnlineTicketsApi(
@@ -621,6 +637,81 @@ export async function rejectOnlineTicketApi(
     return data;
   } catch (error) {
     if (axios.isCancel(error)) throw error;
+    throw toApiError(error);
+  }
+}
+
+/**
+ * Record the patient's online payment on a temporary ticket.
+ * `PATCH /api/v1/queue/tickets/{ticketNumber}/pay`.
+ *
+ * The default matches the VietQR flow used by the patient portal; the backend
+ * stamps `paidAt` and flips `isReceiptVerified` on the returned DTO.
+ */
+export async function payOnlineTicketApi(
+  ticketNumber: string,
+  paymentMethod = "ONLINE_QR",
+): Promise<QueueTicketDetailDto> {
+  try {
+    const { data } = await intakeQueueApi.patch<QueueTicketDetailDto>(
+      `/tickets/${encodeURIComponent(ticketNumber)}/pay`,
+      { paymentMethod },
+    );
+    return data;
+  } catch (error) {
+    throw toApiError(error);
+  }
+}
+
+/**
+ * Whether the patient is still inside the re-booking cooldown that follows a
+ * rejected online ticket. `GET /api/v1/queue/patient/booking-lock`.
+ *
+ * A 204/404 is the ordinary "not locked" answer on older service builds, so it
+ * is normalised to an unlocked DTO instead of breaking the booking form.
+ */
+export async function getBookingLockStatusApi(
+  params: { patientId?: number; identifier?: string },
+  signal?: AbortSignal,
+): Promise<BookingLockStatusDto> {
+  const unlocked: BookingLockStatusDto = {
+    isLocked: false,
+    lockedUntil: null,
+    remainingSeconds: 0,
+    reason: null,
+  };
+  try {
+    const { data } = await intakeQueueApi.get<BookingLockStatusDto>(
+      "/patient/booking-lock",
+      { params, signal },
+    );
+    const payload: unknown = data;
+    if (!payload || typeof payload !== "object") return unlocked;
+    const record = payload as Record<string, unknown>;
+    const isLocked = record.isLocked === true;
+    const remainingSeconds =
+      typeof record.remainingSeconds === "number" && Number.isFinite(record.remainingSeconds)
+        ? Math.max(0, Math.floor(record.remainingSeconds))
+        : 0;
+    const reportedUntil = typeof record.lockedUntil === "string" ? record.lockedUntil : null;
+    // Older service builds may answer with only `remainingSeconds`. Convert it
+    // to an absolute deadline once, here, so the patient's MM:SS banner cannot
+    // restart on every render.
+    const lockedUntil =
+      reportedUntil ??
+      (isLocked && remainingSeconds > 0
+        ? new Date(Date.now() + remainingSeconds * 1000).toISOString()
+        : null);
+    return {
+      isLocked,
+      lockedUntil,
+      remainingSeconds,
+      reason: typeof record.reason === "string" ? record.reason : null,
+    };
+  } catch (error) {
+    if (axios.isCancel(error)) throw error;
+    const status = axios.isAxiosError(error) ? error.response?.status : undefined;
+    if (status === 204 || status === 404) return unlocked;
     throw toApiError(error);
   }
 }

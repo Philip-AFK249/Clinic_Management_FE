@@ -190,10 +190,13 @@ export interface ActiveAppointment {
   canCancel?: boolean;
   /** True for the temporary ticket that is not yet official. */
   isTemporary?: boolean;
-  /**
-   * When the hold started. Used as the fallback clock when a service build
-   * does not return `expiresAt`: 3 minutes from this instant.
-   */
+  /** True once the patient's online payment has been recorded. */
+  isReceiptVerified?: boolean;
+  /** When the patient confirmed the online payment. */
+  paidAt?: string | null;
+  /** Payment channel used for this ticket (`ONLINE_QR` by default). */
+  paymentMethod?: string | null;
+  /** When the ticket was created; kept for older cached records. */
   bookedAt?: string | null;
 }
 

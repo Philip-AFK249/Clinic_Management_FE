@@ -2,25 +2,22 @@ import { toast } from "sonner";
 import type { QueueStatus, QueueTicketDetailResponse } from "../../../services/intakeApi";
 import type { ActiveAppointment } from "./patientMockRecords";
 
-/** The clinic's temporary online-ticket hold, in seconds. */
-export const TEMPORARY_HOLD_SECONDS = 180;
-export const TEMPORARY_HOLD_MS = TEMPORARY_HOLD_SECONDS * 1000;
-
-/** Exact patient-facing copy shared by the ticket modal and the dashboard. */
-export const TEMPORARY_TICKET_BANNER =
-  "VÉ ONLINE TẠM THỜI — CHỜ ADMIN XÁC THỰC";
-export const TEMPORARY_HOLD_NOTICE =
-  "Suất khám đang được giữ tạm thời. Nếu quá 03:00 chưa được xác nhận/thanh toán, hệ thống sẽ tự động hủy vé để nhường chỗ cho người khác.";
+/** Patient-facing labels shared by the booking page and the dashboard. */
+export const TEMPORARY_PENDING_LABEL = "Vé tạm thời — Chờ xác thực";
+export const PAID_PENDING_LABEL = "Đã thanh toán — Chờ Admin duyệt";
 export const OFFICIAL_TICKET_LABEL = "VÉ ONLINE CHÍNH THỨC";
 export const OFFICIAL_TICKET_CONFIRMED = "ĐÃ XÁC NHẬN";
+export const OFFICIAL_TICKET_BADGE = "Vé online chính thức (Đã xác nhận)";
 export const NO_CANCEL_POLICY_NOTICE =
   "Vé đã xác nhận chính thức lên hệ thống. Theo quy định phòng khám, không cho phép hủy lịch và không hoàn phí nếu không đến khám.";
 
+export const BOOKING_CREATED_TOAST =
+  "Đã tạo vé online tạm thời. Vui lòng thanh toán và chờ xác thực.";
 export const TICKET_ACCEPTED_TOAST =
-  "Vé khám đã được xác thực thành VÉ ONLINE CHÍNH THỨC!";
+  "Vé khám đã được Admin duyệt thành VÉ ONLINE CHÍNH THỨC!";
 export const TICKET_REJECTED_TOAST = "Vé online tạm thời đã bị từ chối xác thực.";
-export const TICKET_EXPIRED_TOAST =
-  "Đã hết thời hạn 3 phút giữ chỗ. Vé tạm thời đã tự động hủy để nhường suất khám.";
+export const PAYMENT_SUCCESS_TOAST =
+  "Đã ghi nhận thanh toán. Vé của bạn đang chờ Admin duyệt.";
 
 /** Temporary ticket: it holds a seat but is not official yet. */
 export function isTemporaryStatus(status: QueueStatus | null | undefined): boolean {
@@ -29,11 +26,7 @@ export function isTemporaryStatus(status: QueueStatus | null | undefined): boole
 
 /** A status that still belongs to a queue/visit after admin confirmation. */
 export function isQueuedStatus(status: QueueStatus | null | undefined): boolean {
-  return (
-    status === "WAITING" ||
-    status === "CALLED" ||
-    status === "IN_CONSULTATION"
-  );
+  return status === "WAITING" || status === "CALLED" || status === "IN_CONSULTATION";
 }
 
 /** A status after which no further polling is useful. */
@@ -51,32 +44,9 @@ export function isConfirmedTicket(status: QueueStatus | null | undefined): boole
   return isQueuedStatus(status) || status === "COMPLETED";
 }
 
-function parseDate(value: string | null | undefined): number | null {
-  if (!value || typeof value !== "string") return null;
-  const parsed = Date.parse(value);
-  return Number.isNaN(parsed) ? null : parsed;
-}
-
-/**
- * Absolute expiry timestamp of a temporary hold.
- *
- * Prefers the backend's `expiresAt`; the fallback is 3 minutes from the instant
- * the booking was created, so an older service response without the new field
- * still gives the patient the same 03:00 deadline after a reload.
- */
-export function resolveHoldDeadline(
-  expiresAt: string | null | undefined,
-  bookedAt: string | null | undefined,
-): number | null {
-  const exact = parseDate(expiresAt);
-  if (exact !== null) return exact;
-  const start = parseDate(bookedAt);
-  return start === null ? null : start + TEMPORARY_HOLD_MS;
-}
-
-/** Whole seconds left before a deadline; never negative. */
+/** Whole seconds left before an absolute deadline; never negative. */
 export function secondsUntil(deadlineMs: number | null): number {
-  if (deadlineMs === null) return TEMPORARY_HOLD_SECONDS;
+  if (deadlineMs === null) return 0;
   return Math.max(0, Math.ceil((deadlineMs - Date.now()) / 1000));
 }
 
@@ -86,14 +56,6 @@ export function formatCountdown(seconds: number): string {
   const minutes = String(Math.floor(safe / 60)).padStart(2, "0");
   const remainder = String(safe % 60).padStart(2, "0");
   return `${minutes}:${remainder}`;
-}
-
-export function isHoldExpired(
-  expiresAt: string | null | undefined,
-  bookedAt: string | null | undefined,
-): boolean {
-  const deadline = resolveHoldDeadline(expiresAt, bookedAt);
-  return deadline !== null && Date.now() >= deadline;
 }
 
 /** Backend detail wins over the cached copy for every lifecycle field. */
@@ -114,6 +76,9 @@ export function applyTicketDetail(
       detail.isTemporary ??
       appointment.isTemporary ??
       detail.status === "PENDING_CONFIRMATION",
+    isReceiptVerified: detail.isReceiptVerified ?? appointment.isReceiptVerified ?? false,
+    paidAt: detail.paidAt ?? appointment.paidAt ?? null,
+    paymentMethod: detail.paymentMethod ?? appointment.paymentMethod ?? null,
     bookedAt: detail.checkInTime ?? appointment.bookedAt ?? null,
   };
 }
@@ -130,13 +95,6 @@ export function notifyTicketRejected(ticketNumber: string, reason?: string | nul
   const suffix = reason?.trim() ? ` Lý do: ${reason.trim()}` : "";
   toast.error(`${TICKET_REJECTED_TOAST}${suffix}`, {
     id: `ticket-rejected-${ticketNumber}`,
-    duration: 8000,
-  });
-}
-
-export function notifyTicketExpired(ticketNumber: string): void {
-  toast.error(TICKET_EXPIRED_TOAST, {
-    id: `ticket-expired-${ticketNumber}`,
     duration: 8000,
   });
 }

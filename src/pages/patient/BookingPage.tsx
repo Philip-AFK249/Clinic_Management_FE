@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { AlertTriangle, Calendar, ChevronLeft, Check, PhoneCall } from "lucide-react";
 import { toast } from "sonner";
@@ -6,7 +6,6 @@ import { useAuth } from "../../context/useAuth";
 import { updateMyProfileApi } from "../../services/authApi";
 import { normalizeBhytInsuranceCode } from "../../services/ocrApi";
 import {
-  cancelTicketApi,
   checkInPatient,
   getAvailableSlots,
   IntakeApiError,
@@ -22,7 +21,6 @@ import PatientFooter from "./components/PatientFooter";
 import SymptomsStep from "./components/SymptomsStep";
 import type { ClarificationStep } from "./components/SymptomsStep";
 import BookingIdentityFields from "./components/BookingIdentityFields";
-import BookingTicketModal from "./components/BookingTicketModal";
 import MedicalBillOcrModal from "./components/MedicalBillOcrModal";
 import type { MedicalBillOcrResult } from "./components/MedicalBillOcrModal";
 import RescheduleMorningModal from "./components/RescheduleMorningModal";
@@ -35,10 +33,9 @@ import {
 } from "./data/clinicContent";
 import { triageSymptoms } from "./data/patientMockRecords";
 import { hospitalCodeFrom } from "./data/patientProfile";
-import { clearActiveBooking, writeActiveBooking } from "./data/activeBooking";
-import { identifierCandidates } from "./data/patientIdentifiers";
-import { applyTicketDetail } from "./data/ticketLifecycle";
-import { usePatientTicket } from "./hooks/usePatientTicket";
+import { writeActiveBooking } from "./data/activeBooking";
+import { BOOKING_CREATED_TOAST, formatCountdown } from "./data/ticketLifecycle";
+import { useBookingLock } from "./hooks/useBookingLock";
 import {
   clinicDayOffsetIso,
   clinicNowHHmm,
@@ -210,8 +207,7 @@ function formFromSession(user: User | null): BookingFormData {
 export default function BookingPage() {
   const { user, updateUser } = useAuth();
   const derivedAgeGroup = ageGroupFromDateOfBirth(user?.dateOfBirth);
-  const [clarifiedAgeGroup, setClarifiedAgeGroup] = useState<string | null>(null);
-  const defaultAgeGroup = clarifiedAgeGroup ?? derivedAgeGroup;
+  const defaultAgeGroup = derivedAgeGroup;
   const defaultPatientHistory = patientHistoryFromUser(user);
   const navigate = useNavigate();
   const [step, setStep] = useState(0);
@@ -221,47 +217,17 @@ export default function BookingPage() {
   const [formData, setFormData] = useState<BookingFormData>(() =>
     formFromSession(user),
   );
-  const [ticket, setTicket] = useState<ActiveAppointment | null>(null);
   /**
-   * The confirmation modal watches its own ticket every 3 seconds while it is
-   * temporary, so an admin decision flips the modal to the official state (or
-   * removes a rejected/expired ticket) without a page reload.
+   * A rejected ticket puts the account into a three-minute re-booking ban. The
+   * form is unusable until `remainingSeconds` reaches zero; the hook trusts the
+   * queue service and falls back to this browser's stored lock timestamp.
    */
-  const bookingIdentifiers = useMemo(
-    () => identifierCandidates(user, [ticket?.phone]),
-    [user, ticket?.phone],
-  );
-  const watchedTicket = usePatientTicket(ticket, bookingIdentifiers, user?.email ?? null);
-  const { refresh: refreshWatchedTicket } = watchedTicket;
-  // A terminal answer must remove the modal immediately; the hook has already
-  // toasted and purged storage, so no extra effect needs to set React state.
-  const terminalWatchedStatus =
-    watchedTicket.detail?.status === "REJECTED" ||
-    watchedTicket.detail?.status === "CANCELLED" ||
-    watchedTicket.detail?.status === "SKIPPED";
-  const liveTicket =
-    ticket && !terminalWatchedStatus
-      ? applyTicketDetail(ticket, watchedTicket.detail)
-      : null;
-
-  const handleTicketExpire = useCallback(() => {
-    clearActiveBooking(user?.email);
-    setTicket(null);
-  }, [user?.email]);
-
-  const handleCancelTemporary = useCallback(
-    async (ticketNumber: string) => {
-      await cancelTicketApi(ticketNumber);
-      clearActiveBooking(user?.email);
-      setTicket(null);
-      refreshWatchedTicket();
-      toast.success("Vé tạm thời đã được hủy. Khung giờ đã được hoàn trả.", {
-        duration: 5000,
-      });
-    },
-    [user?.email, refreshWatchedTicket],
-  );
-
+  const bookingLock = useBookingLock({
+    ownerEmail: user?.email,
+    identifiers: [user?.phone, user?.identityCardNumber, user?.insuranceCode].filter(
+      (value): value is string => Boolean(value?.trim()),
+    ),
+  });
   /**
    * Set while the final confirmation is in flight to PatientIntakeService.
    *
@@ -1374,34 +1340,6 @@ export default function BookingPage() {
     setIsAnalysing(false);
   }
 
-  function resetBooking() {
-    setStep(0);
-    setSymptoms("");
-    setDeptIdx(null);
-    setTimeSlot(null);
-    setFormData(formFromSession(user));
-    setTicket(null);
-    setIsSubmitting(false);
-    setRescanRequested(false);
-    setScannedThisSession(false);
-    setBillOcrResult(null);
-    setVoiceTriage(null);
-    clearClarification();
-    setClarifiedAgeGroup(null);
-    setIsRefiningVoice(false);
-    setIsAnalysingText(false);
-    setTriageError(null);
-    setVoiceClip(null);
-    setShiftSelection(null);
-    setSelectedDoctorId(null);
-    setSelectedDepartmentId(null);
-    setTriageSourceText("");
-    setScheduleUnavailable(false);
-    setTriageDate(getInitialDate());
-    setMorningReschedule(null);
-    setDuplicateDate(null);
-  }
-
   function validateStep(): boolean {
     if (step === 0) {
       if (!symptoms.trim()) {
@@ -1439,6 +1377,7 @@ export default function BookingPage() {
   }
 
   function handleNext() {
+    if (bookingLock.isLocked) return;
     if (!validateStep()) return;
 
     if (step === 1) {
@@ -1547,8 +1486,8 @@ export default function BookingPage() {
         // the doctor queue as the second key for "who is ahead of me".
         patientId: response.patientId,
         doctorId: response.doctorId,
-        // A freshly created online ticket is a temporary 3-minute hold. It
-        // becomes an official WAITING ticket only after admin verification.
+        // The ticket waits for payment and admin verification; it only becomes
+        // official when the reception team approves it.
         status: "PENDING_CONFIRMATION",
         expiresAt: response.expiresAt ?? null,
         confirmedAt: response.confirmedAt ?? null,
@@ -1556,17 +1495,16 @@ export default function BookingPage() {
         rejectionReason: response.rejectionReason ?? null,
         canCancel: response.canCancel ?? undefined,
         isTemporary: response.isTemporary ?? true,
+        isReceiptVerified: response.isReceiptVerified ?? false,
+        paidAt: response.paidAt ?? null,
+        paymentMethod: response.paymentMethod ?? null,
         bookedAt: response.checkInTime ?? new Date().toISOString(),
       };
-      // The dashboard reads this back: without it the patient would land on
-      // "Bạn chưa có lịch hẹn khám nào" right after booking. Scoped to this
-      // account's email so no other session on this browser can ever see it.
+      // The dashboard reads this back immediately: the patient lands straight
+      // on their online ticket, so the cache must already hold the booking.
       writeActiveBooking(confirmed, user?.email);
-      setTicket(confirmed);
-      toast.success(
-        response.message ||
-          "Vé online tạm thời đã được giữ trong 03:00. Vui lòng chờ admin xác thực.",
-      );
+      toast.success(BOOKING_CREATED_TOAST, { duration: 6000 });
+      navigate("/patient/dashboard");
     } catch (error) {
       if (isDuplicateBookingError(error)) {
         // This patient already holds an active ticket for the chosen day
@@ -1612,7 +1550,7 @@ export default function BookingPage() {
           <div className="text-center">
             <span className="inline-flex items-center gap-2 rounded-full border border-slate-200/80 bg-white px-3.5 py-1.5 text-sm font-medium text-slate-600 shadow-card">
               <Calendar className="h-4 w-4 text-clinical-600" />
-              Không cần thanh toán trước &middot; Tiếp nhận cả bệnh nhân vãng lai
+              Thanh toán online &middot; Vé được Admin xác thực trước khi check-in
             </span>
             <h1 className="mt-4 text-3xl font-bold tracking-tight text-slate-900">
               Đặt lịch khám
@@ -1661,6 +1599,24 @@ export default function BookingPage() {
               );
             })}
           </ol>
+
+          {bookingLock.isLocked && (
+            <div className="mt-6 rounded-xl border border-rose-300 bg-rose-50 p-4 shadow-card">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="flex items-center gap-2 text-sm font-semibold text-rose-800">
+                  <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
+                  Tài khoản tạm khóa đặt lịch trong{" "}
+                  <span className="font-mono text-base font-bold tabular-nums text-rose-700">
+                    {formatCountdown(bookingLock.remainingSeconds)}
+                  </span>{" "}
+                  do vé online trước đó bị từ chối.
+                </p>
+                {bookingLock.reason ? (
+                  <p className="text-xs text-rose-700">Lý do: {bookingLock.reason}</p>
+                ) : null}
+              </div>
+            </div>
+          )}
 
           {/* The backend refused this day because an appointment is already
               active on it: keep the warning on screen (a toast expires) with
@@ -1838,8 +1794,10 @@ export default function BookingPage() {
                         </dd>
                       </div>
                       <div className="flex justify-between">
-                        <dt>Thanh toán trước</dt>
-                        <dd className="font-medium text-slate-900">Không</dd>
+                        <dt>Thanh toán</dt>
+                        <dd className="font-medium text-slate-900">
+                          Online sau khi đặt lịch
+                        </dd>
                       </div>
                     </dl>
                   </div>
@@ -1865,7 +1823,7 @@ export default function BookingPage() {
 
                   <button
                     type="submit"
-                    disabled={isSubmitting}
+                    disabled={isSubmitting || bookingLock.isLocked}
                     className={`inline-flex h-11 items-center justify-center rounded-lg px-6 text-base font-semibold text-white shadow-card transition-all hover:shadow-elevated disabled:cursor-not-allowed disabled:opacity-70 ${
                       step === 1
                         ? "bg-cta hover:bg-cta-hover"
@@ -1898,17 +1856,6 @@ export default function BookingPage() {
           onConfirmTomorrow={handleRescheduleToTomorrow}
           onChooseAfternoon={handleChooseAfternoonFromPrompt}
           onClose={() => setMorningReschedule(null)}
-        />
-      )}
-
-      {liveTicket && (
-        <BookingTicketModal
-          appointment={liveTicket}
-          detail={watchedTicket.detail}
-          ownerEmail={user?.email}
-          onClose={resetBooking}
-          onExpire={handleTicketExpire}
-          onCancelTemporary={handleCancelTemporary}
         />
       )}
 

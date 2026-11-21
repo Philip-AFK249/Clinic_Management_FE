@@ -1,10 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { QRCodeSVG } from "qrcode.react";
 import {
   Ban,
   CheckCircle2,
-  Clock,
   FileText,
   QrCode,
   ShieldAlert,
@@ -12,30 +11,21 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import type { QueueTicketDetailResponse } from "../../../services/intakeApi";
-import { clearActiveBooking } from "../data/activeBooking";
 import type { ActiveAppointment } from "../data/patientMockRecords";
 import {
-  formatCountdown,
   isConfirmedTicket,
   isTemporaryStatus,
   NO_CANCEL_POLICY_NOTICE,
-  notifyTicketExpired,
   OFFICIAL_TICKET_CONFIRMED,
   OFFICIAL_TICKET_LABEL,
-  TEMPORARY_HOLD_NOTICE,
-  TEMPORARY_TICKET_BANNER,
+  PAID_PENDING_LABEL,
 } from "../data/ticketLifecycle";
-import { useTicketCountdown } from "../../../hooks/useTicketCountdown";
 
 interface BookingTicketModalProps {
   appointment: ActiveAppointment;
   /** Live backend answer, when a watcher is polling the ticket. */
   detail?: QueueTicketDetailResponse | null;
-  /** Scopes the storage cleanup on expiry to the signed-in account. */
-  ownerEmail?: string | null;
   onClose: () => void;
-  /** Called once at 00:00 so the page can drop the expired ticket. */
-  onExpire?: (ticketNumber: string) => void;
   /** Only offered while the ticket is still a temporary hold. */
   onCancelTemporary?: (ticketNumber: string) => void | Promise<void>;
 }
@@ -57,33 +47,18 @@ function formatStamp(value: string | null | undefined): string {
 export default function BookingTicketModal({
   appointment,
   detail,
-  ownerEmail,
   onClose,
-  onExpire,
   onCancelTemporary,
 }: BookingTicketModalProps) {
   const [isCancelling, setIsCancelling] = useState(false);
-  const expiryHandledRef = useRef<string | null>(null);
 
   const status = detail?.status ?? appointment.status ?? "WAITING";
   const isTemporary = isTemporaryStatus(status);
   const isRejected = status === "REJECTED";
   const isOfficial = isConfirmedTicket(status);
+  const isPaid = detail?.isReceiptVerified ?? appointment.isReceiptVerified ?? false;
   const ticketCode = appointment.ticketCode;
-  const expiresAt = detail?.expiresAt ?? appointment.expiresAt ?? null;
-  const bookedAt = detail?.checkInTime ?? appointment.bookedAt ?? null;
   const confirmedAt = detail?.confirmedAt ?? appointment.confirmedAt ?? null;
-  const countdown = useTicketCountdown(expiresAt, bookedAt, isTemporary);
-
-  useEffect(() => {
-    if (!isTemporary || !countdown.expired || expiryHandledRef.current === ticketCode) {
-      return;
-    }
-    expiryHandledRef.current = ticketCode;
-    notifyTicketExpired(ticketCode);
-    clearActiveBooking(ownerEmail);
-    onExpire?.(ticketCode);
-  }, [countdown.expired, isTemporary, ownerEmail, onExpire, ticketCode]);
 
   function handleDownloadPass() {
     toast.info(
@@ -144,25 +119,13 @@ export default function BookingTicketModal({
 
           <div className="space-y-5 px-6 py-5">
             {isTemporary ? (
-              <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 shadow-card">
-                <p className="flex items-center gap-2 text-sm font-bold tracking-wide text-amber-900">
-                  <Clock className="h-4 w-4 shrink-0" aria-hidden="true" />
-                  {TEMPORARY_TICKET_BANNER}
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 shadow-card">
+                <p className="text-sm font-bold tracking-wide text-slate-900">
+                  {isPaid ? PAID_PENDING_LABEL : "Vé tạm thời — Chờ thanh toán"}
                 </p>
-                <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-white px-4 py-3">
-                  <span className="text-xs font-semibold uppercase tracking-wide text-amber-700">
-                    Thời gian giữ chỗ
-                  </span>
-                  <span
-                    className={`font-mono text-2xl font-bold tabular-nums ${
-                      countdown.secondsLeft < 45 ? "text-rose-600" : "text-amber-800"
-                    }`}
-                  >
-                    {formatCountdown(countdown.secondsLeft)}
-                  </span>
-                </div>
-                <p className="mt-3 text-sm leading-relaxed text-amber-800">
-                  {TEMPORARY_HOLD_NOTICE}
+                <p className="mt-2 text-sm leading-relaxed text-slate-600">
+                  Vé sẽ trở thành chính thức sau khi Admin xác thực. Không có giới
+                  hạn thời gian giữ chỗ; vé chỉ bị hủy khi Admin từ chối.
                 </p>
               </div>
             ) : isRejected ? (

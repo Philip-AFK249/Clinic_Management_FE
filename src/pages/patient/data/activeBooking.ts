@@ -87,6 +87,8 @@ function isActiveAppointment(value: unknown): value is ActiveAppointment {
     "confirmedBy",
     "rejectionReason",
     "bookedAt",
+    "paidAt",
+    "paymentMethod",
   ];
   for (const field of nullableTextFields) {
     const value = source[field];
@@ -98,6 +100,12 @@ function isActiveAppointment(value: unknown): value is ActiveAppointment {
     return false;
   }
   if (source.isTemporary !== undefined && typeof source.isTemporary !== "boolean") {
+    return false;
+  }
+  if (
+    source.isReceiptVerified !== undefined &&
+    typeof source.isReceiptVerified !== "boolean"
+  ) {
     return false;
   }
   return true;
@@ -264,14 +272,15 @@ export function appointmentFromTicketDetail(
     patientId: detail.patientId,
     doctorId: detail.doctorId,
     status: detail.status,
-    // The exact deadline travels with the cache so a reload never restarts the
-    // 3-minute clock from the moment the page opened.
     expiresAt: detail.expiresAt ?? null,
     confirmedAt: detail.confirmedAt ?? null,
     confirmedBy: detail.confirmedBy ?? null,
     rejectionReason: detail.rejectionReason ?? null,
     canCancel: detail.canCancel,
     isTemporary: detail.isTemporary ?? detail.status === "PENDING_CONFIRMATION",
+    isReceiptVerified: detail.isReceiptVerified ?? false,
+    paidAt: detail.paidAt ?? null,
+    paymentMethod: detail.paymentMethod ?? null,
     bookedAt: detail.checkInTime ?? null,
   };
 }
@@ -303,6 +312,9 @@ export function syncActiveBooking(
       "rejectionReason",
       "canCancel",
       "isTemporary",
+      "isReceiptVerified",
+      "paidAt",
+      "paymentMethod",
       "bookedAt",
     ];
     const changed = fields.some((field) => parsed[field] !== next[field]);

@@ -18,12 +18,10 @@ import {
 } from "../data/activeBooking";
 import type { ActiveAppointment } from "../data/patientMockRecords";
 import {
-  isHoldExpired,
   isQueuedStatus,
   isTemporaryStatus,
   isTerminalStatus,
   notifyTicketAccepted,
-  notifyTicketExpired,
   notifyTicketRejected,
 } from "../data/ticketLifecycle";
 
@@ -79,18 +77,19 @@ export interface PatientTicketState {
  *    which also reveals the final status of a finished/rejected visit.
  *
  * While the ticket is `PENDING_CONFIRMATION` the poll runs every 3 seconds so
- * an admin decision (or an expired hold) reaches the patient promptly; once
- * the ticket is official it drops back to 10 seconds, and it stops entirely
- * for terminal statuses.
+ * an admin decision reaches the patient promptly; once the ticket is official
+ * it drops back to 10 seconds, and it stops entirely for terminal statuses.
  *
  * Terminal online-ticket transitions are handled here rather than in a card:
- * accept toasts once and keeps the official ticket on screen, rejection and
- * expiry toast once, purge localStorage and tell the caller to drop its state.
+ * acceptance toasts once and keeps the official ticket on screen, rejection
+ * toasts once, activates the caller's re-booking cooldown, purges localStorage
+ * and tells the caller to drop its state.
  */
 export function usePatientTicket(
   booking: ActiveAppointment | null,
   identifiers: string[],
   ownerEmail: string | null,
+  onRejected?: (detail: QueueTicketDetailResponse) => void,
 ): PatientTicketState {
   const [detail, setDetail] = useState<QueueTicketDetailResponse | null>(null);
   const [queue, setQueue] = useState<QueueTicket[]>([]);
@@ -102,9 +101,13 @@ export function usePatientTicket(
   const [reloadToken, setReloadToken] = useState(0);
 
   const seenStatusRef = useRef<QueueStatus | null>(booking?.status ?? null);
-  const expiryToastRef = useRef<string | null>(null);
   /** Set on a terminal answer so an effect restart cannot re-poll it. */
   const haltedRef = useRef(false);
+  const onRejectedRef = useRef(onRejected);
+
+  useEffect(() => {
+    onRejectedRef.current = onRejected;
+  }, [onRejected]);
 
   // Stable identity is the caller's job (useMemo around `identifierCandidates`),
   // so the effect below can list it as a dependency without looping.
@@ -116,8 +119,6 @@ export function usePatientTicket(
   const ticketCode = booking?.ticketCode ?? null;
   const patientId = booking?.patientId ?? null;
   const doctorId = booking?.doctorId ?? null;
-  const bookingExpiresAt = booking?.expiresAt ?? null;
-  const bookingBookedAt = booking?.bookedAt ?? null;
   const cachedTicketCode = ticketCode;
   const trimmedIdentifierKey = trimmedIdentifiers.join("|");
   const malformed = booking !== null && !isValidTicketNumber(booking.ticketCode);
@@ -135,7 +136,6 @@ export function usePatientTicket(
   useEffect(() => {
     // A different ticket starts a fresh lifecycle, including its own toasts.
     seenStatusRef.current = booking?.status ?? null;
-    expiryToastRef.current = null;
     haltedRef.current = false;
     // Status changes of the *same* ticket are handled inside `load`, not here.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -179,7 +179,7 @@ export function usePatientTicket(
       setError("");
     }
 
-    /** Rejection, expiry and cancellation all remove the temporary ticket. */
+    /** Rejection and cancellation both remove the temporary ticket. */
     function removeActiveTicket() {
       stopPolling();
       clearActiveBooking(ownerEmail);
@@ -265,18 +265,6 @@ export function usePatientTicket(
         }
 
         const previousStatus = seenStatusRef.current;
-        const holdExpired =
-          isTemporaryStatus(next.status) &&
-          isHoldExpired(next.expiresAt ?? bookingExpiresAt, next.checkInTime ?? bookingBookedAt);
-
-        // A temporary hold that ran out is terminal even when a slow backend
-        // still reports PENDING_CONFIRMATION: the patient must not keep waiting.
-        if (holdExpired && expiryToastRef.current !== next.ticketNumber) {
-          expiryToastRef.current = next.ticketNumber;
-          notifyTicketExpired(next.ticketNumber);
-          removeActiveTicket();
-          return;
-        }
 
         if (previousStatus !== next.status) {
           if (
@@ -298,14 +286,8 @@ export function usePatientTicket(
           next.status === "CANCELLED" ||
           next.status === "SKIPPED"
         ) {
-          if (
-            (next.status === "CANCELLED" ||
-              (next.status === "SKIPPED" &&
-                previousStatus === "PENDING_CONFIRMATION")) &&
-            expiryToastRef.current !== next.ticketNumber
-          ) {
-            expiryToastRef.current = next.ticketNumber;
-            notifyTicketExpired(next.ticketNumber);
+          if (next.status === "REJECTED") {
+            onRejectedRef.current?.(next);
           }
           removeActiveTicket();
           return;
@@ -367,8 +349,6 @@ export function usePatientTicket(
     patientId,
     trimmedIdentifierKey,
     doctorId,
-    bookingExpiresAt,
-    bookingBookedAt,
     ownerEmail,
     malformed,
     cachedTicketCode,

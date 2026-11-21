@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
-  Clock,
+  CreditCard,
   Loader2,
   RefreshCw,
   ShieldCheck,
@@ -12,48 +12,149 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "../../../context/useAuth";
-import { useTicketCountdown } from "../../../hooks/useTicketCountdown";
 import {
   approveOnlineTicketApi,
   getPendingOnlineTicketsApi,
   rejectOnlineTicketApi,
 } from "../../../services/intakeApi";
-import type { QueueTicketDetailResponse } from "../../../services/intakeApi";
-import {
-  formatCountdown,
-  NO_CANCEL_POLICY_NOTICE,
-  TEMPORARY_HOLD_NOTICE,
-} from "../../patient/data/ticketLifecycle";
+import type { QueueStatus, QueueTicketDetailResponse } from "../../../services/intakeApi";
+import { NO_CANCEL_POLICY_NOTICE } from "../../patient/data/ticketLifecycle";
 
 const POLL_INTERVAL_MS = 5_000;
 
+interface StatusMeta {
+  label: string;
+  className: string;
+  icon: typeof CheckCircle2;
+}
+
+const STATUS_META: Record<QueueStatus, StatusMeta> = {
+  PENDING_CONFIRMATION: {
+    label: "Chờ duyệt",
+    className: "border-amber-200 bg-amber-50 text-amber-700",
+    icon: CreditCard,
+  },
+  WAITING: {
+    label: "Đã duyệt (Vé chính thức)",
+    className: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    icon: CheckCircle2,
+  },
+  REJECTED: {
+    label: "Đã từ chối",
+    className: "border-rose-200 bg-rose-50 text-rose-700",
+    icon: XCircle,
+  },
+  CALLED: {
+    label: "Đã gọi khám",
+    className: "border-clinical-200 bg-clinical-50 text-clinical-700",
+    icon: CheckCircle2,
+  },
+  IN_CONSULTATION: {
+    label: "Đang khám",
+    className: "border-teal-200 bg-teal-50 text-teal-700",
+    icon: CheckCircle2,
+  },
+  COMPLETED: {
+    label: "Đã hoàn tất",
+    className: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    icon: CheckCircle2,
+  },
+  SKIPPED: {
+    label: "Đã bỏ lỡ",
+    className: "border-slate-200 bg-slate-50 text-slate-600",
+    icon: XCircle,
+  },
+  CANCELLED: {
+    label: "Đã hủy",
+    className: "border-slate-200 bg-slate-50 text-slate-600",
+    icon: XCircle,
+  },
+};
+
+function StatusBadge({ status }: { status: QueueStatus }) {
+  const meta = STATUS_META[status];
+  const Icon = meta.icon;
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-bold ${meta.className}`}
+    >
+      <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+      {meta.label}
+    </span>
+  );
+}
+
+function PaymentBadge({ ticket }: { ticket: QueueTicketDetailResponse }) {
+  const paid = ticket.isReceiptVerified === true;
+  return (
+    <div className="flex flex-col gap-1">
+      <span
+        className={`inline-flex w-fit items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-bold ${
+          paid
+            ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+            : "border-slate-200 bg-slate-50 text-slate-600"
+        }`}
+      >
+        <CreditCard className="h-3.5 w-3.5" aria-hidden="true" />
+        {paid ? "Đã thanh toán" : "Chưa thanh toán"}
+      </span>
+      {paid && ticket.paidAt ? (
+        <span className="text-[10px] text-slate-400">
+          {new Date(ticket.paidAt).toLocaleString("vi-VN")}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+function ContactCell({ ticket }: { ticket: QueueTicketDetailResponse }) {
+  return (
+    <div className="text-xs text-slate-600">
+      <p className="font-semibold text-slate-900">{ticket.patientFullName}</p>
+      <p>ĐT: {ticket.phone || "—"}</p>
+      <p>BHYT: {ticket.insuranceCode || "—"}</p>
+      <p>CCCD: {ticket.identityCardNumber || "—"}</p>
+    </div>
+  );
+}
+
 interface TicketActionsProps {
   ticket: QueueTicketDetailResponse;
+  adminName: string;
   busy: boolean;
   onApprove: (ticket: QueueTicketDetailResponse) => void;
   onReject: (ticket: QueueTicketDetailResponse, reason: string) => void;
 }
 
-function CountdownBadge({ ticket }: { ticket: QueueTicketDetailResponse }) {
-  const { secondsLeft } = useTicketCountdown(ticket.expiresAt, ticket.checkInTime);
-  const urgent = secondsLeft < 45;
-  return (
-    <span
-      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-mono text-xs font-bold tabular-nums ${
-        urgent
-          ? "border-rose-200 bg-rose-50 text-rose-700"
-          : "border-amber-200 bg-amber-50 text-amber-700"
-      }`}
-    >
-      <Clock className="h-3.5 w-3.5" aria-hidden="true" />
-      {formatCountdown(secondsLeft)}
-    </span>
-  );
-}
-
-function TicketActions({ ticket, busy, onApprove, onReject }: TicketActionsProps) {
+function TicketActions({
+  ticket,
+  adminName,
+  busy,
+  onApprove,
+  onReject,
+}: TicketActionsProps) {
   const [showReason, setShowReason] = useState(false);
   const [reason, setReason] = useState("");
+
+  if (ticket.status === "WAITING") {
+    return (
+      <p className="flex items-center gap-1.5 text-xs font-semibold text-emerald-700">
+        <CheckCircle2 size={14} aria-hidden="true" />
+        Đã xác thực bởi {adminName}
+      </p>
+    );
+  }
+  if (ticket.status === "REJECTED") {
+    return (
+      <div className="text-xs text-rose-700">
+        <p className="font-semibold">Đã từ chối bởi {adminName}</p>
+        {ticket.rejectionReason ? <p className="mt-0.5">Lý do: {ticket.rejectionReason}</p> : null}
+      </div>
+    );
+  }
+  if (ticket.status !== "PENDING_CONFIRMATION") {
+    return <span className="text-xs text-slate-400">—</span>;
+  }
 
   return (
     <div className="flex flex-col items-stretch gap-2">
@@ -65,7 +166,7 @@ function TicketActions({ ticket, busy, onApprove, onReject }: TicketActionsProps
           className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-emerald-600 px-3 text-xs font-bold text-white shadow-card transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
         >
           <CheckCircle2 size={14} aria-hidden="true" />
-          {busy ? "Đang xử lý..." : "Xác thực"}
+          {busy ? "Đang xử lý..." : "Duyệt"}
         </button>
         <button
           type="button"
@@ -77,7 +178,7 @@ function TicketActions({ ticket, busy, onApprove, onReject }: TicketActionsProps
           Từ chối
         </button>
       </div>
-      {showReason && (
+      {showReason ? (
         <div className="rounded-lg border border-rose-200 bg-rose-50 p-2">
           <label
             className="block text-[11px] font-semibold text-rose-800"
@@ -114,32 +215,22 @@ function TicketActions({ ticket, busy, onApprove, onReject }: TicketActionsProps
             </button>
           </div>
         </div>
-      )}
-    </div>
-  );
-}
-
-function ContactCell({ ticket }: { ticket: QueueTicketDetailResponse }) {
-  return (
-    <div className="text-xs text-slate-600">
-      <p className="font-semibold text-slate-900">{ticket.patientFullName}</p>
-      <p>ĐT: {ticket.phone || "—"}</p>
-      <p>BHYT: {ticket.insuranceCode || "—"}</p>
-      <p>CCCD: {ticket.identityCardNumber || "—"}</p>
+      ) : null}
     </div>
   );
 }
 
 /**
- * Admin queue of temporary online tickets.
+ * Admin's online-ticket verification board.
  *
- * Every 5 seconds the board asks PatientIntakeService for the tickets still
- * inside their 3-minute hold. Accepting promotes one to an official `WAITING`
- * ticket; rejecting releases its slot. Both actions remove the row at once,
- * ahead of the next poll.
+ * Every 5 seconds the board asks the queue service for pending tickets. Local
+ * decisions are merged into that answer instead of being discarded: an
+ * approved or rejected row stays visible for the rest of the session, with its
+ * status and read-only action label updated in place.
  */
 export default function OnlineTicketVerificationTab() {
   const { user } = useAuth();
+  const adminName = user?.fullName ?? "Admin";
   const [tickets, setTickets] = useState<QueueTicketDetailResponse[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -149,15 +240,28 @@ export default function OnlineTicketVerificationTab() {
     try {
       const list = await getPendingOnlineTicketsApi(signal);
       if (signal?.aborted) return;
-      const sorted = [...list].sort((left, right) => {
-        const leftMs = Date.parse(left.expiresAt ?? left.checkInTime ?? "");
-        const rightMs = Date.parse(right.expiresAt ?? right.checkInTime ?? "");
-        return (
-          (Number.isNaN(leftMs) ? Number.MAX_SAFE_INTEGER : leftMs) -
-          (Number.isNaN(rightMs) ? Number.MAX_SAFE_INTEGER : rightMs)
+      setTickets((current) => {
+        const byNumber = new Map(
+          current.map((ticket) => [ticket.ticketNumber, ticket]),
+        );
+        const retained = [...byNumber.values()].filter(
+          (ticket) => ticket.status !== "PENDING_CONFIRMATION",
+        );
+        const merged = list.map((ticket) => {
+          const decided = byNumber.get(ticket.ticketNumber);
+          return decided && decided.status !== "PENDING_CONFIRMATION"
+            ? decided
+            : ticket;
+        });
+        for (const ticket of retained) {
+          if (!list.some((item) => item.ticketNumber === ticket.ticketNumber)) {
+            merged.push(ticket);
+          }
+        }
+        return merged.sort((left, right) =>
+          left.ticketNumber.localeCompare(right.ticketNumber),
         );
       });
-      setTickets(sorted);
       setError(null);
     } catch (cause) {
       if (signal?.aborted) return;
@@ -190,13 +294,26 @@ export default function OnlineTicketVerificationTab() {
     if (busyTicket !== null) return;
     setBusyTicket(ticket.ticketNumber);
     try {
-      await approveOnlineTicketApi(ticket.ticketNumber, user?.fullName);
+      const updated = await approveOnlineTicketApi(ticket.ticketNumber, adminName);
+      // Keep the row and flip it in place - the approved ticket must stay on
+      // this board so reception can see it was verified by this admin.
       setTickets((current) =>
-        current.filter((item) => item.ticketNumber !== ticket.ticketNumber),
+        current.map((item) =>
+          item.ticketNumber === ticket.ticketNumber
+            ? {
+                ...item,
+                ...updated,
+                status: "WAITING",
+                confirmedBy: updated.confirmedBy ?? adminName,
+                confirmedAt: updated.confirmedAt ?? new Date().toISOString(),
+              }
+            : item,
+        ),
       );
-      toast.success(`Đã xác thực vé ${ticket.ticketNumber} thành vé online chính thức.`, {
-        duration: 5000,
-      });
+      toast.success(
+        `Đã xác thực vé ${ticket.ticketNumber} thành VÉ ONLINE CHÍNH THỨC!`,
+        { duration: 5000 },
+      );
     } catch (cause) {
       toast.error(
         cause instanceof Error ? cause.message : "Không xác thực được vé online.",
@@ -210,16 +327,34 @@ export default function OnlineTicketVerificationTab() {
     if (busyTicket !== null) return;
     setBusyTicket(ticket.ticketNumber);
     try {
-      await rejectOnlineTicketApi(ticket.ticketNumber, reason, user?.fullName);
+      const updated = await rejectOnlineTicketApi(
+        ticket.ticketNumber,
+        reason,
+        adminName,
+      );
       setTickets((current) =>
-        current.filter((item) => item.ticketNumber !== ticket.ticketNumber),
+        current.map((item) =>
+          item.ticketNumber === ticket.ticketNumber
+            ? {
+                ...item,
+                ...updated,
+                status: "REJECTED",
+                rejectionReason:
+                  reason.trim() || updated.rejectionReason || item.rejectionReason || null,
+              }
+            : item,
+        ),
       );
       toast.error(
-        `Đã từ chối vé ${ticket.ticketNumber}.${reason.trim() ? ` Lý do: ${reason.trim()}` : ""}`,
-        { duration: 6000 },
+        `Đã từ chối vé ${ticket.ticketNumber}. Khung giờ đã được hoàn trả; tài khoản bệnh nhân bị tạm khóa đặt lại trong 03 phút.${
+          reason.trim() ? ` Lý do: ${reason.trim()}` : ""
+        }`,
+        { duration: 7000 },
       );
     } catch (cause) {
-      toast.error(cause instanceof Error ? cause.message : "Không từ chối được vé online.");
+      toast.error(
+        cause instanceof Error ? cause.message : "Không từ chối được vé online.",
+      );
     } finally {
       setBusyTicket(null);
     }
@@ -231,7 +366,8 @@ export default function OnlineTicketVerificationTab() {
         <div>
           <h2 className="text-base font-bold text-slate-900">Xác thực vé Online</h2>
           <p className="mt-0.5 text-xs text-slate-500">
-            Vé online tạm thời chờ admin kiểm tra · tự động làm mới mỗi 5 giây
+            Vé online chờ kiểm tra thanh toán · tự động làm mới mỗi 5 giây · Admin
+            không bị giới hạn thời gian duyệt
           </p>
         </div>
         <button
@@ -244,14 +380,14 @@ export default function OnlineTicketVerificationTab() {
         </button>
       </div>
 
-      {/* The rule callout: this is the contract both sides must follow. */}
       <div className="grid gap-3 md:grid-cols-2">
-        <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
-          <Clock className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" aria-hidden="true" />
+        <div className="flex items-start gap-3 rounded-xl border border-clinical-200 bg-clinical-50 p-4">
+          <CreditCard className="mt-0.5 h-5 w-5 shrink-0 text-clinical-600" aria-hidden="true" />
           <div>
-            <p className="text-sm font-bold text-amber-900">Quy tắc giữ chỗ 03:00</p>
-            <p className="mt-1 text-xs leading-relaxed text-amber-800">
-              {TEMPORARY_HOLD_NOTICE}
+            <p className="text-sm font-bold text-clinical-900">Kiểm tra thanh toán</p>
+            <p className="mt-1 text-xs leading-relaxed text-clinical-800">
+              Chỉ duyệt vé khi trạng thái thanh toán hiển thị <strong>Đã thanh toán</strong>.
+              Từ chối vé sẽ giải phóng khung giờ và tạm khóa đặt lịch của bệnh nhân 3 phút.
             </p>
           </div>
         </div>
@@ -266,7 +402,7 @@ export default function OnlineTicketVerificationTab() {
         </div>
       </div>
 
-      {error && (
+      {error ? (
         <div className="flex items-start gap-3 rounded-xl border border-rose-200 bg-rose-50 p-4">
           <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-rose-600" aria-hidden="true" />
           <div>
@@ -274,7 +410,7 @@ export default function OnlineTicketVerificationTab() {
             <p className="mt-1 text-xs leading-relaxed text-rose-700">{error}</p>
           </div>
         </div>
-      )}
+      ) : null}
 
       {isLoading ? (
         <div className="flex items-center justify-center gap-2 rounded-xl border border-surface-border bg-white p-12 text-sm text-slate-500 shadow-card">
@@ -288,29 +424,28 @@ export default function OnlineTicketVerificationTab() {
             Không có vé online nào chờ xác thực
           </p>
           <p className="max-w-md text-xs leading-relaxed text-slate-500">
-            Các vé mới đặt sẽ xuất hiện tại đây ngay lập tức và tự động biến mất
-            sau khi bạn xác thực, từ chối hoặc khi hết thời gian giữ chỗ.
+            Các vé mới đặt sẽ xuất hiện tại đây ngay lập tức.
           </p>
         </div>
       ) : (
         <>
           <p className="flex items-center gap-1.5 text-[11px] text-slate-500">
             <TicketCheck size={12} className="text-clinical-600" aria-hidden="true" />
-            {tickets.length} vé đang chờ · ưu tiên vé sắp hết giờ nhất
+            {tickets.length} vé trên bảng xác thực
           </p>
 
           {/* Table for wide screens */}
           <div className="hidden overflow-hidden rounded-xl border border-surface-border bg-white shadow-card md:block">
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[980px] border-collapse text-left">
+              <table className="w-full min-w-[1100px] border-collapse text-left">
                 <thead>
                   <tr className="border-b border-surface-border bg-slate-50 text-[11px] font-bold uppercase tracking-wide text-slate-500">
-                    <th className="px-3 py-3">Mã vé</th>
+                    <th className="px-3 py-3">Mã vé (#A-xxx)</th>
                     <th className="px-3 py-3">Bệnh nhân &amp; liên lạc</th>
                     <th className="px-3 py-3">Chuyên khoa / Bác sĩ</th>
                     <th className="px-3 py-3">Lịch hẹn</th>
-                    <th className="px-3 py-3">Lý do khám</th>
-                    <th className="px-3 py-3">Giữ chỗ</th>
+                    <th className="px-3 py-3">Thanh toán</th>
+                    <th className="px-3 py-3">Trạng thái</th>
                     <th className="px-3 py-3">Thao tác</th>
                   </tr>
                 </thead>
@@ -333,22 +468,21 @@ export default function OnlineTicketVerificationTab() {
                       </td>
                       <td className="px-3 py-3 text-xs text-slate-700">
                         <p>{ticket.appointmentDate}</p>
-                        <p className="font-semibold">
-                          {ticket.slotStartTime.slice(0, 5)}
-                        </p>
-                      </td>
-                      <td className="max-w-[220px] px-3 py-3 text-xs leading-relaxed text-slate-600">
-                        {ticket.chiefComplaint?.trim() || "—"}
+                        <p className="font-semibold">{ticket.slotStartTime.slice(0, 5)}</p>
                       </td>
                       <td className="px-3 py-3">
-                        <CountdownBadge ticket={ticket} />
+                        <PaymentBadge ticket={ticket} />
+                      </td>
+                      <td className="px-3 py-3">
+                        <StatusBadge status={ticket.status} />
                       </td>
                       <td className="px-3 py-3">
                         <TicketActions
                           ticket={ticket}
+                          adminName={adminName}
                           busy={busyTicket === ticket.ticketNumber}
                           onApprove={(item) => void handleApprove(item)}
-                          onReject={(item, reason) => void handleReject(item, reason)}
+                          onReject={(item, value) => void handleReject(item, value)}
                         />
                       </td>
                     </tr>
@@ -365,11 +499,11 @@ export default function OnlineTicketVerificationTab() {
                 key={ticket.ticketNumber}
                 className="rounded-xl border border-surface-border bg-white p-4 shadow-card"
               >
-                <div className="flex items-center justify-between gap-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="font-mono text-sm font-bold text-slate-900">
                     {ticket.ticketNumber}
                   </span>
-                  <CountdownBadge ticket={ticket} />
+                  <StatusBadge status={ticket.status} />
                 </div>
                 <div className="mt-3 grid gap-2 sm:grid-cols-2">
                   <ContactCell ticket={ticket} />
@@ -381,16 +515,16 @@ export default function OnlineTicketVerificationTab() {
                     </p>
                   </div>
                 </div>
-                <p className="mt-3 rounded-lg bg-slate-50 p-3 text-xs leading-relaxed text-slate-600">
-                  <span className="font-semibold text-slate-800">Lý do khám:</span>{" "}
-                  {ticket.chiefComplaint?.trim() || "—"}
-                </p>
+                <div className="mt-3 flex flex-wrap items-center gap-3 rounded-lg bg-slate-50 p-3">
+                  <PaymentBadge ticket={ticket} />
+                </div>
                 <div className="mt-3 border-t border-slate-100 pt-3">
                   <TicketActions
                     ticket={ticket}
+                    adminName={adminName}
                     busy={busyTicket === ticket.ticketNumber}
                     onApprove={(item) => void handleApprove(item)}
-                    onReject={(item, reason) => void handleReject(item, reason)}
+                    onReject={(item, value) => void handleReject(item, value)}
                   />
                 </div>
               </article>

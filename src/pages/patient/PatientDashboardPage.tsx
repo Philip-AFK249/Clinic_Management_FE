@@ -21,10 +21,11 @@ import {
   Wallet,
   X,
 } from "lucide-react";
+import { QRCodeSVG } from "qrcode.react";
 import { toast } from "sonner";
 import { useAuth } from "../../context/useAuth";
-import { cancelTicketApi } from "../../services/intakeApi";
-import type { QueueStatus } from "../../services/intakeApi";
+import { cancelTicketApi, payOnlineTicketApi } from "../../services/intakeApi";
+import type { QueueStatus, QueueTicketDetailResponse } from "../../services/intakeApi";
 import type {
   EncounterStatus,
   PatientEncounterDto,
@@ -38,25 +39,28 @@ import {
   isAppointmentDateExpired,
   isStoredBookingExpired,
   readOwnedActiveBooking,
+  syncActiveBooking,
 } from "./data/activeBooking";
 import {
   formatCountdown,
   isConfirmedTicket,
   isTemporaryStatus,
   NO_CANCEL_POLICY_NOTICE,
-  notifyTicketExpired,
   OFFICIAL_TICKET_CONFIRMED,
   OFFICIAL_TICKET_LABEL,
-  TEMPORARY_HOLD_NOTICE,
-  TEMPORARY_TICKET_BANNER,
+  OFFICIAL_TICKET_BADGE,
+  PAID_PENDING_LABEL,
+  PAYMENT_SUCCESS_TOAST,
+  TEMPORARY_PENDING_LABEL,
 } from "./data/ticketLifecycle";
-import { useTicketCountdown } from "../../hooks/useTicketCountdown";
 import { identifierCandidates } from "./data/patientIdentifiers";
 import {
   encounterKey,
   loadPatientEncounters,
 } from "./data/patientEncounterLoader";
 import { usePatientTicket } from "./hooks/usePatientTicket";
+import { useBookingLock } from "./hooks/useBookingLock";
+import PaymentConfirmationModal from "./components/PaymentConfirmationModal";
 
 type DashboardTab = "queue" | "records";
 
@@ -78,7 +82,7 @@ const STATUS_BADGES: Record<
   { label: string; className: string; icon: typeof CheckCircle2 }
 > = {
   PENDING_CONFIRMATION: {
-    label: "Vé tạm thời chờ xác thực",
+    label: TEMPORARY_PENDING_LABEL,
     className: "border-amber-200 bg-amber-50 text-amber-700",
     icon: Clock,
   },
@@ -88,9 +92,9 @@ const STATUS_BADGES: Record<
     icon: Ban,
   },
   WAITING: {
-    label: "Đang chờ tiếp đón",
-    className: "border-amber-200 bg-amber-50 text-amber-700",
-    icon: Clock,
+    label: OFFICIAL_TICKET_BADGE,
+    className: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    icon: CheckCircle2,
   },
   CALLED: {
     label: "Đã được gọi",
@@ -126,7 +130,8 @@ const FINISHED_NOTICES: Record<QueueStatus, string> = {
     "Phiếu khám đã bị bỏ qua do không có mặt khi được gọi. Vui lòng liên hệ quầy tiếp đón để được xếp lại lịch.",
   CANCELLED:
     "Phiếu khám đã bị hủy. Bạn có thể đặt một lịch hẹn mới bất cứ lúc nào.",
-  PENDING_CONFIRMATION: TEMPORARY_HOLD_NOTICE,
+  PENDING_CONFIRMATION:
+    "Chưa có phiếu khám kết thúc. Kết quả sẽ xuất hiện sau khi bác sĩ hoàn tất lượt khám.",
   REJECTED: "Vé online tạm thời đã bị từ chối xác thực.",
   WAITING: "",
   CALLED: "",
@@ -178,6 +183,9 @@ function dateLabelFromEncounter(iso: string | null | undefined): string {
   const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
   return match ? `${match[3]}/${match[2]}/${match[1]}` : iso;
 }
+
+/** Fallback when the service has not attached a receipt amount to the ticket. */
+const DEFAULT_CONSULTATION_FEE = 150_000;
 
 function vnd(value: number | null | undefined): string {
   const amount =
@@ -246,6 +254,12 @@ export default function PatientDashboardPage() {
   // one click) and a busy flag so the request cannot be fired twice.
   const [confirmingCancel, setConfirmingCancel] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
+  // Online payment: the modal, its busy flag, and the just-paid backend answer.
+  // `paidDetail` bridges the gap until the next 3-second poll sees the receipt.
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [isPaying, setIsPaying] = useState(false);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [paidDetail, setPaidDetail] = useState<QueueTicketDetailResponse | null>(null);
   // EHR tab: the live encounter timeline, its own loading/error state, and the
   // cards the patient has opened. `encounterReloadToken` re-runs the loader when
   // "Làm mới" is pressed or a visit transitions to COMPLETED.
@@ -265,82 +279,95 @@ export default function PatientDashboardPage() {
     () => identifierCandidates(user, [storedBooking?.phone]),
     [user, storedBooking],
   );
+  // A rejected ticket immediately starts the three-minute re-booking ban. The
+  // queue service owns the lock; the local copy keeps the banner alive across
+  // reloads and service outages.
+  const bookingLock = useBookingLock({
+    patientId: storedBooking?.patientId,
+    identifiers: identifierList,
+    ownerEmail: user?.email,
+  });
+  const { activateLock } = bookingLock;
+  const handleTicketRejected = useCallback(
+    (detail: QueueTicketDetailResponse) => {
+      activateLock(detail.rejectionReason);
+    },
+    [activateLock],
+  );
   // Live view of the ticket: the verified stored booking seeds the screen
   // immediately, and the hook overwrites it with the backend's answer (found by
   // intake patient id or by any of those identifiers, so a ticket booked on
   // another device - or before this browser saw the booking flow - still shows)
   // as soon as one lands.
-  const ticket = usePatientTicket(storedBooking, identifierList, user?.email ?? null);
+  const ticket = usePatientTicket(
+    storedBooking,
+    identifierList,
+    user?.email ?? null,
+    handleTicketRejected,
+  );
   const { refresh: refreshTicket } = ticket;
+  // The just-paid answer stays on screen until the next poll reports the same
+  // receipt. Once the poll sees it (or sees an admin decision), the backend is
+  // authoritative again.
+  const detail =
+    ticket.detail?.status === "PENDING_CONFIRMATION" &&
+    !ticket.detail.isReceiptVerified &&
+    paidDetail?.ticketNumber === ticket.detail.ticketNumber
+      ? paidDetail
+      : ticket.detail;
   // A booking the backend rejects as unknown (400/404) is dropped by the hook;
   // from the page's point of view the patient simply has no appointment left.
   // The backend's own answer also counts as a real appointment, even when the
   // cache was lost - it was found by the signed-in patient's own identifier.
-  const mirroredBooking = ticket.detail
-    ? appointmentFromTicketDetail(ticket.detail)
+  const mirroredBooking = detail
+    ? appointmentFromTicketDetail(detail)
     : storedBooking;
   const visibleBooking =
     mirroredBooking?.ticketCode === clearedTicketCode ? null : mirroredBooking;
   const ownedBooking = ticket.invalidTicket ? null : visibleBooking;
   // A day that has already passed is not an active appointment, whatever the
   // cache or a lagging poll may still say: that visit belongs in "Lịch sử đặt
-  // lịch", never under the live queue board. The hook already purges the
-  // stored copy for both cases - this is the belt to its braces, so a booking
-  // that expired between the last poll and this render cannot slip through.
+  // lịch", never under the live queue board.
   const ownedBookingExpired =
     ownedBooking !== null && isStoredBookingExpired(ownedBooking);
   const detailExpired =
-    ticket.detail !== null &&
-    isAppointmentDateExpired(ticket.detail.appointmentDate);
+    detail !== null && isAppointmentDateExpired(detail.appointmentDate);
   const hasAppointment =
     !ownedBookingExpired && !detailExpired && ownedBooking !== null;
 
   // The stored booking renders on its own while the first poll is in flight;
   // once it answers, the backend's copy wins everywhere it has an opinion.
   const display = {
-    ticketCode: ticket.detail?.ticketNumber ?? ownedBooking?.ticketCode ?? "",
-    patientName: ticket.detail?.patientFullName ?? ownedBooking?.patientName ?? "",
-    department: ticket.detail?.departmentName ?? ownedBooking?.department ?? "",
-    doctor: ticket.detail?.doctorName ?? ownedBooking?.doctor ?? "",
-    room: ticket.detail?.roomNumber ?? ownedBooking?.room ?? "",
-    date: ticket.detail
-      ? dateLabelFrom(ticket.detail.appointmentDate)
-      : ownedBooking?.date ?? "",
-    timeSlot: ticket.detail
-      ? ticket.detail.slotStartTime.slice(0, 5)
+    ticketCode: detail?.ticketNumber ?? ownedBooking?.ticketCode ?? "",
+    patientName: detail?.patientFullName ?? ownedBooking?.patientName ?? "",
+    department: detail?.departmentName ?? ownedBooking?.department ?? "",
+    doctor: detail?.doctorName ?? ownedBooking?.doctor ?? "",
+    room: detail?.roomNumber ?? ownedBooking?.room ?? "",
+    date: detail ? dateLabelFrom(detail.appointmentDate) : ownedBooking?.date ?? "",
+    timeSlot: detail
+      ? detail.slotStartTime.slice(0, 5)
       : ownedBooking?.timeSlot ?? "",
   };
   const statusBadge = STATUS_BADGES[ticket.status];
   const isTemporary = isTemporaryStatus(ticket.status);
   const isOfficial = isConfirmedTicket(ticket.status);
-  const expiresAt = ticket.detail?.expiresAt ?? ownedBooking?.expiresAt ?? null;
-  const bookedAt = ticket.detail?.checkInTime ?? ownedBooking?.bookedAt ?? null;
-  const confirmedAt = ticket.detail?.confirmedAt ?? ownedBooking?.confirmedAt ?? null;
-  const confirmedBy = ticket.detail?.confirmedBy ?? ownedBooking?.confirmedBy ?? null;
+  const isPaid = detail?.isReceiptVerified ?? ownedBooking?.isReceiptVerified ?? false;
+  const statusLabel =
+    isTemporary && isPaid ? PAID_PENDING_LABEL : statusBadge.label;
+  const consultationFee = detail?.receiptAmount ?? DEFAULT_CONSULTATION_FEE;
+  const confirmedAt = detail?.confirmedAt ?? ownedBooking?.confirmedAt ?? null;
+  const confirmedBy = detail?.confirmedBy ?? ownedBooking?.confirmedBy ?? null;
   const canCancel =
-    ticket.detail?.canCancel ?? ownedBooking?.canCancel ?? !isOfficial;
-  // The countdown calls back from its 1-second tick, so a hold is removed at
-  // 00:00 without a state-setting effect. Storage is already mirrored by the
-  // polling hook; this flag only hides the cached card on this screen.
-  const handleHoldExpire = useCallback(() => {
-    const ticketNumber = display.ticketCode;
-    if (!ticketNumber) return;
-    notifyTicketExpired(ticketNumber);
-    clearActiveBooking(user?.email);
-    setClearedTicketCode(ticketNumber);
-    refreshTicket();
-  }, [display.ticketCode, refreshTicket, user?.email]);
-  const countdown = useTicketCountdown(
-    expiresAt,
-    bookedAt,
-    isTemporary,
-    handleHoldExpire,
-  );
+    detail?.canCancel ?? ownedBooking?.canCancel ?? !isOfficial;
+  const checkInPayload = JSON.stringify({
+    ticket: display.ticketCode,
+    patient: display.patientName,
+    room: display.room,
+  });
 
-  const activePatientId = ticket.detail?.patientId ?? ownedBooking?.patientId ?? null;
-  const activeTicketNumber =
-    ticket.detail?.ticketNumber ?? ownedBooking?.ticketCode ?? null;
-  const activeTicketStatus = ticket.detail?.status ?? ownedBooking?.status ?? null;
+  const activePatientId = detail?.patientId ?? ownedBooking?.patientId ?? null;
+  const activeTicketNumber = detail?.ticketNumber ?? ownedBooking?.ticketCode ?? null;
+  const activeTicketStatus = detail?.status ?? ownedBooking?.status ?? null;
   const storedPatientId = ownedBooking?.patientId ?? null;
 
   /**
@@ -484,6 +511,34 @@ export default function PatientDashboardPage() {
     }
   }
 
+  /**
+   * Record the VietQR payment on the temporary ticket. The returned DTO is
+   * mirrored to localStorage at once so a reload still shows "already paid",
+   * then the normal 3-second poll takes over.
+   */
+  async function handlePaymentConfirm() {
+    const ticketNumber = detail?.ticketNumber ?? ownedBooking?.ticketCode;
+    if (!ticketNumber || isPaying) return;
+    setIsPaying(true);
+    setPaymentError(null);
+    try {
+      const updated = await payOnlineTicketApi(ticketNumber);
+      syncActiveBooking(updated, user?.email);
+      setPaidDetail(updated);
+      setIsPaymentModalOpen(false);
+      toast.success(PAYMENT_SUCCESS_TOAST, { duration: 6000 });
+      refreshTicket();
+    } catch (cause) {
+      setPaymentError(
+        cause instanceof Error
+          ? cause.message
+          : "Không ghi nhận được thanh toán. Vui lòng thử lại.",
+      );
+    } finally {
+      setIsPaying(false);
+    }
+  }
+
   return (
     <div className="min-h-screen bg-surface-light text-slate-900">
       <PatientNavbar />
@@ -500,6 +555,24 @@ export default function PatientDashboardPage() {
             bạn.
           </p>
         </div>
+
+        {bookingLock.isLocked && (
+          <div className="mt-6 rounded-xl border border-rose-300 bg-rose-50 p-4 shadow-card">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="flex flex-wrap items-center gap-2 text-sm font-semibold text-rose-800">
+                <Ban className="h-4 w-4 shrink-0" aria-hidden="true" />
+                Tài khoản tạm khóa đặt lịch trong{" "}
+                <span className="font-mono text-base font-bold tabular-nums text-rose-700">
+                  {formatCountdown(bookingLock.remainingSeconds)}
+                </span>{" "}
+                do vé online trước đó bị từ chối.
+              </p>
+              {bookingLock.reason ? (
+                <p className="text-xs text-rose-700">Lý do: {bookingLock.reason}</p>
+              ) : null}
+            </div>
+          </div>
+        )}
 
         {/* Tab switcher */}
         <div
@@ -551,32 +624,36 @@ export default function PatientDashboardPage() {
                     className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold ${statusBadge.className}`}
                   >
                     <statusBadge.icon className="h-3.5 w-3.5" aria-hidden="true" />
-                    {statusBadge.label}
+                    {statusLabel}
                   </span>
                 </div>
                 {isTemporary && (
-                  <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-4">
-                    <p className="flex items-center gap-2 text-sm font-bold tracking-wide text-amber-900">
-                      <Clock className="h-4 w-4 shrink-0" aria-hidden="true" />
-                      {TEMPORARY_TICKET_BANNER}
-                    </p>
-                    <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-white px-4 py-3">
-                      <span className="text-xs font-semibold uppercase tracking-wide text-amber-700">
-                        Thời gian giữ chỗ
-                      </span>
-                      <span
-                        className={`font-mono text-2xl font-bold tabular-nums ${
-                          countdown.secondsLeft < 45
-                            ? "text-rose-600"
-                            : "text-amber-800"
-                        }`}
-                      >
-                        {formatCountdown(countdown.secondsLeft)}
-                      </span>
+                  <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-bold text-slate-900">
+                          {isPaid ? PAID_PENDING_LABEL : TEMPORARY_PENDING_LABEL}
+                        </p>
+                        <p className="mt-1 text-xs leading-relaxed text-slate-500">
+                          {isPaid
+                            ? "Thanh toán đã được ghi nhận. Vé sẽ chuyển sang chính thức sau khi Admin duyệt."
+                            : "Hoàn tất thanh toán online để Admin có thể xác thực vé của bạn."}
+                        </p>
+                      </div>
+                      {!isPaid && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPaymentError(null);
+                            setIsPaymentModalOpen(true);
+                          }}
+                          className="inline-flex h-10 items-center gap-2 rounded-lg bg-clinical-600 px-5 text-sm font-semibold text-white shadow-card transition-colors hover:bg-clinical-700"
+                        >
+                          <CreditCard className="h-4 w-4" aria-hidden="true" />
+                          Thanh toán
+                        </button>
+                      )}
                     </div>
-                    <p className="mt-3 text-sm leading-relaxed text-amber-800">
-                      {TEMPORARY_HOLD_NOTICE}
-                    </p>
                   </div>
                 )}
                 {isOfficial && (
@@ -619,15 +696,24 @@ export default function PatientDashboardPage() {
                   <Row label="Phòng khám" value={display.room} />
                 </dl>
                 {ticket.isInQueue && (
-                  <div className="mt-4 flex items-start gap-3 rounded-lg border border-clinical-100 bg-clinical-50 p-3">
-                    <QrCode
-                      className="h-5 w-5 shrink-0 text-clinical-600"
-                      aria-hidden="true"
-                    />
-                    <p className="text-sm leading-relaxed text-slate-600">
-                      Xuất trình vé QR check-in tại kiosk cửa vào để lấy số thứ tự
-                      nhanh.
-                    </p>
+                  <div className="mt-4 flex flex-wrap items-center gap-4 rounded-lg border border-clinical-100 bg-clinical-50 p-3">
+                    <div className="rounded-lg bg-white p-2 shadow-card">
+                      <QRCodeSVG
+                        value={checkInPayload}
+                        size={104}
+                        level="M"
+                        fgColor="#0F172A"
+                      />
+                    </div>
+                    <div className="flex-1">
+                      <p className="flex items-center gap-1.5 text-sm font-semibold text-slate-900">
+                        <QrCode className="h-4 w-4 text-clinical-600" aria-hidden="true" />
+                        Mã QR check-in
+                      </p>
+                      <p className="mt-1 text-sm leading-relaxed text-slate-600">
+                        Xuất trình mã này tại kiosk cửa vào để lấy số thứ tự nhanh.
+                      </p>
+                    </div>
                   </div>
                 )}
                 {ticket.isOffline && (
@@ -722,12 +808,23 @@ export default function PatientDashboardPage() {
                       <FileText className="h-4 w-4" aria-hidden="true" />
                       Xem kết quả khám & chi phí
                     </button>
-                    <Link
-                      to="/patient/booking"
-                      className="inline-flex h-11 items-center justify-center rounded-lg border border-slate-300 bg-white px-6 text-sm font-semibold text-slate-700 transition-colors hover:border-clinical-400 hover:text-clinical-700"
-                    >
-                      Đặt lịch khám mới
-                    </Link>
+                    {bookingLock.isLocked ? (
+                      <button
+                        type="button"
+                        disabled
+                        title="Tài khoản đang trong thời gian tạm khóa"
+                        className="inline-flex h-11 cursor-not-allowed items-center justify-center rounded-lg border border-slate-200 bg-slate-100 px-6 text-sm font-semibold text-slate-400"
+                      >
+                        Đặt lịch khám mới
+                      </button>
+                    ) : (
+                      <Link
+                        to="/patient/booking"
+                        className="inline-flex h-11 items-center justify-center rounded-lg border border-slate-300 bg-white px-6 text-sm font-semibold text-slate-700 transition-colors hover:border-clinical-400 hover:text-clinical-700"
+                      >
+                        Đặt lịch khám mới
+                      </Link>
+                    )}
                   </div>
                 </section>
               )}
@@ -742,12 +839,22 @@ export default function PatientDashboardPage() {
                 Các lịch khám trước đây đã hoàn tất hoặc hết hạn được lưu trong
                 Lịch sử đặt lịch.
               </p>
-              <Link
-                to="/patient/booking"
-                className="mt-6 inline-flex h-11 items-center justify-center rounded-lg bg-clinical-600 px-6 text-sm font-semibold text-white shadow-card transition-colors hover:bg-clinical-700"
-              >
-                Đặt lịch khám ngay
-              </Link>
+              {bookingLock.isLocked ? (
+                <button
+                  type="button"
+                  disabled
+                  className="mt-6 inline-flex h-11 cursor-not-allowed items-center justify-center rounded-lg bg-slate-300 px-6 text-sm font-semibold text-slate-600"
+                >
+                  Đặt lịch khám ngay
+                </button>
+              ) : (
+                <Link
+                  to="/patient/booking"
+                  className="mt-6 inline-flex h-11 items-center justify-center rounded-lg bg-clinical-600 px-6 text-sm font-semibold text-white shadow-card transition-colors hover:bg-clinical-700"
+                >
+                  Đặt lịch khám ngay
+                </Link>
+              )}
             </section>
           )
         ) : (
@@ -920,6 +1027,20 @@ export default function PatientDashboardPage() {
           </div>
         </div>
       )}
+
+      {isPaymentModalOpen && display.ticketCode ? (
+        <PaymentConfirmationModal
+          ticketNumber={display.ticketCode}
+          amount={consultationFee}
+          isProcessing={isPaying}
+          error={paymentError}
+          onClose={() => {
+            setIsPaymentModalOpen(false);
+            setPaymentError(null);
+          }}
+          onConfirm={() => void handlePaymentConfirm()}
+        />
+      ) : null}
 
       <PatientFooter />
     </div>
