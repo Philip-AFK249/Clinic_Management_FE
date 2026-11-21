@@ -143,6 +143,11 @@ export interface RefineVoiceTriagePayload {
   clarification_history?: Array<{ question: string; answer: string }>;
   round_index?: number;
   qa_pairs?: Array<{ question: string; answer: string }>;
+  /** FLG-... issued in an earlier round; keeps Active Learning to one row. */
+  flag_id?: string | null;
+  /** Carry the Active Learning verdict so a later LLM answer cannot erase it. */
+  is_out_of_dataset?: boolean;
+  flag_reason?: string;
 }
 
 export type RefineTriagePayload = RefineVoiceTriagePayload;
@@ -156,8 +161,10 @@ export interface AnalyzeTextTriagePayload {
 
 export interface VoiceTriageResult {
   success: boolean;
-  /** Whisper output, in the patient's own words. */
+  /** Whisper output, in the patient's own words (kept verbatim for audit). */
   transcription: string;
+  /** Deterministically cleaned clinical text shown beside the raw transcript. */
+  normalized_transcription?: string;
   /** The complaint as the LLM summarised it, for the clinical record. */
   chief_complaint_summary: string;
   disease_guess: string;
@@ -516,7 +523,9 @@ function normalizeTriagePayload(payload: VoiceTriageResult): VoiceTriageResult {
     clarification_options: payload.clarification_options ?? [],
     clarifying_questions: payload.clarifying_questions ?? [],
     detected_age_group: payload.detected_age_group ?? null,
+    normalized_transcription: payload.normalized_transcription ?? "",
     is_out_of_dataset: payload.is_out_of_dataset === true,
+    flag_reason: payload.flag_reason ?? "",
     flag_id: payload.flag_id ?? null,
     similarity_score: payload.similarity_score ?? null,
   });

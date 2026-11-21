@@ -701,6 +701,14 @@ export default function BookingPage() {
           answer: text,
         })),
         round_index: stepIndex + 1,
+        flag_id: pendingClarification.flag_id ?? voiceTriage?.flag_id ?? undefined,
+        is_out_of_dataset:
+          pendingClarification.is_out_of_dataset === true ||
+          voiceTriage?.is_out_of_dataset === true,
+        flag_reason:
+          pendingClarification.flag_reason ||
+          voiceTriage?.flag_reason ||
+          undefined,
       };
       const refined = await refineVoiceTriageApi(payload);
       const symptomText = symptomTextFromClarification(
@@ -795,6 +803,11 @@ export default function BookingPage() {
         target_date: triageDate || current.target_date,
         clarification_history: history,
         round_index: 4,
+        flag_id: current.flag_id ?? voiceTriage?.flag_id ?? undefined,
+        is_out_of_dataset:
+          current.is_out_of_dataset === true ||
+          voiceTriage?.is_out_of_dataset === true,
+        flag_reason: current.flag_reason || voiceTriage?.flag_reason || undefined,
       });
       applyVoiceTriage(
         { ...forced, needs_clarification: false },
@@ -876,6 +889,11 @@ export default function BookingPage() {
         clarification_history: qaPairs,
         qa_pairs: qaPairs,
         round_index: 4,
+        flag_id: current.flag_id ?? voiceTriage?.flag_id ?? undefined,
+        is_out_of_dataset:
+          current.is_out_of_dataset === true ||
+          voiceTriage?.is_out_of_dataset === true,
+        flag_reason: current.flag_reason || voiceTriage?.flag_reason || undefined,
       });
       applyVoiceTriage(refined, voiceClip ?? undefined, symptomText);
       if (
@@ -919,10 +937,24 @@ export default function BookingPage() {
    * (the gateway caches nothing, exactly as in `requerySchedule`).
    */
   function applyVoiceTriage(
-    result: VoiceScheduleTriageResponse,
+    incoming: VoiceScheduleTriageResponse,
     clip?: Blob,
     symptomText?: string,
   ) {
+    // A clarification round must never drop the flag/out-of-dataset linkage
+    // earned in an earlier round: the backend updates that same row in place.
+    const result: VoiceScheduleTriageResponse = {
+      ...incoming,
+      flag_id: incoming.flag_id ?? voiceTriage?.flag_id ?? null,
+      normalized_transcription:
+        incoming.normalized_transcription ||
+        voiceTriage?.normalized_transcription ||
+        "",
+      is_out_of_dataset:
+        incoming.is_out_of_dataset === true ||
+        voiceTriage?.is_out_of_dataset === true,
+      flag_reason: incoming.flag_reason || voiceTriage?.flag_reason || "",
+    };
     setVoiceTriage(result);
     setTriageError(null);
     const transcript = (symptomText ?? result.transcription).trim();
@@ -1052,7 +1084,20 @@ export default function BookingPage() {
         ageGroup: defaultAgeGroup,
         patientHistory: defaultPatientHistory,
       });
-      setVoiceTriage(result);
+      // A date-only re-query still belongs to the same triage session: keep the
+      // FLG link earned on the original verdict even if the gateway omits it.
+      setVoiceTriage({
+        ...result,
+        flag_id: result.flag_id ?? voiceTriage?.flag_id ?? null,
+        normalized_transcription:
+          result.normalized_transcription ||
+          voiceTriage?.normalized_transcription ||
+          "",
+        is_out_of_dataset:
+          result.is_out_of_dataset === true ||
+          voiceTriage?.is_out_of_dataset === true,
+        flag_reason: result.flag_reason || voiceTriage?.flag_reason || "",
+      });
       setScheduleUnavailable(result.schedule_connected === false);
       // The rota just changed underneath the pick: a doctor who is off duty
       // on the new date cannot be held, so the booking falls back to

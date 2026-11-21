@@ -96,9 +96,14 @@ export interface RawPipelineFile {
 }
 
 export interface FlaggedSymptomItem {
+  id?: number | null;
   flag_id: string;
   created_at: string;
+  updated_at?: string;
+  /** Raw Whisper text, kept for audit. */
   transcription?: string;
+  /** Cleaned clinical text, shown beside the raw transcript. */
+  normalized_transcription?: string;
   patient_description?: string;
   age_group: string | null;
   age_group_label?: string;
@@ -111,10 +116,14 @@ export interface FlaggedSymptomItem {
   ai_suggested_disease?: string | null;
   similarity_score?: number | null;
   flag_reason?: string | null;
-  status: "PENDING" | "DOCTOR_CONFIRMED" | "TRAINED";
+  status: "PENDING" | "PENDING_DOCTOR" | "DOCTOR_CONFIRMED" | "TRAINED";
+  ticket_number?: string | null;
+  patient_name?: string | null;
   confirmed_icd10_code?: string | null;
   confirmed_disease_name?: string | null;
+  confirmed_by_doctor?: string | null;
   medical_symptom_standard?: string | null;
+  red_flags?: string | null;
   reception_action?: string | null;
   trained_at?: string | null;
 }
@@ -126,6 +135,7 @@ export interface FlaggedSymptomCluster {
 
 export interface FlaggedSymptomsStats {
   total: number;
+  pending_doctor?: number;
   doctor_confirmed: number;
   trained: number;
   top_clusters: FlaggedSymptomCluster[];
@@ -367,12 +377,14 @@ export async function trainFlaggedSymptomsRagApi(
   success: boolean;
   trained_count: number;
   chunks_created: number;
+  chunks?: number;
   message: string;
 }> {
   const { data } = await aiGatewayAdminApi.post<{
     success: boolean;
     trained_count: number;
     chunks_created: number;
+    chunks?: number;
     message: string;
   }>("/api/v1/admin/flagged-symptoms/train-rag", {
     flag_ids: flagIds,

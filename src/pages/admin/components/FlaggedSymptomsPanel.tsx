@@ -42,11 +42,6 @@ interface EditDraft {
   reception_action: string;
 }
 
-interface FlaggedSymptomRow extends FlaggedSymptomItem {
-  /** Present on flags that were raised from a clinic queue ticket. */
-  ticket_number?: string | null;
-}
-
 const EMPTY_STATS: FlaggedSymptomsStats = {
   total: 0,
   doctor_confirmed: 0,
@@ -89,6 +84,7 @@ function normalizedStatus(item: FlaggedSymptomItem): FlaggedStatus {
   if (status === "DOCTOR_CONFIRMED" || status === "CONFIRMED") {
     return "DOCTOR_CONFIRMED";
   }
+  // "PENDING_DOCTOR" is the gateway's default status for a fresh flag.
   return "PENDING";
 }
 
@@ -265,14 +261,28 @@ export default function FlaggedSymptomsPanel({
       toast.error("Chưa có ca nào được bác sĩ chốt chẩn đoán để nạp vào RAG.");
       return;
     }
+    const unconfirmed = data.items.filter(
+      (item) =>
+        ids.includes(item.flag_id) &&
+        normalizedStatus(item) === "PENDING" &&
+        !item.confirmed_icd10_code?.trim(),
+    );
+    if (unconfirmed.length > 0) {
+      const proceed = window.confirm(
+        `Có ${unconfirmed.length} ca vẫn đang "Chờ khám" và chưa có ICD-10 bác sĩ xác nhận. ` +
+          "Nạp RAG ngay có thể đưa dữ liệu chưa xác thực vào tri thức phân luồng. Tiếp tục?",
+      );
+      if (!proceed) return;
+    }
     setIsTraining(true);
     try {
       const result = await trainFlaggedSymptomsRagApi(ids);
       if (!result.success) {
         throw new Error(result.message || "Gateway báo lỗi khi nạp RAG.");
       }
+      const chunkCount = result.chunks_created ?? result.chunks ?? 0;
       toast.success(
-        `${result.message || "Đã nạp dữ liệu ngoài thu thập vào RAG."} (${result.trained_count} ca, ${result.chunks_created} chunks)`,
+        `${result.message || "Đã nạp dữ liệu ngoài thu thập vào RAG."} (${result.trained_count} ca, ${chunkCount} chunks)`,
         { duration: 5000 },
       );
       setSelectedIds(new Set());
@@ -452,7 +462,7 @@ export default function FlaggedSymptomsPanel({
       )}
 
       <div className="overflow-x-auto">
-        <table className="w-full table-fixed text-left text-xs">
+        <table className="w-full min-w-[1080px] table-fixed text-left text-xs">
           <thead className="bg-slate-50 text-[10px] font-bold uppercase tracking-wide text-slate-500">
             <tr>
               <th className="w-10 px-4 py-2.5">
@@ -471,7 +481,7 @@ export default function FlaggedSymptomsPanel({
                 Dự đoán ICD-10 (Kiến thức AI)
               </th>
               <th className="w-[14%] px-3 py-2.5">Nhóm tuổi</th>
-              <th className="sticky right-0 z-10 w-[168px] border-l border-slate-100 bg-slate-50 px-3 py-2.5 shadow-[-4px_0_10px_-8px_rgba(15,23,42,0.25)]">
+              <th className="sticky right-0 z-10 w-[232px] min-w-[232px] border-l border-slate-100 bg-slate-50 px-3 py-2.5 shadow-[-4px_0_10px_-8px_rgba(15,23,42,0.25)]">
                 Thao tác
               </th>
             </tr>
@@ -492,7 +502,7 @@ export default function FlaggedSymptomsPanel({
               </tr>
             ) : (
               filteredItems.map((item) => {
-                const row = item as FlaggedSymptomRow;
+                const row = item;
                 const status = normalizedStatus(row);
                 const description =
                   row.transcription || row.patient_description || "—";
@@ -523,7 +533,7 @@ export default function FlaggedSymptomsPanel({
                       </p>
                       {row.ticket_number?.trim() && (
                         <span
-                          className="mt-1.5 inline-flex max-w-full items-center rounded-md border border-indigo-200 bg-indigo-50 px-1.5 py-0.5 font-mono text-[10px] font-bold text-indigo-700"
+                          className="mt-1.5 inline-flex max-w-full items-center whitespace-normal break-all rounded-md border border-indigo-200 bg-indigo-50 px-1.5 py-0.5 font-mono text-[10px] font-bold text-indigo-700"
                           title={`Phiếu khám liên kết: ${row.ticket_number}`}
                         >
                           Phiếu {row.ticket_number.trim()}
@@ -547,14 +557,24 @@ export default function FlaggedSymptomsPanel({
                       <p className="max-w-[380px] whitespace-pre-wrap leading-relaxed text-slate-700" title={description}>
                         {description}
                       </p>
-                      {item.medical_symptom_standard && (
+                      {(row.normalized_transcription ||
+                        item.medical_symptom_standard) && (
                         <div className="mt-2 max-w-[380px] rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5">
                           <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
-                            Đã chuẩn hóa
+                            Đã chuẩn hóa (giữ bản gốc để kiểm toán)
                           </p>
-                          <p className="mt-0.5 text-[11px] leading-relaxed text-slate-600">
-                            {item.medical_symptom_standard}
-                          </p>
+                          {row.normalized_transcription && (
+                            <p className="mt-0.5 text-[11px] leading-relaxed text-slate-600">
+                              {row.normalized_transcription}
+                            </p>
+                          )}
+                          {item.medical_symptom_standard &&
+                            item.medical_symptom_standard !==
+                              row.normalized_transcription && (
+                              <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+                                Tóm tắt y khoa: {item.medical_symptom_standard}
+                              </p>
+                            )}
                         </div>
                       )}
                     </td>
@@ -610,7 +630,7 @@ export default function FlaggedSymptomsPanel({
                         {ageGroupLabel(item)}
                       </span>
                     </td>
-                    <td className="sticky right-0 z-10 border-l border-slate-100 bg-white px-3 py-3 shadow-[-4px_0_10px_-8px_rgba(15,23,42,0.25)] group-hover:bg-slate-50">
+                    <td className="sticky right-0 z-10 w-[232px] min-w-[232px] border-l border-slate-100 bg-white px-3 py-3 shadow-[-4px_0_10px_-8px_rgba(15,23,42,0.25)] group-hover:bg-slate-50">
                       <div className="flex w-full flex-col items-start gap-1.5">
                         <button
                           type="button"

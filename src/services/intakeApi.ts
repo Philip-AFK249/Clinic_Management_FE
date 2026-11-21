@@ -132,6 +132,10 @@ export interface IntakeResponse {
   receiptNumber?: string | null;
   receiptAmount?: number | null;
   isReceiptVerified?: boolean;
+  /** Active Learning linkage created during voice triage. */
+  triageFlagId?: string | null;
+  isOutOfDataset?: boolean;
+  flagReason?: string | null;
 }
 
 export interface IntakePatient {
@@ -203,6 +207,11 @@ export interface QueueTicketDetailResponse {
   receiptNumber?: string | null;
   receiptAmount?: number | null;
   isReceiptVerified?: boolean;
+  triageFlagId?: string | null;
+  isOutOfDataset?: boolean;
+  flagReason?: string | null;
+  confirmedIcd10Code?: string | null;
+  confirmedDiseaseName?: string | null;
 }
 
 /**
@@ -251,6 +260,11 @@ export interface QueueTicket {
   receiptNumber?: string | null;
   receiptAmount?: number | null;
   isReceiptVerified?: boolean;
+  triageFlagId?: string | null;
+  isOutOfDataset?: boolean;
+  flagReason?: string | null;
+  confirmedIcd10Code?: string | null;
+  confirmedDiseaseName?: string | null;
 }
 
 // ---------------------------------------------------------------------------
