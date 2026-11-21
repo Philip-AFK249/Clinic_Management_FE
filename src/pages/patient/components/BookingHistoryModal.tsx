@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   AlertTriangle,
+  Ban,
   CalendarDays,
   CalendarX,
   CheckCircle2,
@@ -13,8 +14,10 @@ import {
   Stethoscope,
   X,
 } from "lucide-react";
+import { toast } from "sonner";
 import { useAuth } from "../../../context/useAuth";
 import {
+  cancelTicketApi,
   getPatientBookingHistoryApi,
   IntakeApiError,
 } from "../../../services/intakeApi";
@@ -25,9 +28,15 @@ import type {
   TriagePriority,
 } from "../../../services/intakeApi";
 import {
+  clearActiveBooking,
   isAppointmentDateExpired,
   readOwnedActiveBooking,
 } from "../data/activeBooking";
+import {
+  isConfirmedTicket,
+  isTemporaryStatus,
+  NO_CANCEL_POLICY_NOTICE,
+} from "../data/ticketLifecycle";
 import { identifierCandidates } from "../data/patientIdentifiers";
 import type { ActiveAppointment } from "../data/patientMockRecords";
 
@@ -67,6 +76,12 @@ interface HistoryRow {
   intakeSource: IntakeSource | null;
   chiefComplaint: string | null;
   checkInTime: string | null;
+  expiresAt: string | null;
+  confirmedAt: string | null;
+  confirmedBy: string | null;
+  rejectionReason: string | null;
+  canCancel: boolean;
+  isTemporary: boolean;
 }
 
 const PRIORITY_LABELS: Record<TriagePriority, string> = {
@@ -91,6 +106,18 @@ interface StatusBadge {
 /** Status as the badge prints it, including the date-sensitive WAITING case. */
 function badgeFor(row: HistoryRow): StatusBadge {
   switch (row.status) {
+    case "PENDING_CONFIRMATION":
+      return {
+        label: "Vé tạm thời chờ xác thực",
+        className: "border-amber-200 bg-amber-50 text-amber-700",
+        icon: Clock,
+      };
+    case "REJECTED":
+      return {
+        label: "Bị từ chối xác thực",
+        className: "border-rose-200 bg-rose-50 text-rose-700",
+        icon: Ban,
+      };
     case "COMPLETED":
       return {
         label: "Đã khám xong",
@@ -174,6 +201,13 @@ function rowFromDetail(detail: QueueTicketDetailResponse): HistoryRow {
     intakeSource: detail.intakeSource,
     chiefComplaint: detail.chiefComplaint,
     checkInTime: detail.checkInTime,
+    expiresAt: detail.expiresAt ?? null,
+    confirmedAt: detail.confirmedAt ?? null,
+    confirmedBy: detail.confirmedBy ?? null,
+    rejectionReason: detail.rejectionReason ?? null,
+    canCancel: detail.canCancel ?? false,
+    isTemporary:
+      detail.isTemporary ?? detail.status === "PENDING_CONFIRMATION",
   };
 }
 
@@ -199,6 +233,12 @@ function rowFromCachedBooking(booking: ActiveAppointment): HistoryRow {
     intakeSource: null,
     chiefComplaint: null,
     checkInTime: null,
+    expiresAt: booking.expiresAt ?? null,
+    confirmedAt: booking.confirmedAt ?? null,
+    confirmedBy: booking.confirmedBy ?? null,
+    rejectionReason: booking.rejectionReason ?? null,
+    canCancel: booking.canCancel ?? false,
+    isTemporary: booking.isTemporary ?? booking.status === "PENDING_CONFIRMATION",
   };
 }
 
@@ -256,6 +296,7 @@ export default function BookingHistoryModal({
     offline: boolean;
   } | null>(null);
   const [isStaleSource, setIsStaleSource] = useState(false);
+  const [busyTicketNumber, setBusyTicketNumber] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open || !user) return;
@@ -332,6 +373,37 @@ export default function BookingHistoryModal({
         ? current.filter((item) => item !== key)
         : [...current, key],
     );
+  }
+
+  /** Only an unconfirmed temporary hold may be cancelled from history. */
+  async function handleCancelTemporary(row: HistoryRow) {
+    if (!isTemporaryStatus(row.status) || !row.canCancel) return;
+    setBusyTicketNumber(row.ticketNumber);
+    try {
+      await cancelTicketApi(row.ticketNumber);
+      clearActiveBooking(user?.email);
+      setRows((current) =>
+        current.map((item) =>
+          item.ticketNumber === row.ticketNumber
+            ? {
+                ...item,
+                status: "CANCELLED" as const,
+                canCancel: false,
+                isTemporary: false,
+              }
+            : item,
+        ),
+      );
+      toast.success("Vé online tạm thời đã được hủy. Khung giờ đã được hoàn trả.", {
+        duration: 5000,
+      });
+    } catch (cause) {
+      toast.error(
+        cause instanceof Error ? cause.message : "Không hủy được vé tạm thời.",
+      );
+    } finally {
+      setBusyTicketNumber(null);
+    }
   }
 
   return (
@@ -569,6 +641,39 @@ export default function BookingHistoryModal({
                           </div>
                         )}
                       </dl>
+
+                      {row.status === "REJECTED" && row.rejectionReason && (
+                        <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs leading-relaxed text-rose-800">
+                          Lý do từ chối xác thực: {row.rejectionReason}
+                        </div>
+                      )}
+
+                      {isConfirmedTicket(row.status) && (
+                        <div className="flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs leading-relaxed text-emerald-800">
+                          <Ban className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                          <span>{NO_CANCEL_POLICY_NOTICE}</span>
+                        </div>
+                      )}
+
+                      {isTemporaryStatus(row.status) && row.canCancel && (
+                        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                          <p className="text-xs leading-relaxed text-amber-800">
+                            Vé đang được giữ tạm thời. Hủy để nhường suất khám này
+                            cho người khác.
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => void handleCancelTemporary(row)}
+                            disabled={busyTicketNumber === row.ticketNumber}
+                            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-rose-300 bg-white px-3 text-xs font-semibold text-rose-600 transition-colors hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            <Ban size={12} aria-hidden="true" />
+                            {busyTicketNumber === row.ticketNumber
+                              ? "Đang hủy..."
+                              : "Hủy vé tạm thời"}
+                          </button>
+                        </div>
+                      )}
 
                       {/* Diagnosis and prescription belong to ClinicalConsultationService,
                           which keys its charts on users.id - not on this ticket's intake

@@ -1,53 +1,105 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { QRCodeSVG } from "qrcode.react";
 import {
+  Ban,
   CheckCircle2,
   Clock,
   FileText,
   QrCode,
-  Sparkles,
+  ShieldAlert,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
+import type { QueueTicketDetailResponse } from "../../../services/intakeApi";
+import { clearActiveBooking } from "../data/activeBooking";
 import type { ActiveAppointment } from "../data/patientMockRecords";
-
-type PaymentMode = "NONE" | "VIETQR" | "COUNTER";
-
-const CONSULTATION_FEE = "150,000 VND";
-const VIETQR_PAYLOAD =
-  "00020101021229370016A0000007270123000697040410123456789010SMARTCLINIC520457245802VN5909SMARTCLINC6007HANOI6304A12B";
-
-function formatCountdown(seconds: number): string {
-  const m = String(Math.floor(seconds / 60)).padStart(2, "0");
-  const s = String(seconds % 60).padStart(2, "0");
-  return `${m}:${s}`;
-}
+import {
+  formatCountdown,
+  isConfirmedTicket,
+  isTemporaryStatus,
+  NO_CANCEL_POLICY_NOTICE,
+  notifyTicketExpired,
+  OFFICIAL_TICKET_CONFIRMED,
+  OFFICIAL_TICKET_LABEL,
+  TEMPORARY_HOLD_NOTICE,
+  TEMPORARY_TICKET_BANNER,
+} from "../data/ticketLifecycle";
+import { useTicketCountdown } from "../../../hooks/useTicketCountdown";
 
 interface BookingTicketModalProps {
   appointment: ActiveAppointment;
+  /** Live backend answer, when a watcher is polling the ticket. */
+  detail?: QueueTicketDetailResponse | null;
+  /** Scopes the storage cleanup on expiry to the signed-in account. */
+  ownerEmail?: string | null;
   onClose: () => void;
+  /** Called once at 00:00 so the page can drop the expired ticket. */
+  onExpire?: (ticketNumber: string) => void;
+  /** Only offered while the ticket is still a temporary hold. */
+  onCancelTemporary?: (ticketNumber: string) => void | Promise<void>;
 }
 
+function formatStamp(value: string | null | undefined): string {
+  if (!value) return "Đang cập nhật";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return new Intl.DateTimeFormat("vi-VN", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(parsed);
+}
+
+/** The confirmation screen for both the temporary hold and the official ticket. */
 export default function BookingTicketModal({
   appointment,
+  detail,
+  ownerEmail,
   onClose,
+  onExpire,
+  onCancelTemporary,
 }: BookingTicketModalProps) {
-  const [paymentMode, setPaymentMode] = useState<PaymentMode>("NONE");
-  const [seconds, setSeconds] = useState(300);
-  const paymentDone = seconds <= 0;
+  const [isCancelling, setIsCancelling] = useState(false);
+  const expiryHandledRef = useRef<string | null>(null);
+
+  const status = detail?.status ?? appointment.status ?? "WAITING";
+  const isTemporary = isTemporaryStatus(status);
+  const isRejected = status === "REJECTED";
+  const isOfficial = isConfirmedTicket(status);
+  const ticketCode = appointment.ticketCode;
+  const expiresAt = detail?.expiresAt ?? appointment.expiresAt ?? null;
+  const bookedAt = detail?.checkInTime ?? appointment.bookedAt ?? null;
+  const confirmedAt = detail?.confirmedAt ?? appointment.confirmedAt ?? null;
+  const countdown = useTicketCountdown(expiresAt, bookedAt, isTemporary);
 
   useEffect(() => {
-    if (paymentMode !== "VIETQR" || seconds <= 0) return;
-    const handle = window.setTimeout(() => setSeconds((s) => s - 1), 1000);
-    return () => window.clearTimeout(handle);
-  }, [paymentMode, seconds]);
+    if (!isTemporary || !countdown.expired || expiryHandledRef.current === ticketCode) {
+      return;
+    }
+    expiryHandledRef.current = ticketCode;
+    notifyTicketExpired(ticketCode);
+    clearActiveBooking(ownerEmail);
+    onExpire?.(ticketCode);
+  }, [countdown.expired, isTemporary, ownerEmail, onExpire, ticketCode]);
 
   function handleDownloadPass() {
     toast.info(
       `PDF Pass ${appointment.ticketCode} đã được tạo. Kiểm tra email hoặc sinh mã QR tại kiosk tầng trệt.`,
       { duration: 4000 },
     );
+  }
+
+  async function handleCancelTemporary() {
+    if (!onCancelTemporary || isCancelling) return;
+    setIsCancelling(true);
+    try {
+      await onCancelTemporary(ticketCode);
+    } finally {
+      setIsCancelling(false);
+    }
   }
 
   const checkInValue = JSON.stringify({
@@ -69,7 +121,11 @@ export default function BookingTicketModal({
           <div className="flex items-center justify-between border-b border-slate-200/80 px-6 py-4">
             <div>
               <h3 className="text-lg font-bold tracking-tight text-slate-900">
-                Đặt Lịch Khám Thành Công!
+                {isTemporary
+                  ? "Vé Online Tạm Thời"
+                  : isRejected
+                    ? "Vé bị từ chối xác thực"
+                    : "Vé Khám Điện Tử"}
               </h3>
               <p className="text-sm text-slate-500">
                 Mã phiếu khám {appointment.ticketCode} &middot; Check-in hàng
@@ -87,14 +143,92 @@ export default function BookingTicketModal({
           </div>
 
           <div className="space-y-5 px-6 py-5">
+            {isTemporary ? (
+              <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 shadow-card">
+                <p className="flex items-center gap-2 text-sm font-bold tracking-wide text-amber-900">
+                  <Clock className="h-4 w-4 shrink-0" aria-hidden="true" />
+                  {TEMPORARY_TICKET_BANNER}
+                </p>
+                <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-white px-4 py-3">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-amber-700">
+                    Thời gian giữ chỗ
+                  </span>
+                  <span
+                    className={`font-mono text-2xl font-bold tabular-nums ${
+                      countdown.secondsLeft < 45 ? "text-rose-600" : "text-amber-800"
+                    }`}
+                  >
+                    {formatCountdown(countdown.secondsLeft)}
+                  </span>
+                </div>
+                <p className="mt-3 text-sm leading-relaxed text-amber-800">
+                  {TEMPORARY_HOLD_NOTICE}
+                </p>
+              </div>
+            ) : isRejected ? (
+              <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 shadow-card">
+                <p className="flex items-center gap-2 text-sm font-bold text-rose-900">
+                  <Ban className="h-4 w-4 shrink-0" aria-hidden="true" />
+                  Vé online tạm thời đã bị từ chối xác thực.
+                </p>
+                {appointment.rejectionReason || detail?.rejectionReason ? (
+                  <p className="mt-2 text-sm leading-relaxed text-rose-800">
+                    Lý do: {detail?.rejectionReason ?? appointment.rejectionReason}
+                  </p>
+                ) : null}
+              </div>
+            ) : (
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 shadow-card">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-600 px-3 py-1 text-xs font-bold text-white">
+                    <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
+                    {OFFICIAL_TICKET_LABEL}
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-300 bg-white px-3 py-1 text-xs font-bold text-emerald-700">
+                    <ShieldAlert className="h-3.5 w-3.5" aria-hidden="true" />
+                    {OFFICIAL_TICKET_CONFIRMED}
+                  </span>
+                </div>
+                <p className="mt-3 text-sm font-semibold text-emerald-900">
+                  Xác nhận lúc: {formatStamp(confirmedAt)}
+                  {appointment.confirmedBy || detail?.confirmedBy
+                    ? ` · Bởi ${detail?.confirmedBy ?? appointment.confirmedBy}`
+                    : ""}
+                </p>
+                <p className="mt-2 flex items-start gap-2 text-sm leading-relaxed text-emerald-800">
+                  <ShieldAlert
+                    className="mt-0.5 h-4 w-4 shrink-0"
+                    aria-hidden="true"
+                  />
+                  <span>{NO_CANCEL_POLICY_NOTICE}</span>
+                </p>
+              </div>
+            )}
+
             {/* Digital pass card */}
             <div className="overflow-hidden rounded-xl border border-slate-200/80 shadow-card">
-              <div className="flex items-center justify-between bg-gradient-to-r from-clinical-600 to-clinical-700 px-5 py-3 text-white">
+              <div
+                className={`flex items-center justify-between px-5 py-3 text-white ${
+                  isTemporary
+                    ? "bg-gradient-to-r from-amber-500 to-amber-600"
+                    : isRejected
+                      ? "bg-gradient-to-r from-rose-500 to-rose-600"
+                      : "bg-gradient-to-r from-emerald-600 to-emerald-700"
+                }`}
+              >
                 <p className="text-sm font-bold uppercase tracking-wide">
-                  Vé Check-in Điện tử
+                  {isTemporary
+                    ? "Vé Giữ Chỗ Online"
+                    : isRejected
+                      ? "Vé bị từ chối"
+                      : "Vé Check-in Điện tử"}
                 </p>
                 <span className="rounded-full bg-white/20 px-2.5 py-0.5 text-xs font-bold">
-                  BHYT Đã xác thực
+                  {isTemporary
+                    ? "Chờ xác thực"
+                    : isRejected
+                      ? "Đã từ chối"
+                      : OFFICIAL_TICKET_CONFIRMED}
                 </span>
               </div>
               <div className="grid grid-cols-2 gap-x-4 gap-y-2 bg-white p-5 sm:grid-cols-4">
@@ -135,100 +269,17 @@ export default function BookingTicketModal({
                 </div>
                 <p className="flex items-center gap-1.5 text-sm text-slate-500">
                   <QrCode className="h-4 w-4 text-clinical-600" aria-hidden="true" />
-                  Quét mã QR này tại bất kỳ kiosk cửa vào nào để lấy số thứ tự
-                  trong 5 giây.
+                  {isTemporary
+                    ? "Vé chỉ có giá trị check-in sau khi admin xác thực."
+                    : isRejected
+                      ? "Vé không còn giá trị check-in. Vui lòng đặt lịch mới."
+                      : "Quét mã QR này tại bất kỳ kiosk cửa vào nào để lấy số thứ tự trong 5 giây."}
                 </p>
               </div>
             </div>
-
-            {/* Payment settlement */}
-            <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-card">
-              <p className="text-sm font-semibold text-slate-900">
-                Thanh toán viện phí
-              </p>
-              {paymentMode === "NONE" && (
-                <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                  <button
-                    type="button"
-                    onClick={() => setPaymentMode("VIETQR")}
-                    className="inline-flex h-12 items-center justify-center gap-2 rounded-lg border border-clinical-200 bg-clinical-50 px-4 text-sm font-semibold text-clinical-700 transition-colors hover:bg-clinical-100"
-                  >
-                    <Sparkles className="h-4 w-4" aria-hidden="true" />
-                    Thanh toán qua VietQR ({CONSULTATION_FEE})
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPaymentMode("COUNTER")}
-                    className="inline-flex h-12 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
-                  >
-                    <Clock className="h-4 w-4" aria-hidden="true" />
-                    Thanh toán tại quầy tiếp đón
-                  </button>
-                </div>
-              )}
-
-              {paymentMode === "VIETQR" && !paymentDone && (
-                <div className="mt-3 flex flex-col items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-4 text-center">
-                  <div className="flex items-center justify-between gap-6">
-                    <QRCodeSVG value={VIETQR_PAYLOAD} size={128} level="M" />
-                    <div className="text-left">
-                      <p className="text-sm font-bold text-slate-900">
-                        Smart Clinic VietQR
-                      </p>
-                      <p className="text-xs text-slate-500">
-                        Phí khám
-                      </p>
-                      <p className="text-base font-bold text-clinical-700">
-                        {CONSULTATION_FEE}
-                      </p>
-                      <p className="mt-1 flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-0.5 text-xs font-semibold text-slate-700">
-                        <Clock className="h-3 w-3 text-clinical-600" aria-hidden="true" />
-                        Tự động xác nhận trong {formatCountdown(seconds)}
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setSeconds(0)}
-                    className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-teal-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-teal-700"
-                  >
-                    <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
-                    Giả lập thanh toán thành công
-                  </button>
-                </div>
-              )}
-
-              {paymentMode === "VIETQR" && paymentDone && (
-                <div className="mt-3 flex items-center gap-3 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
-                  <CheckCircle2 className="h-6 w-6 shrink-0 text-emerald-600" aria-hidden="true" />
-                  <div>
-                    <p className="text-sm font-bold text-emerald-800">
-                      Đã nhận thanh toán qua VietQR
-                    </p>
-                    <p className="text-sm text-emerald-700">
-                      {CONSULTATION_FEE} đã được thanh toán. Hóa đơn điện tử đã
-                      gửi tới điện thoại của bạn.
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {paymentMode === "COUNTER" && (
-                <div className="mt-3 flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
-                  <Clock className="h-5 w-5 shrink-0 text-slate-500" aria-hidden="true" />
-                  <p className="text-sm leading-relaxed text-slate-600">
-                    Bạn đã chọn{" "}
-                    <span className="font-semibold text-slate-800">
-                      thanh toán tại quầy tiếp đón
-                    </span>
-                    . Vui lòng xuất trình vé QR khi đến phòng khám.
-                  </p>
-                </div>
-              )}
-            </div>
           </div>
 
-          {/* Footer actions */}
+          {/* Footer actions: a confirmed ticket can never be cancelled here. */}
           <div className="flex flex-col gap-2 border-t border-slate-200/80 px-6 py-4 sm:flex-row">
             <button
               type="button"
@@ -238,6 +289,29 @@ export default function BookingTicketModal({
               <FileText className="h-5 w-5" aria-hidden="true" />
               Tải phiếu PDF
             </button>
+            {isTemporary ? (
+              onCancelTemporary && (
+                <button
+                  type="button"
+                  onClick={() => void handleCancelTemporary()}
+                  disabled={isCancelling}
+                  className="inline-flex h-12 items-center justify-center gap-2 rounded-lg border border-rose-300 bg-white px-5 text-base font-semibold text-rose-600 transition-colors hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <Ban className="h-5 w-5" aria-hidden="true" />
+                  {isCancelling ? "Đang hủy..." : "Hủy vé tạm thời"}
+                </button>
+              )
+            ) : isRejected ? (
+              <span className="inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-rose-50 px-5 text-sm font-semibold text-rose-700">
+                <Ban className="h-4 w-4" aria-hidden="true" />
+                Vé tạm thời bị từ chối
+              </span>
+            ) : (
+              <span className="inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-emerald-50 px-5 text-sm font-semibold text-emerald-700">
+                <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+                {isOfficial ? OFFICIAL_TICKET_LABEL : "Vé khám"}
+              </span>
+            )}
             <Link
               to="/patient/dashboard"
               className="inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-lg bg-cta px-5 text-base font-semibold text-white shadow-sm transition-all hover:bg-cta-hover"

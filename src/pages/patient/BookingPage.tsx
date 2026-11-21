@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { AlertTriangle, Calendar, ChevronLeft, Check, PhoneCall } from "lucide-react";
 import { toast } from "sonner";
@@ -6,6 +6,7 @@ import { useAuth } from "../../context/useAuth";
 import { updateMyProfileApi } from "../../services/authApi";
 import { normalizeBhytInsuranceCode } from "../../services/ocrApi";
 import {
+  cancelTicketApi,
   checkInPatient,
   getAvailableSlots,
   IntakeApiError,
@@ -34,7 +35,10 @@ import {
 } from "./data/clinicContent";
 import { triageSymptoms } from "./data/patientMockRecords";
 import { hospitalCodeFrom } from "./data/patientProfile";
-import { writeActiveBooking } from "./data/activeBooking";
+import { clearActiveBooking, writeActiveBooking } from "./data/activeBooking";
+import { identifierCandidates } from "./data/patientIdentifiers";
+import { applyTicketDetail } from "./data/ticketLifecycle";
+import { usePatientTicket } from "./hooks/usePatientTicket";
 import {
   clinicDayOffsetIso,
   clinicNowHHmm,
@@ -218,6 +222,46 @@ export default function BookingPage() {
     formFromSession(user),
   );
   const [ticket, setTicket] = useState<ActiveAppointment | null>(null);
+  /**
+   * The confirmation modal watches its own ticket every 3 seconds while it is
+   * temporary, so an admin decision flips the modal to the official state (or
+   * removes a rejected/expired ticket) without a page reload.
+   */
+  const bookingIdentifiers = useMemo(
+    () => identifierCandidates(user, [ticket?.phone]),
+    [user, ticket?.phone],
+  );
+  const watchedTicket = usePatientTicket(ticket, bookingIdentifiers, user?.email ?? null);
+  const { refresh: refreshWatchedTicket } = watchedTicket;
+  // A terminal answer must remove the modal immediately; the hook has already
+  // toasted and purged storage, so no extra effect needs to set React state.
+  const terminalWatchedStatus =
+    watchedTicket.detail?.status === "REJECTED" ||
+    watchedTicket.detail?.status === "CANCELLED" ||
+    watchedTicket.detail?.status === "SKIPPED";
+  const liveTicket =
+    ticket && !terminalWatchedStatus
+      ? applyTicketDetail(ticket, watchedTicket.detail)
+      : null;
+
+  const handleTicketExpire = useCallback(() => {
+    clearActiveBooking(user?.email);
+    setTicket(null);
+  }, [user?.email]);
+
+  const handleCancelTemporary = useCallback(
+    async (ticketNumber: string) => {
+      await cancelTicketApi(ticketNumber);
+      clearActiveBooking(user?.email);
+      setTicket(null);
+      refreshWatchedTicket();
+      toast.success("Vé tạm thời đã được hủy. Khung giờ đã được hoàn trả.", {
+        duration: 5000,
+      });
+    },
+    [user?.email, refreshWatchedTicket],
+  );
+
   /**
    * Set while the final confirmation is in flight to PatientIntakeService.
    *
@@ -1503,7 +1547,16 @@ export default function BookingPage() {
         // the doctor queue as the second key for "who is ahead of me".
         patientId: response.patientId,
         doctorId: response.doctorId,
-        status: "WAITING",
+        // A freshly created online ticket is a temporary 3-minute hold. It
+        // becomes an official WAITING ticket only after admin verification.
+        status: "PENDING_CONFIRMATION",
+        expiresAt: response.expiresAt ?? null,
+        confirmedAt: response.confirmedAt ?? null,
+        confirmedBy: response.confirmedBy ?? null,
+        rejectionReason: response.rejectionReason ?? null,
+        canCancel: response.canCancel ?? undefined,
+        isTemporary: response.isTemporary ?? true,
+        bookedAt: response.checkInTime ?? new Date().toISOString(),
       };
       // The dashboard reads this back: without it the patient would land on
       // "Bạn chưa có lịch hẹn khám nào" right after booking. Scoped to this
@@ -1512,7 +1565,7 @@ export default function BookingPage() {
       setTicket(confirmed);
       toast.success(
         response.message ||
-          "Đặt lịch khám thành công. Phiếu của bạn đã vào hàng đợi tiếp đón.",
+          "Vé online tạm thời đã được giữ trong 03:00. Vui lòng chờ admin xác thực.",
       );
     } catch (error) {
       if (isDuplicateBookingError(error)) {
@@ -1848,10 +1901,14 @@ export default function BookingPage() {
         />
       )}
 
-      {ticket && (
+      {liveTicket && (
         <BookingTicketModal
-          appointment={ticket}
+          appointment={liveTicket}
+          detail={watchedTicket.detail}
+          ownerEmail={user?.email}
           onClose={resetBooking}
+          onExpire={handleTicketExpire}
+          onCancelTemporary={handleCancelTemporary}
         />
       )}
 

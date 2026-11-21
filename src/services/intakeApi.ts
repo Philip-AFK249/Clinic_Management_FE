@@ -16,9 +16,24 @@ export const intakeApi = axios.create({
   timeout: 6000,
 });
 
+/**
+ * Queue service root, used verbatim by the online-ticket verification calls.
+ * Keeping it exported means the patient and admin clients cannot drift to
+ * different spellings of the same route.
+ */
+export const INTAKE_BASE_URL = "/api/v1/queue";
+
+/** Queue-scoped client: its paths start after `/api/v1/queue`. */
+export const intakeQueueApi = axios.create({
+  baseURL: INTAKE_BASE_URL,
+  headers: { "Content-Type": "application/json" },
+  timeout: 6000,
+});
+
 // Carries the AuthService JWT when signed in, so the intake service can bind
 // the record to a real account instead of an anonymous kiosk session.
 attachBearerInterceptor(intakeApi);
+attachBearerInterceptor(intakeQueueApi);
 
 // ---------------------------------------------------------------------------
 // Enums (mirroring the Java enums, all serialized as plain uppercase strings)
@@ -28,12 +43,34 @@ attachBearerInterceptor(intakeApi);
 export type TriagePriority = "P1" | "P2" | "P3";
 
 export type QueueStatus =
+  | "PENDING_CONFIRMATION"
+  | "REJECTED"
   | "WAITING"
   | "CALLED"
   | "IN_CONSULTATION"
   | "COMPLETED"
   | "SKIPPED"
   | "CANCELLED";
+
+/**
+ * Fields added to the online booking lifecycle. Every one is optional because
+ * an older service build (or a ticket minted at a kiosk) never held a 3-minute
+ * hold in the first place.
+ */
+export interface OnlineTicketLifecycleFields {
+  /** Absolute ISO deadline of the temporary 3-minute slot hold. */
+  expiresAt?: string | null;
+  /** When an admin turned the temporary ticket into an official one. */
+  confirmedAt?: string | null;
+  /** Admin who verified the ticket. */
+  confirmedBy?: string | null;
+  /** Why an admin refused a temporary ticket. */
+  rejectionReason?: string | null;
+  /** Backend's answer to "may this ticket still be cancelled?" */
+  canCancel?: boolean;
+  /** True while the ticket is only a temporary hold. */
+  isTemporary?: boolean;
+}
 
 export type IntakeSource =
   | "KIOSK_OCR"
@@ -110,7 +147,7 @@ export interface AdministrativeIntakeRequest {
   flagReason?: string;
 }
 
-export interface IntakeResponse {
+export interface IntakeResponse extends OnlineTicketLifecycleFields {
   ticketNumber: string; // e.g. "#A-001" (includes the literal "#")
   patientId: number;
   patientName: string;
@@ -159,7 +196,7 @@ export interface IntakePatient {
  * the patient portal can poll its own ticket without the nested-patient shape.
  * All java.time fields arrive as ISO strings under Spring Boot defaults.
  */
-export interface QueueTicketDetailResponse {
+export interface QueueTicketDetailResponse extends OnlineTicketLifecycleFields {
   ticketNumber: string; // "#A-001"
   departmentId: number;
   departmentName: string;
@@ -218,7 +255,7 @@ export interface QueueTicketDetailResponse {
  * The queue endpoints serialise the JPA entity directly, so the patient comes
  * back as a nested object rather than flattened onto the ticket.
  */
-export interface QueueTicket {
+export interface QueueTicket extends OnlineTicketLifecycleFields {
   id: number;
   ticketNumber: string; // "#A-001"
   patient: IntakePatient;
@@ -266,6 +303,10 @@ export interface QueueTicket {
   confirmedIcd10Code?: string | null;
   confirmedDiseaseName?: string | null;
 }
+
+/** DTO names used by the ticket verification contract. */
+export type IntakeResponseDto = IntakeResponse;
+export type QueueTicketDetailDto = QueueTicketDetailResponse;
 
 // ---------------------------------------------------------------------------
 // Errors
@@ -505,6 +546,76 @@ export async function getTicketDetails(
   try {
     const { data } = await intakeApi.get<QueueTicketDetailResponse>(
       `/v1/queue/tickets/${encodeURIComponent(ticketNumber)}`,
+      { signal },
+    );
+    return data;
+  } catch (error) {
+    if (axios.isCancel(error)) throw error;
+    throw toApiError(error);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Online ticket verification (temporary hold -> official ticket)
+// ---------------------------------------------------------------------------
+
+/**
+ * Admin's view of every online ticket still inside its 3-minute hold.
+ * `GET /api/v1/queue/online-tickets/pending`.
+ */
+export async function getPendingOnlineTicketsApi(
+  signal?: AbortSignal,
+): Promise<QueueTicketDetailDto[]> {
+  try {
+    const { data } = await intakeQueueApi.get<QueueTicketDetailDto[]>(
+      "/online-tickets/pending",
+      { signal },
+    );
+    return Array.isArray(data) ? data : [];
+  } catch (error) {
+    if (axios.isCancel(error)) throw error;
+    const status = axios.isAxiosError(error) ? error.response?.status : undefined;
+    if (status === 204 || status === 404) return [];
+    throw toApiError(error);
+  }
+}
+
+/**
+ * Verify a temporary ticket and turn it into an official `WAITING` ticket.
+ * `PATCH /api/v1/queue/tickets/{ticketNumber}/approve`.
+ */
+export async function approveOnlineTicketApi(
+  ticketNumber: string,
+  adminName?: string,
+  signal?: AbortSignal,
+): Promise<QueueTicketDetailDto> {
+  try {
+    const { data } = await intakeQueueApi.patch<QueueTicketDetailDto>(
+      `/tickets/${encodeURIComponent(ticketNumber)}/approve`,
+      { adminName },
+      { signal },
+    );
+    return data;
+  } catch (error) {
+    if (axios.isCancel(error)) throw error;
+    throw toApiError(error);
+  }
+}
+
+/**
+ * Refuse a temporary ticket; its held slot is released immediately.
+ * `PATCH /api/v1/queue/tickets/{ticketNumber}/reject` with an optional reason.
+ */
+export async function rejectOnlineTicketApi(
+  ticketNumber: string,
+  reason?: string,
+  adminName?: string,
+  signal?: AbortSignal,
+): Promise<QueueTicketDetailDto> {
+  try {
+    const { data } = await intakeQueueApi.patch<QueueTicketDetailDto>(
+      `/tickets/${encodeURIComponent(ticketNumber)}/reject`,
+      { reason, adminName },
       { signal },
     );
     return data;

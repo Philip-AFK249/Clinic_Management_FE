@@ -28,6 +28,8 @@ const ACTIVE_BOOKING_STORAGE_PREFIX = "patient_active_booking";
 const LEGACY_STORAGE_KEYS = ["clinic_active_booking", "patient_active_booking"];
 
 const QUEUE_STATUSES: readonly QueueStatus[] = [
+  "PENDING_CONFIRMATION",
+  "REJECTED",
   "WAITING",
   "CALLED",
   "IN_CONSULTATION",
@@ -77,6 +79,25 @@ function isActiveAppointment(value: unknown): value is ActiveAppointment {
     (typeof source.status !== "string" ||
       !QUEUE_STATUSES.includes(source.status as QueueStatus))
   ) {
+    return false;
+  }
+  const nullableTextFields = [
+    "expiresAt",
+    "confirmedAt",
+    "confirmedBy",
+    "rejectionReason",
+    "bookedAt",
+  ];
+  for (const field of nullableTextFields) {
+    const value = source[field];
+    if (value !== undefined && value !== null && typeof value !== "string") {
+      return false;
+    }
+  }
+  if (source.canCancel !== undefined && typeof source.canCancel !== "boolean") {
+    return false;
+  }
+  if (source.isTemporary !== undefined && typeof source.isTemporary !== "boolean") {
     return false;
   }
   return true;
@@ -243,7 +264,52 @@ export function appointmentFromTicketDetail(
     patientId: detail.patientId,
     doctorId: detail.doctorId,
     status: detail.status,
+    // The exact deadline travels with the cache so a reload never restarts the
+    // 3-minute clock from the moment the page opened.
+    expiresAt: detail.expiresAt ?? null,
+    confirmedAt: detail.confirmedAt ?? null,
+    confirmedBy: detail.confirmedBy ?? null,
+    rejectionReason: detail.rejectionReason ?? null,
+    canCancel: detail.canCancel,
+    isTemporary: detail.isTemporary ?? detail.status === "PENDING_CONFIRMATION",
+    bookedAt: detail.checkInTime ?? null,
   };
+}
+
+/**
+ * Persist a lifecycle change (temporary -> official, rejection, hold fields)
+ * without rewriting localStorage on every routine poll.
+ */
+export function syncActiveBooking(
+  detail: QueueTicketDetailResponse,
+  ownerEmail: string | null | undefined,
+): void {
+  try {
+    sweepLegacyKeys();
+    const key = scopedKey(ownerEmail);
+    if (!key) return;
+    const raw = localStorage.getItem(key);
+    if (!raw) return;
+    const parsed: unknown = JSON.parse(raw);
+    if (!isActiveAppointment(parsed) || parsed.ticketCode !== detail.ticketNumber) return;
+    const next = appointmentFromTicketDetail(detail);
+    // Keep the original hold start when the service only supplies it once.
+    next.bookedAt = parsed.bookedAt ?? next.bookedAt;
+    const fields: (keyof ActiveAppointment)[] = [
+      "status",
+      "expiresAt",
+      "confirmedAt",
+      "confirmedBy",
+      "rejectionReason",
+      "canCancel",
+      "isTemporary",
+      "bookedAt",
+    ];
+    const changed = fields.some((field) => parsed[field] !== next[field]);
+    if (changed) writeActiveBooking(next, ownerEmail);
+  } catch {
+    // Best-effort mirror: the backend answer on screen is always authoritative.
+  }
 }
 
 export function writeActiveBooking(

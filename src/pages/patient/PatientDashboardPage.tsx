@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import {
   Activity,
@@ -14,6 +14,7 @@ import {
   Pill,
   QrCode,
   RefreshCw,
+  ShieldAlert,
   ShieldCheck,
   Stethoscope,
   Users,
@@ -32,11 +33,24 @@ import type {
 import PatientNavbar from "./components/PatientNavbar";
 import PatientFooter from "./components/PatientFooter";
 import {
+  appointmentFromTicketDetail,
   clearActiveBooking,
   isAppointmentDateExpired,
   isStoredBookingExpired,
   readOwnedActiveBooking,
 } from "./data/activeBooking";
+import {
+  formatCountdown,
+  isConfirmedTicket,
+  isTemporaryStatus,
+  NO_CANCEL_POLICY_NOTICE,
+  notifyTicketExpired,
+  OFFICIAL_TICKET_CONFIRMED,
+  OFFICIAL_TICKET_LABEL,
+  TEMPORARY_HOLD_NOTICE,
+  TEMPORARY_TICKET_BANNER,
+} from "./data/ticketLifecycle";
+import { useTicketCountdown } from "../../hooks/useTicketCountdown";
 import { identifierCandidates } from "./data/patientIdentifiers";
 import {
   encounterKey,
@@ -63,6 +77,16 @@ const STATUS_BADGES: Record<
   QueueStatus,
   { label: string; className: string; icon: typeof CheckCircle2 }
 > = {
+  PENDING_CONFIRMATION: {
+    label: "Vé tạm thời chờ xác thực",
+    className: "border-amber-200 bg-amber-50 text-amber-700",
+    icon: Clock,
+  },
+  REJECTED: {
+    label: "Bị từ chối xác thực",
+    className: "border-rose-200 bg-rose-50 text-rose-700",
+    icon: Ban,
+  },
   WAITING: {
     label: "Đang chờ tiếp đón",
     className: "border-amber-200 bg-amber-50 text-amber-700",
@@ -102,6 +126,8 @@ const FINISHED_NOTICES: Record<QueueStatus, string> = {
     "Phiếu khám đã bị bỏ qua do không có mặt khi được gọi. Vui lòng liên hệ quầy tiếp đón để được xếp lại lịch.",
   CANCELLED:
     "Phiếu khám đã bị hủy. Bạn có thể đặt một lịch hẹn mới bất cứ lúc nào.",
+  PENDING_CONFIRMATION: TEMPORARY_HOLD_NOTICE,
+  REJECTED: "Vé online tạm thời đã bị từ chối xác thực.",
   WAITING: "",
   CALLED: "",
   IN_CONSULTATION: "",
@@ -205,13 +231,17 @@ export default function PatientDashboardPage() {
   // ownership check (printed name or contact phone) before it is shown -
   // anything else is purged rather than rendered. The reader itself also sweeps
   // the legacy shared keys an earlier build wrote (`clinic_active_booking`).
-  const [storedBooking, setStoredBooking] = useState(() =>
+  const [storedBooking] = useState(() =>
     readOwnedActiveBooking(
       user
         ? { email: user.email, fullName: user.fullName, phone: user.phone }
         : null,
     ),
   );
+  // Set when this screen itself removes a hold (manual cancel or 00:00 expiry).
+  // The hook purges localStorage, this hides the cached copy without waiting
+  // for another render cycle from an effect.
+  const [clearedTicketCode, setClearedTicketCode] = useState<string | null>(null);
   // The cancel flow: a confirmation step (an appointment is not thrown away on
   // one click) and a busy flag so the request cannot be fired twice.
   const [confirmingCancel, setConfirmingCancel] = useState(false);
@@ -241,11 +271,17 @@ export default function PatientDashboardPage() {
   // another device - or before this browser saw the booking flow - still shows)
   // as soon as one lands.
   const ticket = usePatientTicket(storedBooking, identifierList, user?.email ?? null);
+  const { refresh: refreshTicket } = ticket;
   // A booking the backend rejects as unknown (400/404) is dropped by the hook;
   // from the page's point of view the patient simply has no appointment left.
   // The backend's own answer also counts as a real appointment, even when the
   // cache was lost - it was found by the signed-in patient's own identifier.
-  const ownedBooking = ticket.invalidTicket ? null : storedBooking;
+  const mirroredBooking = ticket.detail
+    ? appointmentFromTicketDetail(ticket.detail)
+    : storedBooking;
+  const visibleBooking =
+    mirroredBooking?.ticketCode === clearedTicketCode ? null : mirroredBooking;
+  const ownedBooking = ticket.invalidTicket ? null : visibleBooking;
   // A day that has already passed is not an active appointment, whatever the
   // cache or a lagging poll may still say: that visit belongs in "Lịch sử đặt
   // lịch", never under the live queue board. The hook already purges the
@@ -257,9 +293,7 @@ export default function PatientDashboardPage() {
     ticket.detail !== null &&
     isAppointmentDateExpired(ticket.detail.appointmentDate);
   const hasAppointment =
-    !ownedBookingExpired &&
-    !detailExpired &&
-    (ticket.detail !== null || ownedBooking !== null);
+    !ownedBookingExpired && !detailExpired && ownedBooking !== null;
 
   // The stored booking renders on its own while the first poll is in flight;
   // once it answers, the backend's copy wins everywhere it has an opinion.
@@ -277,6 +311,31 @@ export default function PatientDashboardPage() {
       : ownedBooking?.timeSlot ?? "",
   };
   const statusBadge = STATUS_BADGES[ticket.status];
+  const isTemporary = isTemporaryStatus(ticket.status);
+  const isOfficial = isConfirmedTicket(ticket.status);
+  const expiresAt = ticket.detail?.expiresAt ?? ownedBooking?.expiresAt ?? null;
+  const bookedAt = ticket.detail?.checkInTime ?? ownedBooking?.bookedAt ?? null;
+  const confirmedAt = ticket.detail?.confirmedAt ?? ownedBooking?.confirmedAt ?? null;
+  const confirmedBy = ticket.detail?.confirmedBy ?? ownedBooking?.confirmedBy ?? null;
+  const canCancel =
+    ticket.detail?.canCancel ?? ownedBooking?.canCancel ?? !isOfficial;
+  // The countdown calls back from its 1-second tick, so a hold is removed at
+  // 00:00 without a state-setting effect. Storage is already mirrored by the
+  // polling hook; this flag only hides the cached card on this screen.
+  const handleHoldExpire = useCallback(() => {
+    const ticketNumber = display.ticketCode;
+    if (!ticketNumber) return;
+    notifyTicketExpired(ticketNumber);
+    clearActiveBooking(user?.email);
+    setClearedTicketCode(ticketNumber);
+    refreshTicket();
+  }, [display.ticketCode, refreshTicket, user?.email]);
+  const countdown = useTicketCountdown(
+    expiresAt,
+    bookedAt,
+    isTemporary,
+    handleHoldExpire,
+  );
 
   const activePatientId = ticket.detail?.patientId ?? ownedBooking?.patientId ?? null;
   const activeTicketNumber =
@@ -399,16 +458,18 @@ export default function PatientDashboardPage() {
    */
   async function handleCancelTicket() {
     const ticketNumber = display.ticketCode;
-    if (!ticketNumber || isCancelling) return;
+    // A confirmed ticket is final: no cancellation and no refund, whatever a
+    // stale button or an old tab might still suggest.
+    if (!isTemporary || !canCancel || !ticketNumber || isCancelling) return;
     setIsCancelling(true);
     try {
       await cancelTicketApi(ticketNumber);
       clearActiveBooking(user?.email);
-      setStoredBooking(null);
+      setClearedTicketCode(ticketNumber);
       setConfirmingCancel(false);
-      ticket.refresh();
+      refreshTicket();
       toast.success(
-        "Đã hủy lịch hẹn thành công. Khung giờ khám đã được hoàn trả lại hệ thống.",
+        "Vé online tạm thời đã được hủy. Khung giờ khám đã được hoàn trả lại hệ thống.",
         { duration: 6000 },
       );
     } catch (cause) {
@@ -493,6 +554,60 @@ export default function PatientDashboardPage() {
                     {statusBadge.label}
                   </span>
                 </div>
+                {isTemporary && (
+                  <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-4">
+                    <p className="flex items-center gap-2 text-sm font-bold tracking-wide text-amber-900">
+                      <Clock className="h-4 w-4 shrink-0" aria-hidden="true" />
+                      {TEMPORARY_TICKET_BANNER}
+                    </p>
+                    <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-white px-4 py-3">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-amber-700">
+                        Thời gian giữ chỗ
+                      </span>
+                      <span
+                        className={`font-mono text-2xl font-bold tabular-nums ${
+                          countdown.secondsLeft < 45
+                            ? "text-rose-600"
+                            : "text-amber-800"
+                        }`}
+                      >
+                        {formatCountdown(countdown.secondsLeft)}
+                      </span>
+                    </div>
+                    <p className="mt-3 text-sm leading-relaxed text-amber-800">
+                      {TEMPORARY_HOLD_NOTICE}
+                    </p>
+                  </div>
+                )}
+                {isOfficial && (
+                  <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-600 px-3 py-1 text-xs font-bold text-white">
+                        <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
+                        {OFFICIAL_TICKET_LABEL}
+                      </span>
+                      {isOfficial && (
+                        <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-300 bg-white px-3 py-1 text-xs font-bold text-emerald-700">
+                          <ShieldAlert className="h-3.5 w-3.5" aria-hidden="true" />
+                          {OFFICIAL_TICKET_CONFIRMED}
+                        </span>
+                      )}
+                    </div>
+                    {confirmedAt && (
+                      <p className="mt-2 text-xs font-semibold text-emerald-800">
+                        Xác nhận lúc: {new Date(confirmedAt).toLocaleString("vi-VN")}
+                        {confirmedBy ? ` · Bởi ${confirmedBy}` : ""}
+                      </p>
+                    )}
+                    <p className="mt-2 flex items-start gap-2 text-sm leading-relaxed text-emerald-800">
+                      <ShieldAlert
+                        className="mt-0.5 h-4 w-4 shrink-0"
+                        aria-hidden="true"
+                      />
+                      <span>{NO_CANCEL_POLICY_NOTICE}</span>
+                    </p>
+                  </div>
+                )}
                 <dl className="mt-4 space-y-3 text-sm">
                   <Row label="Mã phiếu khám" value={display.ticketCode} bold />
                   <Row
@@ -503,7 +618,7 @@ export default function PatientDashboardPage() {
                   <Row label="Bác sĩ" value={display.doctor} />
                   <Row label="Phòng khám" value={display.room} />
                 </dl>
-                {ticket.isActive && (
+                {ticket.isInQueue && (
                   <div className="mt-4 flex items-start gap-3 rounded-lg border border-clinical-100 bg-clinical-50 p-3">
                     <QrCode
                       className="h-5 w-5 shrink-0 text-clinical-600"
@@ -523,12 +638,12 @@ export default function PatientDashboardPage() {
                     </p>
                   </div>
                 )}
-                {/* Only a ticket that still holds a slot can be given back. */}
-                {ticket.isActive && (
+                {/* Once confirmed the slot is final - no cancel, no refund. */}
+                {isTemporary && canCancel && (
                   <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
                     <p className="max-w-[15rem] text-xs leading-relaxed text-slate-500">
-                      Không đến khám được? Hủy để hoàn trả khung giờ cho bệnh
-                      nhân khác.
+                      Không đến khám được? Hủy vé tạm thời để hoàn trả khung giờ
+                      cho bệnh nhân khác.
                     </p>
                     <button
                       type="button"
@@ -537,13 +652,13 @@ export default function PatientDashboardPage() {
                       className="inline-flex h-10 items-center gap-2 rounded-lg border border-rose-300 bg-white px-4 text-sm font-semibold text-rose-600 transition-colors hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       <Ban className="h-4 w-4" aria-hidden="true" />
-                      Hủy lịch hẹn
+                      Hủy vé tạm thời
                     </button>
                   </div>
                 )}
               </section>
 
-              {ticket.isActive ? (
+              {ticket.isInQueue ? (
                 /* Live queue tracker */
                 <section className="rounded-xl border border-slate-200/80 bg-white p-5 shadow-card">
                   <div className="flex items-center justify-between">

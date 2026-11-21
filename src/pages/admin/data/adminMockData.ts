@@ -1,5 +1,6 @@
 export type AdminTab =
   | "OVERVIEW"
+  | "TICKET_VERIFICATION"
   | "ROSTER"
   | "USERS"
   | "PATIENTS"

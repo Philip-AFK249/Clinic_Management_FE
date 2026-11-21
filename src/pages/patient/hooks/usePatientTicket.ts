@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   getActivePatientTicketApi,
   getDoctorQueue,
@@ -13,17 +13,23 @@ import {
   appointmentFromTicketDetail,
   clearActiveBooking,
   isAppointmentDateExpired,
+  syncActiveBooking,
   writeActiveBooking,
 } from "../data/activeBooking";
 import type { ActiveAppointment } from "../data/patientMockRecords";
+import {
+  isHoldExpired,
+  isQueuedStatus,
+  isTemporaryStatus,
+  isTerminalStatus,
+  notifyTicketAccepted,
+  notifyTicketExpired,
+  notifyTicketRejected,
+} from "../data/ticketLifecycle";
 
-const POLL_INTERVAL_MS = 10_000;
-
-/** Still in a queue somewhere: worth re-checking every few seconds. */
-const ACTIVE_STATUSES: readonly QueueStatus[] = ["WAITING", "CALLED", "IN_CONSULTATION"];
-
-/** Visit is over: keep the last answer on screen, stop asking for a new one. */
-const TERMINAL_STATUSES: readonly QueueStatus[] = ["COMPLETED", "CANCELLED", "SKIPPED"];
+/** Temporary tickets must be checked far more often than a normal queue. */
+const TEMPORARY_POLL_INTERVAL_MS = 3_000;
+const ACTIVE_POLL_INTERVAL_MS = 10_000;
 
 export interface PatientTicketState {
   /** The backend's view of the ticket; `null` until the first poll lands. */
@@ -38,15 +44,14 @@ export interface PatientTicketState {
   currentServing: string | null;
   /** True once this ticket itself is CALLED or IN_CONSULTATION. */
   yourTurn: boolean;
-  /** False once the visit is finished (or cancelled) and no longer in a queue. */
+  /** Temporary holds count as active, but they are not in a doctor's queue. */
   isActive: boolean;
+  /** True only once the ticket has entered the real waiting queue. */
+  isInQueue: boolean;
   /**
-   * The stored booking must not be shown: either the backend rejected the
-   * number (legacy mock such as `#APT-2026-8821`, or a purged record), or the
-   * whole lookup came back empty (204 No Content) or handed back a ticket whose
-   * day has already passed. In every one of those cases localStorage has been
-   * purged and polling has stopped - the dashboard should render its empty
-   * state, silently, instead of resurrecting a finished visit.
+   * The stored booking must not be shown: the backend rejected the number,
+   * answered "nothing active", or the hold was rejected/expired/cancelled.
+   * Storage has been purged in every one of those cases.
    */
   invalidTicket: boolean;
   /** PatientIntakeService could not be reached or answered with a fault. */
@@ -55,60 +60,32 @@ export interface PatientTicketState {
   lastUpdatedAt: Date | null;
   /**
    * Drop whatever is on screen for the current poll cycle and ask again right
-   * away. Used after a cancellation: the stored booking is gone and the
-   * dashboard must not wait for the 10-second interval to agree.
+   * away. Used after a cancellation or a manual refresh.
    */
   refresh: () => void;
 }
 
 /**
- * The signed-in patient's live ticket, polled every 10 seconds.
+ * The signed-in patient's live ticket.
  *
  * Resolution order, because "the patient has no appointment" must never be
  * reached while a real ticket exists:
  *
  * 1. `GET /v1/queue/patient/{patientId}/active` - the intake `Patient.id`
- *    stamped on the booking confirmation. Exact, and immune to how a phone or
- *    BHYT number happens to be formatted.
+ *    stamped on the booking confirmation.
  * 2. `GET /v1/queue/patient/active?identifier=...` - every candidate spelling
- *    of the account's phone, BHYT and CCCD (plus the phone recorded on the
- *    stored booking), tried in turn. One badly formatted field must not hide a
- *    ticket the others can find.
+ *    of the account's phone, BHYT and CCCD (plus the stored booking's phone).
  * 3. `GET /v1/queue/tickets/{ticketNumber}` - the stored booking's number,
- *    which reveals the final status of a finished visit (and is the only path
- *    left when the account carries no identifier at all).
+ *    which also reveals the final status of a finished/rejected visit.
  *
- * A blank answer (204 No Content, or a 400 from an older build) resolves to
- * `null` inside `getActivePatientTicketApi` and falls through to the next
- * lookup rather than blanking the screen. Every answer that does find a ticket
- * is written back into the booking cache, so the card keeps rendering after a
- * reload - or from another device - even when localStorage never saw the
- * booking flow.
+ * While the ticket is `PENDING_CONFIRMATION` the poll runs every 3 seconds so
+ * an admin decision (or an expired hold) reaches the patient promptly; once
+ * the ticket is official it drops back to 10 seconds, and it stops entirely
+ * for terminal statuses.
  *
- * The cache is only ever a mirror of the backend, so two answers are treated as
- * "this patient has no appointment" and purge it on the spot:
- *
- * - the exact `patientId` lookup coming back empty (204 / `null`) - the local
- *   copy must not outlive the service that owns the ticket;
- * - any lookup returning a ticket whose `appointmentDate` is already in the
- *   past - a finished day is history, never an active appointment, and the
- *   `WAITING` row some builds leave behind is what used to render under
- *   "Lịch hẹn đang hoạt động" weeks after the visit.
- *
- * In both cases `ticket.detail` is set to `null` and `invalidTicket` goes
- * true, so the dashboard falls straight through to its empty state.
- *
- * Lifecycle rules:
- *
- * - Poll only while the ticket is WAITING/CALLED/IN_CONSULTATION; once it is
- *   terminal, the last answer stays on screen and the interval stops.
- * - A number the backend does not know (HTTP 400/404 on the detail lookup) is
- *   not an error to keep retrying: the stored booking is purged, the poll
- *   stops, and the caller gets `invalidTicket` so the empty state can render
- *   without a single toast.
- * - No candidates and no stored number is skipped entirely, and a genuine
- *   offline/server fault keeps the last known state and keeps polling, because
- *   those usually recover on their own.
+ * Terminal online-ticket transitions are handled here rather than in a card:
+ * accept toasts once and keeps the official ticket on screen, rejection and
+ * expiry toast once, purge localStorage and tell the caller to drop its state.
  */
 export function usePatientTicket(
   booking: ActiveAppointment | null,
@@ -118,17 +95,16 @@ export function usePatientTicket(
   const [detail, setDetail] = useState<QueueTicketDetailResponse | null>(null);
   const [queue, setQueue] = useState<QueueTicket[]>([]);
   const [isUnknownNumber, setIsUnknownNumber] = useState(false);
-  /**
-   * The backend answered "nothing active" (204 / `null`) or named a day that
-   * has already passed, and localStorage has been purged to agree with it.
-   * Drives `invalidTicket` below: the dashboard's own copy of the booking is
-   * state it holds, so it has to be told the cache no longer backs it.
-   */
   const [staleBooking, setStaleBooking] = useState(false);
   const [isOffline, setIsOffline] = useState(false);
   const [error, setError] = useState("");
   const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
+
+  const seenStatusRef = useRef<QueueStatus | null>(booking?.status ?? null);
+  const expiryToastRef = useRef<string | null>(null);
+  /** Set on a terminal answer so an effect restart cannot re-poll it. */
+  const haltedRef = useRef(false);
 
   // Stable identity is the caller's job (useMemo around `identifierCandidates`),
   // so the effect below can list it as a dependency without looping.
@@ -140,22 +116,37 @@ export function usePatientTicket(
   const ticketCode = booking?.ticketCode ?? null;
   const patientId = booking?.patientId ?? null;
   const doctorId = booking?.doctorId ?? null;
+  const bookingExpiresAt = booking?.expiresAt ?? null;
+  const bookingBookedAt = booking?.bookedAt ?? null;
   const cachedTicketCode = ticketCode;
   const trimmedIdentifierKey = trimmedIdentifiers.join("|");
-  // Judged from the booking alone, before any network call: a mock number such
-  // as `#APT-2026-8821` must never reach the backend at all. Derived rather
-  // than stored so the purge can happen in an effect without a cascading
-  // setState (the storage reader normally rejects these already).
   const malformed = booking !== null && !isValidTicketNumber(booking.ticketCode);
+  // Temporary holds are polled three times as often as an ordinary visit. It
+  // is derived from the freshest answer rather than stored in another state,
+  // so a status change reschedules the interval without a setState-in-effect.
+  const pollingMode: "temporary" | "standard" = detail
+    ? isTemporaryStatus(detail.status)
+      ? "temporary"
+      : "standard"
+    : isTemporaryStatus(booking?.status)
+      ? "temporary"
+      : "standard";
+
+  useEffect(() => {
+    // A different ticket starts a fresh lifecycle, including its own toasts.
+    seenStatusRef.current = booking?.status ?? null;
+    expiryToastRef.current = null;
+    haltedRef.current = false;
+    // Status changes of the *same* ticket are handled inside `load`, not here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ticketCode]);
 
   useEffect(() => {
     if (malformed) {
-      // External system: an effect may update it synchronously.
       clearActiveBooking(ownerEmail);
       return undefined;
     }
-    // Nothing to ask about: no verified stored ticket, no intake patient id and
-    // no identifier to query the intake service with.
+    if (haltedRef.current) return undefined;
     if (!ticketCode && patientId === null && trimmedIdentifierKey === "") {
       return undefined;
     }
@@ -170,6 +161,7 @@ export function usePatientTicket(
 
     function stopPolling() {
       stopped = true;
+      haltedRef.current = true;
       if (intervalId !== 0) {
         window.clearInterval(intervalId);
         intervalId = 0;
@@ -187,13 +179,30 @@ export function usePatientTicket(
       setError("");
     }
 
+    /** Rejection, expiry and cancellation all remove the temporary ticket. */
+    function removeActiveTicket() {
+      stopPolling();
+      clearActiveBooking(ownerEmail);
+      setDetail(null);
+      setQueue([]);
+      setStaleBooking(true);
+      setIsOffline(false);
+      setError("");
+      setLastUpdatedAt(new Date());
+    }
+
     async function load() {
       try {
         let next: QueueTicketDetailResponse | null = null;
-        // True when this cycle already dropped the local copy: a later lookup
-        // in the same cycle may still find the very same ticket (by number),
-        // and the cache then has to be written back instead of staying empty.
         let cachePurgedThisCycle = false;
+        let unknownTicketNumber = false;
+        // While a ticket is temporary, watch the ticket itself: that endpoint
+        // is the one that reports the admin's approve/reject decision and the
+        // exact hold deadline. Once official, the active-ticket lookups below
+        // are enough and cheaper.
+        const preferTicketDetails =
+          code !== null &&
+          isTemporaryStatus(detail?.status ?? booking?.status ?? null);
 
         /** The local mirror is wrong: drop it and stop claiming a booking. */
         function purgeStaleBooking() {
@@ -206,80 +215,118 @@ export function usePatientTicket(
           stopPolling();
         }
 
-        // 1. The intake patient id is exact; ask it first when the booking
-        //    carried one from the check-in response.
-        if (patientId !== null) {
+        if (preferTicketDetails && code !== null) {
+          try {
+            next = await getTicketDetails(code, signal);
+          } catch (cause) {
+            if (signal.aborted) return;
+            if (!isUnknownTicketError(cause)) throw cause;
+            unknownTicketNumber = true;
+          }
+        }
+
+        if (next === null && patientId !== null) {
           next = await getActivePatientTicketApi({ patientId }, signal);
           if (signal.aborted) return;
           if (next === null) {
-            // 204 No Content (or a blank body): PatientIntakeService holds no
-            // active ticket for this patient, so the stored booking is stale by
-            // definition. Purge it at once rather than waiting for a later
-            // lookup to agree - the fallbacks below still run, so a ticket this
-            // exact id somehow missed is still found and re-cached.
             clearActiveBooking(ownerEmail);
             cachePurgedThisCycle = true;
             setStaleBooking(true);
           }
         }
 
-        // 2. Every identifier spelling in turn - a phone stored with a country
-        //    code, or a BHYT number typed with spaces, must not hide a ticket
-        //    the other fields can find.
         for (const identifier of candidates) {
           if (next !== null) break;
           next = await getActivePatientTicketApi({ identifier }, signal);
           if (signal.aborted) return;
         }
 
-        // 3. The stored ticket number, which also covers a visit that already
-        //    finished (its final status is worth showing, not a blank screen).
-        if (next === null && code !== null) {
+        if (next === null && code !== null && !preferTicketDetails) {
           try {
             next = await getTicketDetails(code, signal);
           } catch (cause) {
             if (signal.aborted) return;
             if (!isUnknownTicketError(cause)) throw cause;
-            // 400/404 here means the *number* is unknown (legacy mock or a
-            // ticket deleted from the database) - not "visit finished".
-            purgeUnknownTicket();
-            return;
+            unknownTicketNumber = true;
           }
         }
         if (signal.aborted) return;
+        if (next === null && unknownTicketNumber) {
+          purgeUnknownTicket();
+          return;
+        }
         if (next === null) {
-          // Nothing active, and no stored number to fall back on: the patient
-          // simply has no appointment - and whatever this browser had cached
-          // cannot be right either, so it goes with the answer.
           purgeStaleBooking();
           return;
         }
-        // A day that has already rolled over is history, not an appointment:
-        // the backend's own `/active` filter would never hand it back, so a
-        // WAITING row dated 18/10 must not stand in for a live booking on
-        // 21/10 either. Purged, shown as nothing, never polled again.
         if (isAppointmentDateExpired(next.appointmentDate)) {
           purgeStaleBooking();
           return;
         }
+
+        const previousStatus = seenStatusRef.current;
+        const holdExpired =
+          isTemporaryStatus(next.status) &&
+          isHoldExpired(next.expiresAt ?? bookingExpiresAt, next.checkInTime ?? bookingBookedAt);
+
+        // A temporary hold that ran out is terminal even when a slow backend
+        // still reports PENDING_CONFIRMATION: the patient must not keep waiting.
+        if (holdExpired && expiryToastRef.current !== next.ticketNumber) {
+          expiryToastRef.current = next.ticketNumber;
+          notifyTicketExpired(next.ticketNumber);
+          removeActiveTicket();
+          return;
+        }
+
+        if (previousStatus !== next.status) {
+          if (
+            previousStatus === "PENDING_CONFIRMATION" &&
+            next.status === "WAITING"
+          ) {
+            notifyTicketAccepted(next.ticketNumber);
+          }
+          if (next.status === "REJECTED") {
+            notifyTicketRejected(next.ticketNumber, next.rejectionReason);
+          }
+        }
+        seenStatusRef.current = next.status;
+
+        // Rejected, cancelled and skipped tickets leave no active booking at
+        // all: a skipped temporary hold has lost its claim to the slot too.
+        if (
+          next.status === "REJECTED" ||
+          next.status === "CANCELLED" ||
+          next.status === "SKIPPED"
+        ) {
+          if (
+            (next.status === "CANCELLED" ||
+              (next.status === "SKIPPED" &&
+                previousStatus === "PENDING_CONFIRMATION")) &&
+            expiryToastRef.current !== next.ticketNumber
+          ) {
+            expiryToastRef.current = next.ticketNumber;
+            notifyTicketExpired(next.ticketNumber);
+          }
+          removeActiveTicket();
+          return;
+        }
+
         setDetail(next);
         setIsUnknownNumber(false);
         setStaleBooking(false);
         setIsOffline(false);
         setError("");
 
-        // The backend's copy wins over whatever this browser had cached - a
-        // ticket booked elsewhere, or one whose cache did not survive a
-        // logout. Written when it differs from what was there, and always when
-        // this cycle purged the entry first, so the card keeps rendering after
-        // a reload. Not on every tick, so the 10-second poll does not rewrite
-        // localStorage each cycle.
+        // The backend's copy wins over the browser cache, including the exact
+        // hold deadline and the confirmation stamp written by the admin.
         if (ownerEmail && (cachePurgedThisCycle || cachedTicketCode !== next.ticketNumber)) {
           writeActiveBooking(appointmentFromTicketDetail(next), ownerEmail);
+        } else if (ownerEmail) {
+          syncActiveBooking(next, ownerEmail);
         }
 
         const queueDoctorId = next.doctorId || doctorId;
-        const stillQueued = ACTIVE_STATUSES.includes(next.status);
+        const stillQueued = isQueuedStatus(next.status);
         if (queueDoctorId !== null && stillQueued) {
           const tickets = await getDoctorQueue(queueDoctorId, next.appointmentDate, signal);
           if (signal.aborted) return;
@@ -289,8 +336,8 @@ export function usePatientTicket(
         }
         setLastUpdatedAt(new Date());
 
-        // Terminal: the screen keeps this final answer, the timer goes away.
-        if (TERMINAL_STATUSES.includes(next.status)) stopPolling();
+        // The interval is derived from `detail`; terminal answers stop it here.
+        if (isTerminalStatus(next.status)) stopPolling();
       } catch (cause) {
         if (signal.aborted) return;
         setIsOffline(true);
@@ -303,9 +350,14 @@ export function usePatientTicket(
     }
 
     void load();
-    intervalId = window.setInterval(() => {
-      if (!stopped) void load();
-    }, POLL_INTERVAL_MS);
+    intervalId = window.setInterval(
+      () => {
+        if (!stopped) void load();
+      },
+      pollingMode === "temporary"
+        ? TEMPORARY_POLL_INTERVAL_MS
+        : ACTIVE_POLL_INTERVAL_MS,
+    );
     return () => {
       controller.abort();
       if (intervalId !== 0) window.clearInterval(intervalId);
@@ -315,16 +367,25 @@ export function usePatientTicket(
     patientId,
     trimmedIdentifierKey,
     doctorId,
+    bookingExpiresAt,
+    bookingBookedAt,
     ownerEmail,
     malformed,
     cachedTicketCode,
     reloadToken,
+    pollingMode,
+    booking?.status,
+    detail?.status,
   ]);
 
-  const refresh = useCallback(() => setReloadToken((token) => token + 1), []);
+  const refresh = useCallback(() => {
+    haltedRef.current = false;
+    setReloadToken((token) => token + 1);
+  }, []);
 
   const status: QueueStatus = detail?.status ?? booking?.status ?? "WAITING";
-  const isActive = ACTIVE_STATUSES.includes(status);
+  const isInQueue = isQueuedStatus(status);
+  const isActive = isTemporaryStatus(status) || isInQueue;
   const yourTurn = status === "CALLED" || status === "IN_CONSULTATION";
 
   const mine = detail
@@ -332,9 +393,9 @@ export function usePatientTicket(
     : undefined;
 
   const personsAhead = useMemo(() => {
-    if (!mine || !isActive) return null;
+    if (!mine || !isInQueue) return null;
     return patientsAhead(mine, queue);
-  }, [mine, isActive, queue]);
+  }, [mine, isInQueue, queue]);
 
   const currentServing =
     queue.find((ticket) => ticket.status === "CALLED" || ticket.status === "IN_CONSULTATION")
@@ -348,6 +409,7 @@ export function usePatientTicket(
     currentServing,
     yourTurn,
     isActive,
+    isInQueue,
     invalidTicket: malformed || isUnknownNumber || staleBooking,
     isOffline,
     error,

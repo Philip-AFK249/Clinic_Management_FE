@@ -178,6 +178,23 @@ export interface ActiveAppointment {
   doctorId?: number;
   /** Queue status as last seen; defaults to WAITING until polling says otherwise. */
   status?: QueueStatus;
+  /** Absolute ISO deadline of the 3-minute temporary hold. */
+  expiresAt?: string | null;
+  /** When the admin verified this ticket (official tickets only). */
+  confirmedAt?: string | null;
+  /** Admin who verified this ticket. */
+  confirmedBy?: string | null;
+  /** Why a temporary ticket was refused. */
+  rejectionReason?: string | null;
+  /** Backend answer for whether the ticket may still be cancelled. */
+  canCancel?: boolean;
+  /** True for the temporary ticket that is not yet official. */
+  isTemporary?: boolean;
+  /**
+   * When the hold started. Used as the fallback clock when a service build
+   * does not return `expiresAt`: 3 minutes from this instant.
+   */
+  bookedAt?: string | null;
 }
 
 export interface KbEntry {
