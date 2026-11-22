@@ -49,6 +49,17 @@
   }
 }
 
+@layer utilities {
+  /*
+   * Sticky mobile action bars sit above the iPhone home indicator. The inset
+   * is 0 on devices without one (and in browsers that do not support env()),
+   * so the bar keeps its normal padding everywhere else.
+   */
+  .pb-safe {
+    padding-bottom: calc(0.5rem + env(safe-area-inset-bottom, 0px));
+  }
+}
+
 /* ---------------------------------------------------------------------------
    Thermal receipt printing (80mm POS printers)
    ---------------------------------------------------------------------------

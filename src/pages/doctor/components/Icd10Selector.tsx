@@ -55,7 +55,7 @@ export default function Icd10Selector({
 
   return (
     <div className="rounded-lg border border-slate-200/80 bg-white p-3 shadow-card">
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
           Mã Chẩn Đoán ICD-10
         </p>
@@ -74,6 +74,11 @@ export default function Icd10Selector({
           Đề xuất AI
         </button>
       </div>
+
+      <p className="mt-1 text-[10px] leading-relaxed text-slate-500">
+        Chọn nhanh từ <span className="font-semibold text-teal-700">Cấu trúc rễ cây</span>{" "}
+        phía trên, hoặc tìm mã thủ công bên dưới.
+      </p>
 
       {/* Clinical note sent to the copilot: the answer fills the two tables below */}
       <div className="mt-2 flex items-center gap-1.5">
@@ -179,7 +184,7 @@ export default function Icd10Selector({
               <span className="flex-1 truncate text-slate-700">
                 {item.label}
               </span>
-              <span className="shrink-0 rounded-full bg-white px-1.5 py-0.5 text-[10px] font-semibold text-teal-700">
+              <span className="hidden shrink-0 rounded-full bg-white px-1.5 py-0.5 text-[10px] font-semibold text-teal-700 sm:inline">
                 Độ tin cậy: {item.confidence}%
               </span>
               {isPrimary && (
