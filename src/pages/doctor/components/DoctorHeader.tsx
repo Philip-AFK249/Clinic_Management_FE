@@ -18,8 +18,7 @@ export default function DoctorHeader({
   emergencyCount,
   doctorIdOverride,
 }: DoctorHeaderProps) {
-  const { profile, initials, isSeeded, isNurseAssistant } =
-    useDoctorSession(doctorIdOverride);
+  const { identity, isNurseAssistant } = useDoctorSession(doctorIdOverride);
   const { logout } = useAuth();
 
   return (
@@ -37,7 +36,7 @@ export default function DoctorHeader({
             </span>
           </p>
           <p className="truncate text-xs text-slate-500">
-            {profile.roomNumber} &middot; {profile.departmentName}
+            {identity.roomNumber} &middot; {identity.departmentName}
           </p>
         </div>
       </div>
@@ -93,22 +92,25 @@ export default function DoctorHeader({
             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-teal-50 text-sm font-bold text-teal-700"
             aria-hidden="true"
           >
-            {initials}
+            {identity.initials}
           </span>
           <div className="min-w-0 max-w-40">
             <p className="truncate text-xs font-semibold text-slate-900">
-              {profile.fullName}
+              {identity.fullName}
             </p>
             <p className="truncate text-[11px] text-slate-500">
-              {profile.credential || profile.title || "Bác sĩ"} &middot;{" "}
-              {profile.roomNumber}
+              {identity.subtitle} &middot; {identity.roomNumber}
             </p>
           </div>
         </div>
-        {!isSeeded && (
+        {!identity.isSeeded && (
           <span
             className="hidden rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700 xl:inline-block"
-            title="Tài khoản chưa được liên kết với bản ghi Bác sĩ trong hệ thống phân ca."
+            title={
+              isNurseAssistant
+                ? "Tài khoản chưa được liên kết với danh mục Y tá / Thư ký y khoa."
+                : "Tài khoản chưa được liên kết với bản ghi Bác sĩ trong hệ thống phân ca."
+            }
           >
             Chưa liên kết danh mục
           </span>

@@ -598,16 +598,20 @@ export async function getPendingOnlineTicketsApi(
 
 /**
  * Verify a temporary ticket and turn it into an official `WAITING` ticket.
- * `PATCH /api/v1/queue/tickets/{ticketNumber}/approve`.
+ * `PATCH /api/v1/queue/tickets/{ticketNumber}/approve`, with an optional
+ * `?date=yyyy-MM-dd` to disambiguate daily ticket numbers reused across days.
  */
 export async function approveOnlineTicketApi(
   ticketNumber: string,
-  adminName?: string,
+  adminName: string,
+  appointmentDate?: string,
   signal?: AbortSignal,
 ): Promise<QueueTicketDetailDto> {
+  const date = appointmentDate?.trim();
+  const query = date ? `?date=${encodeURIComponent(date)}` : "";
   try {
     const { data } = await intakeQueueApi.patch<QueueTicketDetailDto>(
-      `/tickets/${encodeURIComponent(ticketNumber)}/approve`,
+      `/tickets/${encodeURIComponent(ticketNumber)}/approve${query}`,
       { adminName },
       { signal },
     );
@@ -620,17 +624,21 @@ export async function approveOnlineTicketApi(
 
 /**
  * Refuse a temporary ticket; its held slot is released immediately.
- * `PATCH /api/v1/queue/tickets/{ticketNumber}/reject` with an optional reason.
+ * `PATCH /api/v1/queue/tickets/{ticketNumber}/reject` with an optional reason
+ * and an optional `?date=yyyy-MM-dd` for reused daily ticket numbers.
  */
 export async function rejectOnlineTicketApi(
   ticketNumber: string,
-  reason?: string,
-  adminName?: string,
+  reason: string,
+  adminName: string,
+  appointmentDate?: string,
   signal?: AbortSignal,
 ): Promise<QueueTicketDetailDto> {
+  const date = appointmentDate?.trim();
+  const query = date ? `?date=${encodeURIComponent(date)}` : "";
   try {
     const { data } = await intakeQueueApi.patch<QueueTicketDetailDto>(
-      `/tickets/${encodeURIComponent(ticketNumber)}/reject`,
+      `/tickets/${encodeURIComponent(ticketNumber)}/reject${query}`,
       { reason, adminName },
       { signal },
     );

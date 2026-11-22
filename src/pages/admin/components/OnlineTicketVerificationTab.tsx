@@ -338,14 +338,19 @@ export default function OnlineTicketVerificationTab() {
 
   async function handleApprove(ticket: QueueTicketDetailResponse) {
     if (busyTicket !== null) return;
-    setBusyTicket(ticket.ticketNumber);
+    setBusyTicket(`${ticket.appointmentDate}-${ticket.ticketNumber}`);
     try {
-      const updated = await approveOnlineTicketApi(ticket.ticketNumber, adminName);
+      const updated = await approveOnlineTicketApi(
+        ticket.ticketNumber,
+        adminName,
+        ticket.appointmentDate,
+      );
       // Keep the row and flip it in place - the approved ticket must stay on
       // this board so reception can see it was verified by this admin.
       setTickets((current) =>
         current.map((item) =>
-          item.ticketNumber === ticket.ticketNumber
+          item.ticketNumber === ticket.ticketNumber &&
+          item.appointmentDate === ticket.appointmentDate
             ? {
                 ...item,
                 ...updated,
@@ -371,16 +376,18 @@ export default function OnlineTicketVerificationTab() {
 
   async function handleReject(ticket: QueueTicketDetailResponse, reason: string) {
     if (busyTicket !== null) return;
-    setBusyTicket(ticket.ticketNumber);
+    setBusyTicket(`${ticket.appointmentDate}-${ticket.ticketNumber}`);
     try {
       const updated = await rejectOnlineTicketApi(
         ticket.ticketNumber,
         reason,
         adminName,
+        ticket.appointmentDate,
       );
       setTickets((current) =>
         current.map((item) =>
-          item.ticketNumber === ticket.ticketNumber
+          item.ticketNumber === ticket.ticketNumber &&
+          item.appointmentDate === ticket.appointmentDate
             ? {
                 ...item,
                 ...updated,
@@ -408,7 +415,7 @@ export default function OnlineTicketVerificationTab() {
 
   async function handleDelete(ticket: QueueTicketDetailResponse) {
     if (busyTicket !== null) return;
-    setBusyTicket(ticket.ticketNumber);
+    setBusyTicket(`${ticket.appointmentDate}-${ticket.ticketNumber}`);
     try {
       await deleteOnlineTicketApi(ticket.ticketNumber, ticket.appointmentDate);
       // Drop the row at once: waiting for the next poll would leave a deleted
@@ -567,7 +574,7 @@ export default function OnlineTicketVerificationTab() {
                 <tbody>
                   {tickets.map((ticket) => (
                     <tr
-                      key={ticket.ticketNumber}
+                      key={`${ticket.appointmentDate}-${ticket.ticketNumber}`}
                       className="border-b border-slate-100 last:border-0 hover:bg-slate-50/60"
                     >
                       <td className="px-3 py-3 font-mono text-xs font-bold text-slate-900">
@@ -595,7 +602,7 @@ export default function OnlineTicketVerificationTab() {
                         <TicketActions
                           ticket={ticket}
                           adminName={adminName}
-                          busy={busyTicket === ticket.ticketNumber}
+                          busy={busyTicket === `${ticket.appointmentDate}-${ticket.ticketNumber}`}
                           onApprove={(item) => void handleApprove(item)}
                           onReject={(item, value) => void handleReject(item, value)}
                           onDelete={(item) => void handleDelete(item)}
@@ -612,7 +619,7 @@ export default function OnlineTicketVerificationTab() {
           <div className="space-y-3 md:hidden">
             {tickets.map((ticket) => (
               <article
-                key={ticket.ticketNumber}
+                key={`${ticket.appointmentDate}-${ticket.ticketNumber}`}
                 className="rounded-xl border border-surface-border bg-white p-4 shadow-card"
               >
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -638,7 +645,7 @@ export default function OnlineTicketVerificationTab() {
                   <TicketActions
                     ticket={ticket}
                     adminName={adminName}
-                    busy={busyTicket === ticket.ticketNumber}
+                    busy={busyTicket === `${ticket.appointmentDate}-${ticket.ticketNumber}`}
                     onApprove={(item) => void handleApprove(item)}
                     onReject={(item, value) => void handleReject(item, value)}
                     onDelete={(item) => void handleDelete(item)}

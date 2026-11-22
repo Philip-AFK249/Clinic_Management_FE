@@ -15,9 +15,10 @@ const CORE_DEPARTMENTS: CoreDepartment[] = [
   {
     title: "Khối Nội",
     description:
-      "Tầm soát và điều trị các bệnh lý nội khoa, tim mạch và chuyển hóa trong một quy trình liền mạch.",
+      "Tầm soát và điều trị các bệnh lý nội khoa, tim mạch, chuyển hóa, nhi khoa và da liễu trong một quy trình liền mạch.",
     highlights: [
       "Tăng huyết áp, đái tháo đường, rối loạn mỡ máu",
+      "Viêm da cơ địa, chàm, mề đay và soi da Dermoscopy",
       "Tầm soát sức khỏe tổng quát và tư vấn dự phòng",
     ],
     icon: Stethoscope,
@@ -27,10 +28,10 @@ const CORE_DEPARTMENTS: CoreDepartment[] = [
   {
     title: "Khối Ngoại",
     description:
-      "Khám ngoại trú và thực hiện thủ thuật, với đánh giá hô hấp - dị ứng, tai mũi họng và các vấn đề da liễu trong cùng một khối.",
+      "Khám ngoại trú và thực hiện thủ thuật, với đánh giá hô hấp - dị ứng và tai mũi họng trong cùng một khối.",
     highlights: [
-      "Hen suyễn, viêm mũi dị ứng, mề đay mạn tính",
-      "Khám ngoại trú, thủ thuật và soi da khi có chỉ định",
+      "Hen suyễn, viêm mũi dị ứng và đo chức năng hô hấp",
+      "Khám ngoại trú và thủ thuật theo chỉ định",
     ],
     icon: Wind,
     iconClassName: "bg-emerald-50 text-emerald-600",

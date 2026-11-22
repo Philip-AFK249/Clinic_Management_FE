@@ -150,8 +150,8 @@ export const MOCK_DOCTORS: Doctor[] = [
     id: "D001",
     fullName: "PGS. TS. BS. Trần Minh Tuấn",
     title: "PGS.TS",
-    roomNumber: "Phòng 201",
-    departmentId: "DEP-EXT",
+    roomNumber: "Phòng 101",
+    departmentId: "DEP-INT",
     active: true,
   },
   {
@@ -166,8 +166,8 @@ export const MOCK_DOCTORS: Doctor[] = [
     id: "D003",
     fullName: "ThS. BS. Phạm Thị Hoa",
     title: "ThS.BS",
-    roomNumber: "Phòng 105",
-    departmentId: "DEP-INT",
+    roomNumber: "Phòng 202",
+    departmentId: "DEP-EXT",
     active: true,
   },
   {
@@ -478,7 +478,7 @@ export const MOCK_STAFF: StaffAccount[] = [
     role: "NURSE",
     department: "Tiếp đón & Kiosk",
     title: "Y tá / Thư ký y khoa",
-    roomNumber: "Bàn Đo Dấu hiệu Sinh tồn",
+    roomNumber: "Quầy Tiếp đón Sảnh B",
     phone: "0903000009",
     status: "ACTIVE",
     lastLogin: "22/09/2026 07:25",
@@ -595,8 +595,8 @@ function buildMockDoctorShifts(): DoctorShift[] {
   // --- DEP-EXT (Khối Ngoại) ---
   // Thứ 2: Sáng có BS trực, Chiều chưa phân BS
   shift(0, {
-    doctorId: "D001",
-    doctorName: "PGS. TS. BS. Trần Minh Tuấn",
+    doctorId: "D003",
+    doctorName: "ThS. BS. Phạm Thị Hoa",
     departmentId: "DEP-EXT",
     departmentName: getDepartmentName("DEP-EXT"),
     session: "MORNING",
@@ -613,8 +613,8 @@ function buildMockDoctorShifts(): DoctorShift[] {
     maxPatientsPerSlot: 3,
   });
   shift(0, {
-    doctorId: "D001",
-    doctorName: "PGS. TS. BS. Trần Minh Tuấn",
+    doctorId: "D003",
+    doctorName: "ThS. BS. Phạm Thị Hoa",
     departmentId: "DEP-EXT",
     departmentName: getDepartmentName("DEP-EXT"),
     session: "AFTERNOON",
@@ -623,8 +623,8 @@ function buildMockDoctorShifts(): DoctorShift[] {
   });
   // Thứ 4: Sáng có BS trực, Chiều chưa phân BS
   shift(2, {
-    doctorId: "D001",
-    doctorName: "PGS. TS. BS. Trần Minh Tuấn",
+    doctorId: "D003",
+    doctorName: "ThS. BS. Phạm Thị Hoa",
     departmentId: "DEP-EXT",
     departmentName: getDepartmentName("DEP-EXT"),
     session: "MORNING",
@@ -641,8 +641,8 @@ function buildMockDoctorShifts(): DoctorShift[] {
     maxPatientsPerSlot: 3,
   });
   shift(2, {
-    doctorId: "D001",
-    doctorName: "PGS. TS. BS. Trần Minh Tuấn",
+    doctorId: "D003",
+    doctorName: "ThS. BS. Phạm Thị Hoa",
     departmentId: "DEP-EXT",
     departmentName: getDepartmentName("DEP-EXT"),
     session: "AFTERNOON",
@@ -660,8 +660,8 @@ function buildMockDoctorShifts(): DoctorShift[] {
     maxPatientsPerSlot: 3,
   });
   shift(4, {
-    doctorId: "D001",
-    doctorName: "PGS. TS. BS. Trần Minh Tuấn",
+    doctorId: "D003",
+    doctorName: "ThS. BS. Phạm Thị Hoa",
     departmentId: "DEP-EXT",
     departmentName: getDepartmentName("DEP-EXT"),
     session: "MORNING",
@@ -690,8 +690,8 @@ function buildMockDoctorShifts(): DoctorShift[] {
     maxPatientsPerSlot: 4,
   });
   shift(0, {
-    doctorId: "D003",
-    doctorName: "ThS. BS. Phạm Thị Hoa",
+    doctorId: "D001",
+    doctorName: "PGS. TS. BS. Trần Minh Tuấn",
     departmentId: "DEP-INT",
     departmentName: getDepartmentName("DEP-INT"),
     session: "MORNING",
@@ -708,8 +708,8 @@ function buildMockDoctorShifts(): DoctorShift[] {
     maxPatientsPerSlot: 4,
   });
   shift(0, {
-    doctorId: "D003",
-    doctorName: "ThS. BS. Phạm Thị Hoa",
+    doctorId: "D001",
+    doctorName: "PGS. TS. BS. Trần Minh Tuấn",
     departmentId: "DEP-INT",
     departmentName: getDepartmentName("DEP-INT"),
     session: "AFTERNOON",
@@ -727,8 +727,8 @@ function buildMockDoctorShifts(): DoctorShift[] {
     maxPatientsPerSlot: 4,
   });
   shift(1, {
-    doctorId: "D003",
-    doctorName: "ThS. BS. Phạm Thị Hoa",
+    doctorId: "D001",
+    doctorName: "PGS. TS. BS. Trần Minh Tuấn",
     departmentId: "DEP-INT",
     departmentName: getDepartmentName("DEP-INT"),
     session: "MORNING",
@@ -745,8 +745,8 @@ function buildMockDoctorShifts(): DoctorShift[] {
     maxPatientsPerSlot: 4,
   });
   shift(1, {
-    doctorId: "D003",
-    doctorName: "ThS. BS. Phạm Thị Hoa",
+    doctorId: "D001",
+    doctorName: "PGS. TS. BS. Trần Minh Tuấn",
     departmentId: "DEP-INT",
     departmentName: getDepartmentName("DEP-INT"),
     session: "AFTERNOON",
@@ -774,8 +774,8 @@ function buildMockDoctorShifts(): DoctorShift[] {
     maxPatientsPerSlot: 4,
   });
   shift(3, {
-    doctorId: "D003",
-    doctorName: "ThS. BS. Phạm Thị Hoa",
+    doctorId: "D001",
+    doctorName: "PGS. TS. BS. Trần Minh Tuấn",
     departmentId: "DEP-INT",
     departmentName: getDepartmentName("DEP-INT"),
     session: "MORNING",
@@ -792,8 +792,8 @@ function buildMockDoctorShifts(): DoctorShift[] {
     maxPatientsPerSlot: 4,
   });
   shift(4, {
-    doctorId: "D003",
-    doctorName: "ThS. BS. Phạm Thị Hoa",
+    doctorId: "D001",
+    doctorName: "PGS. TS. BS. Trần Minh Tuấn",
     departmentId: "DEP-INT",
     departmentName: getDepartmentName("DEP-INT"),
     session: "MORNING",

@@ -595,7 +595,7 @@ export default function FlaggedSymptomsPanel({
                         Khối khám gần nhất:{" "}
                         {item.ai_department_name ||
                           (item.ai_department_id !== null
-                            ? `Khoa #${item.ai_department_id}`
+                            ? `Khối #${item.ai_department_id}`
                             : "Chưa xác định")}
                       </p>
                       {item.similarity_score !== null &&

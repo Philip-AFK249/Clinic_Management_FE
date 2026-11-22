@@ -238,7 +238,7 @@ export const RAG_KNOWLEDGE_BASE: KbEntry[] = [
       "marcus",
     ],
     answer:
-      "PGS.TS.BS Trần Minh Tuấn khám tại Phòng khám 201 (Tầng 2) từ 08:00 - 17:30 các ngày. Thứ Bảy chỉ khám buổi sáng, và Chủ Nhật không nhận khám thường kỳ (chỉ trực cấp cứu). Bạn có thể đặt lịch qua mục 'Đội ngũ Bác sĩ' trên trang chủ hoặc gọi tổng đài 1900 123 456.",
+      "PGS.TS.BS Trần Minh Tuấn khám tại Phòng khám 101 (Tầng 1) từ 08:00 - 17:30 các ngày. Thứ Bảy chỉ khám buổi sáng, và Chủ Nhật không nhận khám thường kỳ (chỉ trực cấp cứu). Bạn có thể đặt lịch qua mục 'Đội ngũ Bác sĩ' trên trang chủ hoặc gọi tổng đài 1900 123 456.",
     source: "Lịch làm việc Bác sĩ",
   },
   {

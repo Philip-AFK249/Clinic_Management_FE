@@ -309,24 +309,25 @@ const FALLBACK_PRIORITIES: TriagePriority[] = ["P1", "P2", "P3", "P3", "P2", "P3
 
 /** Synthetic per-department queue used when the backend is unreachable. */
 export function buildFallbackQueue(departmentId: number, date: string): QueueTicket[] {
-  const department = RECEPTION_DEPARTMENTS.find((d) => d.id === departmentId);
+  // Legacy department 3 (Da liễu) was folded into Khối Nội; normalise before
+  // every lookup so a stale queue filter still returns the merged roster.
+  const blockId = departmentId === 3 ? 1 : departmentId;
+  const department = RECEPTION_DEPARTMENTS.find((d) => d.id === blockId);
   if (!department) return [];
   const statuses: QueueStatus[] = ["WAITING", "WAITING", "CALLED", "WAITING", "IN_CONSULTATION", "WAITING"];
   const doctorsByDepartment: Record<number, { id: number; name: string; room: string }[]> = {
     1: [
       { id: 1, name: "PGS. TS. BS. Trần Minh Tuấn", room: "Phòng 101" },
       { id: 2, name: "BS. CKI. Nguyễn Văn Dũng", room: "Phòng 102" },
+      { id: 7, name: "BS. CKI. Nguyễn Thị Lan", room: "Phòng 205" },
+      { id: 8, name: "ThS. BS. Vũ Minh Đức", room: "Phòng 206" },
     ],
     2: [
       { id: 4, name: "BS. CKI. Lê Thị Hoàng Yến", room: "Phòng 201" },
       { id: 5, name: "BS. CKII. Phạm Thị Hoa", room: "Phòng 202" },
     ],
-    3: [
-      { id: 7, name: "BS. CKI. Nguyễn Thị Lan", room: "Phòng 205" },
-      { id: 8, name: "ThS. BS. Vũ Minh Đức", room: "Phòng 206" },
-    ],
   };
-  const doctors = doctorsByDepartment[departmentId];
+  const doctors = doctorsByDepartment[blockId];
   const startTime = SHIFT_BLOCKS[0].start;
 
   return FALLBACK_PATIENT_NAMES.map((fullName, index) => {
@@ -335,12 +336,12 @@ export function buildFallbackQueue(departmentId: number, date: string): QueueTic
     const status = statuses[index];
     const serial = index + 1;
     return {
-      id: departmentId * 1000 + index,
+      id: blockId * 1000 + index,
       ticketNumber: `${department.ticketPrefix}-${String(serial).padStart(3, "0")}`,
       patient: {
-        id: 88000 + departmentId * 100 + index,
+        id: 88000 + blockId * 100 + index,
         fullName,
-        identityCardNumber: `0790${String(700000 + departmentId * 1000 + index)}`,
+        identityCardNumber: `0790${String(700000 + blockId * 1000 + index)}`,
         insuranceCode: `DN 4 79 79 ${String(10000000 + index).slice(-8)}`,
         initialHospitalCode: "79-014 (BV Đa Khoa Sài Gòn)",
         dateOfBirth: `${1970 + (index % 30)}-0${(index % 9) + 1}-1${index % 10}`,
@@ -351,7 +352,7 @@ export function buildFallbackQueue(departmentId: number, date: string): QueueTic
         createdAt: `${date}T07:5${index}:00`,
         updatedAt: `${date}T07:5${index}:00`,
       },
-      departmentId,
+      departmentId: blockId,
       departmentName: department.name,
       doctorId: doctor.id,
       doctorName: doctor.name,

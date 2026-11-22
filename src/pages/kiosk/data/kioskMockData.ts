@@ -156,8 +156,8 @@ export const ROOMS: RoomInfo[] = [
   { id: "room-101", number: "101", name: "Cấp cứu", floor: "Tầng Trệt" },
   { id: "room-104", number: "104", name: "Khám Nội", floor: "Tầng Trệt", doctor: "BS. Phạm Quốc Bảo" },
   { id: "room-108", number: "108", name: "Khám Nhi", floor: "Tầng Trệt", doctor: "BS. CKI. Nguyễn Văn Dũng" },
-  { id: "room-201", number: "201", name: "Khối Ngoại - Thủ thuật", floor: "Tầng 2", doctor: "PGS. TS. BS. Trần Minh Tuấn" },
-  { id: "room-205", number: "205", name: "Khối Nội - Khám ngoại trú", floor: "Tầng 2", doctor: "ThS. BS. Lê Thị Hoàng Yến" },
+  { id: "room-201", number: "201", name: "Khối Ngoại - Tai Mũi Họng & Thủ thuật", floor: "Tầng 2", doctor: "BS. CKI. Lê Thị Hoàng Yến" },
+  { id: "room-205", number: "205", name: "Khối Nội - Khám ngoại trú", floor: "Tầng 2", doctor: "BS. CKI. Nguyễn Thị Lan" },
 ];
 
 export const TICKET_NUMBER = "#A-102";

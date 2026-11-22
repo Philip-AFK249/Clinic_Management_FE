@@ -99,7 +99,7 @@ export const NURSE_DIRECTORY: NurseProfile[] = [
     email: "tram.hoang@smartclinic.vn",
     departmentId: 1,
     title: "Y tá / Thư ký y khoa",
-    roomNumber: "Bàn Đo Dấu hiệu Sinh tồn",
+    roomNumber: "Quầy Tiếp đón Sảnh B",
   },
 ];
 

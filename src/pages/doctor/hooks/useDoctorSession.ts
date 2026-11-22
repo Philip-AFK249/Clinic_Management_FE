@@ -1,21 +1,33 @@
 import { useMemo } from "react";
 import { useAuth } from "../../../context/useAuth";
 import {
+  departmentNameOf,
   doctorProfileById,
   doctorsOfDepartment,
+  FALLBACK_DEPARTMENT_ID,
   initialsOf,
   resolveDoctorId,
   resolveDoctorProfile,
 } from "../data/doctorDirectory";
 import type { DoctorProfile } from "../data/doctorDirectory";
-import { resolveNurse } from "../../reception/data/nurseDirectory";
+import { nurseFor, resolveNurse } from "../../reception/data/nurseDirectory";
+
+/** Identity shown in the header - the signed-in user, never the borrowed doctor. */
+export interface SessionIdentity {
+  fullName: string;
+  subtitle: string;
+  roomNumber: string;
+  departmentName: string;
+  initials: string;
+  isSeeded: boolean;
+}
 
 export interface DoctorSession {
+  /** Queue-scoped doctor id; for an assistant this is the doctor they support. */
   doctorId: number;
+  /** Queue-scoped doctor profile, used for encounter payloads and department. */
   profile: DoctorProfile;
-  initials: string;
-  /** False when the account is not a seeded `doctors` row. */
-  isSeeded: boolean;
+  identity: SessionIdentity;
   /** True for "Y tá / Thư ký y khoa" assistants working inside the exam room. */
   isNurseAssistant: boolean;
   /** Doctors of the session's block, so an assistant can pick a room queue. */
@@ -39,10 +51,12 @@ export function useDoctorSession(doctorIdOverride?: number): DoctorSession {
     let doctorId = resolveDoctorId(user);
 
     if (isNurseAssistant) {
-      // A nurse's department is the block they staff. Default to its first
-      // doctor, unless the workspace picker selected another room in the block.
+      // A nurse's department is the block they staff. Legacy `3` still arrives
+      // on some accounts and is folded into Khối Nội like every other map.
+      const nurse = resolveNurse(user);
+      const rawBlockDepartmentId = nurse.departmentId ?? FALLBACK_DEPARTMENT_ID;
       const blockDepartmentId =
-        resolveNurse(user).departmentId ?? doctorId;
+        rawBlockDepartmentId === 3 ? FALLBACK_DEPARTMENT_ID : rawBlockDepartmentId;
       const blockDoctors = doctorsOfDepartment(blockDepartmentId);
       const chosen =
         (doctorIdOverride !== undefined
@@ -55,8 +69,15 @@ export function useDoctorSession(doctorIdOverride?: number): DoctorSession {
       return {
         doctorId,
         profile,
-        initials: initialsOf(profile.fullName),
-        isSeeded: Boolean(chosen),
+        identity: {
+          fullName: nurse.fullName,
+          subtitle: nurse.title ?? "Y tá / Thư ký y khoa",
+          roomNumber: nurse.roomNumber ?? "",
+          departmentName: departmentNameOf(blockDepartmentId),
+          // `initialsOf` only strips doctor ranks, so remove the Y tá prefix.
+          initials: initialsOf(nurse.fullName.replace(/^Y tá\s*/i, "")),
+          isSeeded: Boolean(user && nurseFor(user.email)),
+        },
         isNurseAssistant,
         blockDoctors,
       };
@@ -70,8 +91,14 @@ export function useDoctorSession(doctorIdOverride?: number): DoctorSession {
     return {
       doctorId,
       profile,
-      initials: initialsOf(profile.fullName),
-      isSeeded,
+      identity: {
+        fullName: profile.fullName,
+        subtitle: profile.credential || profile.title || "Bác sĩ",
+        roomNumber: profile.roomNumber,
+        departmentName: profile.departmentName,
+        initials: initialsOf(profile.fullName),
+        isSeeded,
+      },
       isNurseAssistant,
       blockDoctors: doctorsOfDepartment(profile.departmentId),
     };
