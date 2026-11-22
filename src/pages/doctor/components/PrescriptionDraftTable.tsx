@@ -116,7 +116,7 @@ export default function PrescriptionDraftTable({
             <th className="w-[13%] py-1.5 pr-2">Dạng bào chế</th>
             <th className="w-[22%] py-1.5 pr-2">Cách dùng &amp; Tần suất</th>
             <th className="w-[11%] py-1.5 pr-2">Liều dùng</th>
-            <th className="w-[9%] py-1.5 pr-2">SL</th>
+            <th className="w-[9%] py-1.5 pr-2">SL &amp; ĐVT</th>
             <th className="w-[9%] py-1.5 text-right">Thao tác</th>
           </tr>
         </thead>
@@ -131,6 +131,9 @@ export default function PrescriptionDraftTable({
             // to the name frozen on the line while the formulary loads.
             const fullDrugName = drug ? drugDisplayName(drug) : line.medication;
             const availableStock = drug?.stockQuantity ?? line.stockUnits;
+            // Concentration lives in the drug name; this is the dispensing unit
+            // the kho will hand over ("5 Viên", "1 Lọ").
+            const unitLabel = line.unit?.trim() || drug?.unit?.trim() || "Viên";
             const isAllergic = Boolean(
               drug?.isPenicillinClass &&
                 patientAllergies.some((allergy) =>
@@ -187,11 +190,11 @@ export default function PrescriptionDraftTable({
                           : isLowStock
                             ? "Sắp hết kho"
                             : "Còn hàng"}
-                      : {availableStock} đơn vị
+                      : {availableStock} {unitLabel}
                     </span>
                     {isLowStock && (
                       <span className="inline-block rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
-                        Tồn kho ít ({availableStock})
+                        Tồn kho ít ({availableStock} {unitLabel})
                       </span>
                     )}
                     <span className="inline-block rounded-full border border-teal-200 bg-teal-50 px-1.5 py-0.5 text-[10px] font-semibold text-teal-700">
@@ -213,24 +216,29 @@ export default function PrescriptionDraftTable({
                 </td>
                 <td className="py-2 pr-2 text-slate-600">{line.duration}</td>
                 <td className="py-2 pr-2">
-                  <input
-                    type="number"
-                    min={1}
-                    value={line.quantity}
-                    onChange={(e) =>
-                      updateLine(line.id, {
-                        quantity: Math.max(1, Number(e.target.value) || 1),
-                      })
-                    }
-                    className={`h-8 w-full min-w-0 rounded border px-2 text-xs text-slate-700 focus:outline-none ${
-                      isExceedingStock
-                        ? "border-red-500 focus:border-red-500 focus:ring-2 focus:ring-red-300"
-                        : "border-slate-200 focus:border-teal-500"
-                    }`}
-                  />
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      min={1}
+                      value={line.quantity}
+                      onChange={(e) =>
+                        updateLine(line.id, {
+                          quantity: Math.max(1, Number(e.target.value) || 1),
+                        })
+                      }
+                      className={`h-8 w-full min-w-0 rounded border px-2 text-xs text-slate-700 focus:outline-none ${
+                        isExceedingStock
+                          ? "border-red-500 focus:border-red-500 focus:ring-2 focus:ring-red-300"
+                          : "border-slate-200 focus:border-teal-500"
+                      }`}
+                    />
+                    <span className="shrink-0 text-[10px] font-semibold text-slate-500">
+                      {unitLabel}
+                    </span>
+                  </div>
                   {isExceedingStock && (
                     <p className="mt-0.5 text-[10px] font-semibold text-red-600">
-                      Kho chỉ còn {availableStock}
+                      Kho chỉ còn {availableStock} {unitLabel}
                     </p>
                   )}
                 </td>

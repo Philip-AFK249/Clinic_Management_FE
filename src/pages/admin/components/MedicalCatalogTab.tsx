@@ -190,6 +190,7 @@ export default function MedicalCatalogTab() {
                   <tr className="border-b border-slate-100 bg-slate-50">
                     <th className="px-4 py-3 font-semibold text-slate-600">Thuốc</th>
                     <th className="px-4 py-3 font-semibold text-slate-600">Hàm lượng</th>
+                    <th className="px-4 py-3 font-semibold text-slate-600">Đơn vị tính</th>
                     <th className="px-4 py-3 font-semibold text-slate-600">Đơn giá (VNĐ)</th>
                     <th className="px-4 py-3 font-semibold text-slate-600">Tồn kho (đơn vị)</th>
                     <th className="px-4 py-3 font-semibold text-slate-600">BHYT Coverage</th>
@@ -199,7 +200,7 @@ export default function MedicalCatalogTab() {
                 <tbody className="divide-y divide-slate-100">
                   {isLoadingDrugs ? (
                     <tr>
-                      <td colSpan={6} className="px-4 py-8">
+                      <td colSpan={7} className="px-4 py-8">
                         <div className="flex flex-col items-center justify-center gap-2 text-slate-500">
                           <Loader2 size={18} className="animate-spin" />
                           <p className="text-xs">Đang tải danh sách thuốc...</p>
@@ -208,7 +209,7 @@ export default function MedicalCatalogTab() {
                     </tr>
                   ) : filteredDrugs.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="px-4 py-8 text-center text-xs text-slate-500">
+                      <td colSpan={7} className="px-4 py-8 text-center text-xs text-slate-500">
                         {searchTerm ? "Không tìm thấy thuốc phù hợp với từ khóa tìm kiếm" : "Chưa có thuốc nào trong kho"}
                       </td>
                     </tr>
@@ -227,6 +228,9 @@ export default function MedicalCatalogTab() {
                           </div>
                         </td>
                         <td className="px-4 py-3 text-slate-600">{drug.concentration}</td>
+                        <td className="px-4 py-3 font-medium text-slate-700">
+                          {drug.unit || "Viên"}
+                        </td>
                         <td className="px-4 py-3 font-medium text-slate-800">
                           {drug.unitPrice.toLocaleString("vi-VN")}
                         </td>
@@ -236,7 +240,8 @@ export default function MedicalCatalogTab() {
                               drug.stockQuantity < 500 ? "text-red-600" : "text-slate-800"
                             }`}
                           >
-                            {drug.stockQuantity.toLocaleString("vi-VN")}
+                            {drug.stockQuantity.toLocaleString("vi-VN")}{" "}
+                            {drug.unit || "Viên"}
                           </span>
                           {drug.stockQuantity < 500 && (
                             <span className="ml-1.5 inline-flex rounded-full border border-red-200 bg-red-50 px-1.5 py-0.5 text-[10px] font-medium text-red-600">

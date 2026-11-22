@@ -262,6 +262,7 @@ export default function PharmacyInventoryPanel({
                   <th className="px-3 py-2">Mã</th>
                   <th className="px-3 py-2">Tên thuốc &amp; nồng độ</th>
                   <th className="px-3 py-2">Dạng bào chế</th>
+                  <th className="px-3 py-2">Đơn vị tính</th>
                   <th className="px-3 py-2 text-right">Tồn kho</th>
                   <th className="px-3 py-2">Trạng thái</th>
                   <th className="px-3 py-2 text-right">Đơn giá</th>
@@ -288,6 +289,9 @@ export default function PharmacyInventoryPanel({
                         </p>
                       </td>
                       <td className="px-3 py-2 text-slate-600">{drug.dosageForm}</td>
+                      <td className="px-3 py-2 font-medium text-slate-700">
+                        {drug.unit || "Viên"}
+                      </td>
                       <td
                         className={`whitespace-nowrap px-3 py-2 text-right font-bold ${
                           drug.stockQuantity <= 0
@@ -297,7 +301,8 @@ export default function PharmacyInventoryPanel({
                               : "text-emerald-700"
                         }`}
                       >
-                        {drug.stockQuantity.toLocaleString("vi-VN")}
+                        {drug.stockQuantity.toLocaleString("vi-VN")}{" "}
+                        {drug.unit || "Viên"}
                       </td>
                       <td className="px-3 py-2">
                         <span

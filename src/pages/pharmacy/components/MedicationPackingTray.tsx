@@ -140,7 +140,8 @@ export default function MedicationPackingTray({
                     }`}
                   >
                     <span className="inline-block h-1.5 w-1.5 rounded-full bg-current" />
-                    {lowStock ? "Sắp hết" : "Còn hàng"}: {item.stockUnits} đơn vị
+                    {lowStock ? "Sắp hết" : "Còn hàng"}: {item.stockUnits}{" "}
+                    {item.unit}
                   </span>
                 </td>
                 <td className="py-2.5 pr-2 font-bold text-slate-900">

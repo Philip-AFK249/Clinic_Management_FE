@@ -389,6 +389,8 @@ export interface RxLine {
   drugId: number;
   medication: string;
   dosageForm: string;
+  /** Dispensing unit ("Viên", "Lọ", ...), separate from the concentration. */
+  unit?: string;
   routeFrequency: string;
   duration: string;
   quantity: number;

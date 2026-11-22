@@ -60,6 +60,23 @@ export default function PrescriptionDetailCard({
             </span>
           </p>
 
+          {/* Dispensing units beside the concentration, before the packing tray. */}
+          {order.items.length > 0 && (
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              {order.items.map((item) => (
+                <span
+                  key={item.id}
+                  className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] text-slate-600"
+                >
+                  {item.name}
+                  <span className="font-bold text-slate-900">
+                    {item.quantity} {item.unit}
+                  </span>
+                </span>
+              ))}
+            </div>
+          )}
+
           {/* Handover attribution, only meaningful once dispensed. */}
           {order.status === "DISPENSED" && (
             <p className="mt-1.5 flex flex-wrap items-center gap-1 text-xs text-emerald-700">

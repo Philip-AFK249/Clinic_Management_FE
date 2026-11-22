@@ -61,6 +61,7 @@ export function drugToRxLine(drug: DrugDto, id: string): RxLine {
     drugId: drug.id,
     medication: drugDisplayName(drug),
     dosageForm: drug.dosageForm,
+    unit: drug.unit?.trim() || undefined,
     routeFrequency: defaultSigFor(drug.dosageForm).frequency,
     duration: defaultSigFor(drug.dosageForm).duration,
     quantity: 1,

@@ -69,15 +69,38 @@ function unitFor(dosageForm: string): string {
   if (
     form.includes("capsule") ||
     form.includes("tablet") ||
-    form.includes("pill")
+    form.includes("pill") ||
+    form.includes("viên")
   ) {
-    return "viên";
+    return "Viên";
   }
-  if (form.includes("syrup") || form.includes("suspension")) return "lọ";
-  if (form.includes("injection") || form.includes("infusion")) return "ống";
-  if (form.includes("spray") || form.includes("inhaler")) return "bình";
-  if (form.includes("cream") || form.includes("ointment")) return "tuýp";
-  return "đơn vị";
+  if (
+    form.includes("syrup") ||
+    form.includes("suspension") ||
+    form.includes("siro") ||
+    form.includes("dung dịch")
+  ) {
+    return "Lọ";
+  }
+  if (
+    form.includes("injection") ||
+    form.includes("infusion") ||
+    form.includes("ống tiêm")
+  ) {
+    return "Ống";
+  }
+  if (form.includes("spray") || form.includes("inhaler") || form.includes("xịt")) {
+    return "Bình";
+  }
+  if (
+    form.includes("cream") ||
+    form.includes("ointment") ||
+    form.includes("kem") ||
+    form.includes("mỡ")
+  ) {
+    return "Tuýp";
+  }
+  return "Viên";
 }
 
 function toNumber(value: number | string | null | undefined): number {
@@ -111,7 +134,12 @@ function toItem(
     dosageForm: item.dosageForm,
     instructions: instructions || "Theo chỉ định của bác sĩ",
     quantity: toNumber(item.quantity),
-    unit: unitFor(item.dosageForm),
+    // Prefer the unit frozen on the prescription line, then the catalog row the
+    // pharmacist actually dispenses from, then a dosage-form guess.
+    unit:
+      item.unit?.trim() ||
+      drug?.unit?.trim() ||
+      unitFor(item.dosageForm),
     unitPrice: toNumber(item.unitPrice),
     bhytCoveragePercent: drug
       ? (COVERAGE_PERCENT[drug.bhytCoverage] ?? UNKNOWN_COVERAGE_PERCENT)

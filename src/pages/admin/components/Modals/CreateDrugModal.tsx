@@ -3,6 +3,10 @@ import { X, Pill, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import type { BhytCoverageType, CreateDrugPayload, DrugDto } from "../../../../services/clinicalApi";
 import { createDrugApi } from "../../../../services/clinicalApi";
+import {
+  DRUG_UNIT_OPTIONS,
+  suggestDrugUnit,
+} from "../../data/drugUnits";
 
 interface CreateDrugModalProps {
   onClose: () => void;
@@ -35,6 +39,7 @@ const EMPTY_FORM: CreateDrugPayload = {
   name: "",
   concentration: "",
   dosageForm: "",
+  unit: "",
   stockQuantity: 0,
   unitPrice: 0,
   bhytCoverage: "BHYT_80",
@@ -51,6 +56,8 @@ export default function CreateDrugModal({
   const [formData, setFormData] = useState<CreateDrugPayload>({ ...EMPTY_FORM });
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  // Until the user edits "Đơn vị tính" themselves, the dosage form drives it.
+  const [unitTouched, setUnitTouched] = useState(false);
 
   if (!isOpen) return null;
 
@@ -76,6 +83,10 @@ export default function CreateDrugModal({
       setError("Vui lòng nhập dạng bào chế");
       return;
     }
+    if (!formData.unit?.trim()) {
+      setError("Vui lòng nhập đơn vị tính");
+      return;
+    }
     if (formData.unitPrice <= 0) {
       setError("Đơn giá phải lớn hơn 0");
       return;
@@ -93,9 +104,11 @@ export default function CreateDrugModal({
         name: formData.name.trim(),
         concentration: formData.concentration.trim(),
         dosageForm: formData.dosageForm.trim(),
+        unit: formData.unit.trim(),
       });
       toast.success("Đã thêm thuốc mới vào kho.");
       setFormData({ ...EMPTY_FORM });
+      setUnitTouched(false);
       setError(null);
       await onCreated(data);
       onClose();
@@ -168,7 +181,7 @@ export default function CreateDrugModal({
             </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <div>
               <label
                 htmlFor="drug-concentration"
@@ -198,7 +211,14 @@ export default function CreateDrugModal({
                 type="text"
                 list="dosage-forms"
                 value={formData.dosageForm}
-                onChange={(e) => setFormData((prev) => ({ ...prev, dosageForm: e.target.value }))}
+                onChange={(e) => {
+                  const dosageForm = e.target.value;
+                  setFormData((prev) => ({
+                    ...prev,
+                    dosageForm,
+                    unit: unitTouched ? prev.unit : suggestDrugUnit(dosageForm),
+                  }));
+                }}
                 className={inputClass}
                 placeholder="Viên nén"
                 disabled={submitting}
@@ -206,6 +226,32 @@ export default function CreateDrugModal({
               <datalist id="dosage-forms">
                 {DOSAGE_FORMS.map((form) => (
                   <option key={form} value={form} />
+                ))}
+              </datalist>
+            </div>
+            <div>
+              <label
+                htmlFor="drug-unit"
+                className="mb-1.5 block text-xs font-semibold text-slate-700"
+              >
+                Đơn vị tính <span className="text-red-500">*</span>
+              </label>
+              <input
+                id="drug-unit"
+                type="text"
+                list="drug-units"
+                value={formData.unit ?? ""}
+                onChange={(e) => {
+                  setUnitTouched(true);
+                  setFormData((prev) => ({ ...prev, unit: e.target.value }));
+                }}
+                className={inputClass}
+                placeholder="Viên"
+                disabled={submitting}
+              />
+              <datalist id="drug-units">
+                {DRUG_UNIT_OPTIONS.map((unit) => (
+                  <option key={unit} value={unit} />
                 ))}
               </datalist>
             </div>

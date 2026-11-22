@@ -177,6 +177,8 @@ export interface DrugDto {
   name: string;
   concentration: string;
   dosageForm: string;
+  /** Dispensing unit ("Viên", "Lọ", "Ống", ...), separate from the concentration. */
+  unit?: string;
   stockQuantity: number;
   unitPrice: number;
   bhytCoverage: BhytCoverage;
@@ -193,6 +195,8 @@ export interface PrescriptionItemResponse {
   drugName: string;
   concentration: string;
   dosageForm: string;
+  /** Dispensing unit carried by the prescription line, when the service sends one. */
+  unit?: string;
   routeFrequency: string;
   duration: string;
   quantity: number;
@@ -234,6 +238,7 @@ interface RawDrugResponse {
   name: string;
   concentration: string;
   dosageForm: string;
+  unit?: string;
   stockQuantity: number;
   unitPrice: number | string;
   bhytCoverage: BhytCoverage;
@@ -985,6 +990,7 @@ export interface CreateDrugPayload {
   name: string;
   concentration: string;
   dosageForm: string;
+  unit?: string;
   stockQuantity: number;
   unitPrice: number;
   bhytCoverage: BhytCoverageType;
@@ -996,6 +1002,7 @@ export interface UpdateDrugPayload {
   name: string;
   concentration: string;
   dosageForm: string;
+  unit?: string;
   unitPrice: number;
   stockQuantity: number;
   bhytCoverage: BhytCoverageType;
@@ -1154,6 +1161,7 @@ function normalizeDrug(raw: RawDrugResponse): DrugDto {
     name: raw.name,
     concentration: raw.concentration,
     dosageForm: raw.dosageForm,
+    unit: raw.unit?.trim() || undefined,
     stockQuantity: toNumber(raw.stockQuantity),
     unitPrice: toNumber(raw.unitPrice),
     bhytCoverage: raw.bhytCoverage,

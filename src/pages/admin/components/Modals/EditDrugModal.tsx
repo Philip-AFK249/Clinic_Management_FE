@@ -3,6 +3,10 @@ import { X, Edit, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import type { BhytCoverageType, DrugDto, UpdateDrugPayload } from "../../../../services/clinicalApi";
 import { updateDrugApi } from "../../../../services/clinicalApi";
+import {
+  DRUG_UNIT_OPTIONS,
+  suggestDrugUnit,
+} from "../../data/drugUnits";
 
 interface EditDrugModalProps {
   drug: DrugDto | null;
@@ -43,6 +47,7 @@ function toFormData(drug: DrugDto): UpdateDrugPayload {
     name: drug.name,
     concentration: drug.concentration,
     dosageForm: drug.dosageForm,
+    unit: drug.unit ?? "",
     unitPrice: drug.unitPrice,
     stockQuantity: drug.stockQuantity,
     bhytCoverage: drug.bhytCoverage,
@@ -81,6 +86,9 @@ function EditDrugForm({
   const [formData, setFormData] = useState<UpdateDrugPayload>(() => toFormData(drug));
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  // An existing unit counts as a deliberate choice, so changing the dosage form
+  // must not overwrite it.
+  const [unitTouched, setUnitTouched] = useState(Boolean(drug.unit?.trim()));
 
   const submitting = isSubmittingProp || isLoading;
 
@@ -100,6 +108,10 @@ function EditDrugForm({
       setError("Vui lòng nhập dạng bào chế");
       return;
     }
+    if (!formData.unit?.trim()) {
+      setError("Vui lòng nhập đơn vị tính");
+      return;
+    }
     if (formData.unitPrice <= 0) {
       setError("Đơn giá phải lớn hơn 0");
       return;
@@ -116,6 +128,7 @@ function EditDrugForm({
         name: formData.name.trim(),
         concentration: formData.concentration.trim(),
         dosageForm: formData.dosageForm.trim(),
+        unit: formData.unit.trim(),
       });
       toast.success("Đã cập nhật thông tin thuốc.");
       await onUpdated(data);
@@ -187,7 +200,7 @@ function EditDrugForm({
             />
           </div>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <div>
               <label
                 htmlFor="edit-drug-concentration"
@@ -217,7 +230,14 @@ function EditDrugForm({
                 type="text"
                 list="dosage-forms-edit"
                 value={formData.dosageForm}
-                onChange={(e) => setFormData((prev) => ({ ...prev, dosageForm: e.target.value }))}
+                onChange={(e) => {
+                  const dosageForm = e.target.value;
+                  setFormData((prev) => ({
+                    ...prev,
+                    dosageForm,
+                    unit: unitTouched ? prev.unit : suggestDrugUnit(dosageForm),
+                  }));
+                }}
                 className={inputClass}
                 placeholder="Viên nén"
                 disabled={submitting}
@@ -225,6 +245,32 @@ function EditDrugForm({
               <datalist id="dosage-forms-edit">
                 {DOSAGE_FORMS.map((form) => (
                   <option key={form} value={form} />
+                ))}
+              </datalist>
+            </div>
+            <div>
+              <label
+                htmlFor="edit-drug-unit"
+                className="mb-1.5 block text-xs font-semibold text-slate-700"
+              >
+                Đơn vị tính <span className="text-red-500">*</span>
+              </label>
+              <input
+                id="edit-drug-unit"
+                type="text"
+                list="drug-units-edit"
+                value={formData.unit ?? ""}
+                onChange={(e) => {
+                  setUnitTouched(true);
+                  setFormData((prev) => ({ ...prev, unit: e.target.value }));
+                }}
+                className={inputClass}
+                placeholder="Viên"
+                disabled={submitting}
+              />
+              <datalist id="drug-units-edit">
+                {DRUG_UNIT_OPTIONS.map((unit) => (
+                  <option key={unit} value={unit} />
                 ))}
               </datalist>
             </div>
