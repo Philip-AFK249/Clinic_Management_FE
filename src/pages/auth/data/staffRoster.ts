@@ -69,7 +69,7 @@ const NON_CLINICAL_STAFF: StaffRosterEntry[] = [
   },
 ];
 
-/** Every staff account, in picker order: Bác sĩ -> Điều dưỡng -> ... -> Admin. */
+/** Every staff account, in picker order: Bác sĩ -> Y tá / Thư ký y khoa -> ... -> Admin. */
 export const LOCAL_STAFF_ROSTER: StaffRosterEntry[] = [
   ...DOCTOR_DIRECTORY.map((doctor) => ({
     email: doctor.email,
@@ -190,7 +190,7 @@ export function staffRosterSections(
     });
     sections.push({
       key: `NURSE-${department.id}`,
-      label: "Điều dưỡng",
+      label: "Y tá / Thư ký y khoa",
       caption: department.name,
       role: "NURSE",
       entries: roster.filter(
@@ -233,7 +233,7 @@ function roleLabelOf(role: UserRole): string {
     case "DOCTOR":
       return "Bác sĩ";
     case "NURSE":
-      return "Điều dưỡng";
+      return "Y tá / Thư ký y khoa";
     case "PHARMACIST":
       return "Dược sĩ";
     case "RECEPTIONIST":

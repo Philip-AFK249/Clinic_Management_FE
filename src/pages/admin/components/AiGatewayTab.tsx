@@ -46,9 +46,9 @@ interface AiGatewayTabProps {
 
 /** Pipeline `specialty` codes -> the labels admins recognise. */
 const SPECIALTY_LABELS: Record<string, string> = {
-  tim_mach: "Tim mạch",
-  ho_hap_di_ung: "Hô hấp & Dị ứng",
-  da_lieu: "Da liễu",
+  tim_mach: "Khối Nội",
+  ho_hap_di_ung: "Khối Ngoại",
+  da_lieu: "Khối Nội",
   chung: "Chung",
 };
 

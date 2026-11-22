@@ -1,7 +1,8 @@
 import type { QueueStatus, QueueTicket } from "../../../services/intakeApi";
 
 /**
- * Presentation helpers for the nurse station (`/nurse`).
+ * Legacy presentation helpers from the retired `/nurse` station; the unified
+ * exam room now captures vitals inline.
  *
  * Kept in a `.ts` data module because `react-refresh/only-export-components`
  * forbids non-component exports from `.tsx` files.
@@ -85,9 +86,9 @@ export interface VitalsRecord {
  * The reading the station already saved for this ticket, as the queue
  * endpoints return it, shaped for the capture form and the queue badge.
  *
- * `undefined` while nothing has been measured. `recordedBy` credits the
- * station rather than a person: PatientIntakeService stores the values but not
- * which điều dưỡng entered them.
+ * `undefined` while nothing has been measured. `recordedBy` credits the exam
+ * room rather than the retired station: PatientIntakeService stores the values
+ * but not which Y tá / Thư ký y khoa entered them.
  */
 export function vitalsRecordFromTicket(ticket: QueueTicket): VitalsRecord | undefined {
   const bloodPressure = ticket.bloodPressure?.trim() ?? "";
@@ -103,7 +104,7 @@ export function vitalsRecordFromTicket(ticket: QueueTicket): VitalsRecord | unde
     temperature,
     spo2,
     recordedAt: ticket.updatedAt ?? ticket.checkInTime ?? "",
-    recordedBy: "Trạm điều dưỡng",
+    recordedBy: "Phòng khám",
   };
 }
 

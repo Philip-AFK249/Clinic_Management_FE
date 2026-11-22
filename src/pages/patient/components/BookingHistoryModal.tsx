@@ -618,7 +618,7 @@ export default function BookingHistoryModal({
                         {row.secondaryDepartmentName && (
                           <div className="sm:col-span-2">
                             <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                              Chuyên khoa phối hợp
+                              Khối phối hợp
                             </dt>
                             <dd className="mt-0.5 font-medium leading-relaxed text-slate-700">
                               {row.secondaryDepartmentName}

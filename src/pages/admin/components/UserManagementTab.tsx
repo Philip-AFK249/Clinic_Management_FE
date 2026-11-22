@@ -237,7 +237,7 @@ export default function UserManagementTab() {
                       Vai trò
                     </th>
                     <th className="px-4 py-3 font-semibold text-slate-600">
-                      Khoa / Phòng
+                      Khối / Phòng
                     </th>
                     <th className="px-4 py-3 font-semibold text-slate-600">
                       Email &amp; SĐT

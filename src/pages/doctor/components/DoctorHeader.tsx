@@ -6,6 +6,8 @@ import { useDoctorSession } from "../hooks/useDoctorSession";
 interface DoctorHeaderProps {
   waitingCount: number;
   emergencyCount: number;
+  /** Room chosen by an in-room assistant; normal doctor sessions omit it. */
+  doctorIdOverride?: number;
 }
 
 const SEEN_TODAY = 12;
@@ -14,8 +16,10 @@ const AVG_CONSULTATION = "9.4 phút";
 export default function DoctorHeader({
   waitingCount,
   emergencyCount,
+  doctorIdOverride,
 }: DoctorHeaderProps) {
-  const { profile, initials, isSeeded } = useDoctorSession();
+  const { profile, initials, isSeeded, isNurseAssistant } =
+    useDoctorSession(doctorIdOverride);
   const { logout } = useAuth();
 
   return (
@@ -29,7 +33,7 @@ export default function DoctorHeader({
           <p className="truncate text-sm font-bold leading-tight text-slate-900">
             Smart Clinic{" "}
             <span className="ml-1 rounded-md bg-teal-50 px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-teal-700">
-              Bác sĩ (EHR Portal)
+              {isNurseAssistant ? "Phòng khám (BS & Y tá)" : "Bác sĩ (EHR Portal)"}
             </span>
           </p>
           <p className="truncate text-xs text-slate-500">

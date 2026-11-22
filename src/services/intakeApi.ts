@@ -247,7 +247,7 @@ export interface QueueTicketDetailResponse extends OnlineTicketLifecycleFields {
   isOcrVerified: boolean | null;
   /**
    * Dấu hiệu sinh tử recorded at the nurse station (`PUT .../vitals`). Null
-   * until an điều dưỡng measures them, which is why every field is optional
+   * until the Y tá / Thư ký y khoa measures them in the exam room, which is why every field is optional
    * here: an unmeasured vital must render as "--" rather than as 0.
    */
   bloodPressure?: string | null; // "120/80"
@@ -299,9 +299,9 @@ export interface QueueTicket extends OnlineTicketLifecycleFields {
   /** Last write on the ticket - what a saved vitals reading stamps. */
   updatedAt?: string | null;
   /**
-   * Nurse-recorded vitals, carried on the entity the queue endpoints serialize
-   * directly, so `/nurse` and the doctor's EHR read the same values with no
-   * extra request.
+   * Exam-room-recorded vitals, carried on the entity the queue endpoints
+   * serialize directly, so the active consultation and ticket details read the
+   * same values with no extra request.
    */
   bloodPressure?: string | null; // "120/80"
   heartRate?: number | null; // lần/phút
@@ -1004,7 +1004,7 @@ export async function updateTicketStatus(
 }
 
 /**
- * What the điều dưỡng writes at the bedside. `bloodPressure` is the only
+ * What the Y tá / Thư ký y khoa writes in the exam room. `bloodPressure` is the only
  * column the service insists on (`@NotBlank` on `UpdateVitalsRequest`); the
  * rest land as they are measured and stay null when they are not.
  */
@@ -1020,13 +1020,13 @@ export interface UpdateVitalsPayload {
 
 /**
  * `PUT /api/v1/queue/tickets/{ticketNumber}/vitals` - save the vitals measured
- * at the nurse station onto the ticket itself (PatientIntakeService).
+ * in the unified exam room onto the ticket itself (PatientIntakeService).
  *
- * This is the hand-over path from `/nurse` to the doctor's EHR: the same
- * columns come back on `getDoctorQueue` and `getTicketDetails`, so a reading
- * taken at the station shows on the consultation screen - and rides into the
- * encounter - with no reload and no second system. Ticket numbers contain "#",
- * so the path segment is percent-encoded exactly like the status PATCH.
+ * This is the in-room save path used by the doctor's EHR: the same columns come
+ * back on `getDoctorQueue` and `getTicketDetails`, so a reading taken during the
+ * consultation rides into the encounter with no reload and no second system.
+ * Ticket numbers contain "#", so the path segment is percent-encoded exactly
+ * like the status PATCH.
  */
 export async function updateTicketVitalsApi(
   ticketNumber: string,

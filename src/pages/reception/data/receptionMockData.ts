@@ -24,27 +24,19 @@ export interface ReceptionDepartment {
 export const RECEPTION_DEPARTMENTS: ReceptionDepartment[] = [
   {
     id: 1,
-    code: "INT-CARD",
-    name: "Khoa Nội Tổng quát & Tim mạch",
-    shortName: "Nội - Tim mạch",
+    code: "BLOCK-INT",
+    name: "Khối Nội",
+    shortName: "Khối Nội",
     ticketPrefix: "#A",
-    roomRange: "Phòng 101 - 102",
+    roomRange: "Phòng 101 - 108",
   },
   {
     id: 2,
-    code: "RESP-ALLERGY",
-    name: "Khoa Hô hấp & Dị ứng - Miễn dịch lâm sàng",
-    shortName: "Hô hấp - Dị ứng",
+    code: "BLOCK-EXT",
+    name: "Khối Ngoại",
+    shortName: "Khối Ngoại",
     ticketPrefix: "#B",
-    roomRange: "Phòng 201 - 202",
-  },
-  {
-    id: 3,
-    code: "DERM",
-    name: "Khoa Da liễu",
-    shortName: "Da liễu",
-    ticketPrefix: "#C",
-    roomRange: "Phòng 205 - 206",
+    roomRange: "Phòng 201 - 206",
   },
 ];
 

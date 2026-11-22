@@ -1,13 +1,9 @@
 import {
-  Baby,
   Bus,
   CalendarCheck,
   Car,
   Clock,
-  Droplets,
   FileText,
-  HeartPulse,
-  Microscope,
   MousePointerClick,
   ScanLine,
   Star,
@@ -26,46 +22,18 @@ export interface Service {
 
 export const CLINIC_SERVICES: Service[] = [
   {
-    title: "Xét nghiệm Dị ứng Toàn diện",
+    title: "Khối Nội",
     description:
-      "Thực hiện test lẩy da (Prick test) và test áp da (Patch test) chẩn đoán dị ứng thức ăn, hóa chất, phấn hoa. Kết quả có trong ngày.",
-    duration: "20-30 phút",
-    icon: Droplets,
-  },
-  {
-    title: "Khám & Quản lý Hen suyễn - Hô hấp",
-    description:
-      "Đo chức năng hô hấp (Hô hấp ký Spirometry), lập kế hoạch kiểm soát cơn hen và phác đồ phòng ngừa tái phát.",
-    duration: "15-20 phút",
-    icon: Wind,
-  },
-  {
-    title: "Nhi khoa & Y học Gia đình",
-    description:
-      "Thăm khám thân thiện, nhẹ nhàng cho trẻ sơ sinh và trẻ nhỏ. Tư vấn dinh dưỡng, tiêm chủng và sàng lọc dị ứng sớm.",
-    duration: "20-30 phút",
-    icon: Baby,
-  },
-  {
-    title: "Khám Nội Tổng quát & Tầm soát",
-    description:
-      "Khám chuyên sâu các bệnh lý nội khoa, tăng huyết áp, đái tháo đường, gan mật và phân loại sàng lọc trước điều trị.",
+      "Khám và quản lý bệnh lý nội khoa, tim mạch, chuyển hóa, nhi khoa và tầm soát sức khỏe tổng quát trong cùng một lượt khám.",
     duration: "15-30 phút",
     icon: Stethoscope,
   },
   {
-    title: "Da liễu & Viêm da Cơ địa",
+    title: "Khối Ngoại",
     description:
-      "Chẩn đoán mề đay mạn tính, chàm sữa, viêm da tiếp xúc bằng máy soi da Dermoscopy kỹ thuật số.",
-    duration: "20 phút",
-    icon: Microscope,
-  },
-  {
-    title: "Khám Sức khỏe Tổng quát Định kỳ",
-    description:
-      "Gói xét nghiệm máu toàn diện, siêu âm ổ bụng, điện tim ECG và tư vấn bệnh án điện tử paperless.",
-    duration: "30-45 phút",
-    icon: HeartPulse,
+      "Khám ngoại trú, đánh giá hô hấp - dị ứng, tai mũi họng và thực hiện thủ thuật theo chỉ định.",
+    duration: "20-30 phút",
+    icon: Wind,
   },
 ];
 
@@ -108,7 +76,7 @@ export const WORKFLOW_STEPS: WorkflowStep[] = [
   {
     title: "Khai báo triệu chứng",
     description:
-      "Nhập triệu chứng bằng giọng nói hoặc văn bản để AI gợi ý đúng chuyên khoa cần khám.",
+      "Nhập triệu chứng bằng giọng nói hoặc văn bản để AI gợi ý đúng khối khám cần đến.",
     icon: MousePointerClick,
   },
   {
@@ -176,7 +144,7 @@ export const MEDICAL_STAFF: StaffMember[] = [
     role: "DOCTOR",
     title: "Bác sĩ Cao cấp - Phó Giáo sư, Tiến sĩ Y khoa",
     age: 52,
-    department: "Khoa Dị ứng & Miễn dịch lâm sàng",
+    department: "Khối Ngoại",
     specialty: "Hen phế quản, Dị ứng thuốc & Liệu pháp miễn dịch",
     experienceYears: 24,
     qualifications: ["PGS (Phó Giáo sư)", "TS (Tiến sĩ Y khoa)"],
@@ -196,7 +164,7 @@ export const MEDICAL_STAFF: StaffMember[] = [
     role: "DOCTOR",
     title: "Bác sĩ Chuyên khoa I",
     age: 44,
-    department: "Khoa Nội Tổng quát",
+    department: "Khối Nội",
     specialty: "Nội tim mạch & Tầm soát bệnh lý chuyển hóa",
     experienceYears: 16,
     qualifications: ["CKI (Chuyên khoa I)"],
@@ -216,7 +184,7 @@ export const MEDICAL_STAFF: StaffMember[] = [
     role: "DOCTOR",
     title: "Thạc sĩ, Bác sĩ Chuyên khoa Tai - Mũi - Họng",
     age: 41,
-    department: "Khoa Tai - Mũi - Họng",
+    department: "Khối Ngoại",
     specialty: "Viêm xoang dị ứng, Nội soi thanh quản & Tai mũi họng trẻ em",
     experienceYears: 15,
     qualifications: ["ThS (Thạc sĩ Y khoa)"],
@@ -236,7 +204,7 @@ export const MEDICAL_STAFF: StaffMember[] = [
     role: "DOCTOR",
     title: "Bác sĩ Chuyên khoa Nhi",
     age: 38,
-    department: "Khoa Nhi & Y học Gia đình",
+    department: "Khối Nội",
     specialty: "Dị ứng đạm sữa bò & Hô hấp nhi khoa",
     experienceYears: 12,
     qualifications: ["BS (Bác sĩ Y khoa)"],
@@ -252,34 +220,34 @@ export const MEDICAL_STAFF: StaffMember[] = [
   },
   {
     id: "trinh-thu-hang",
-    name: "ĐD. Trịnh Thu Hằng, CNĐD",
+    name: "Y tá Trịnh Thu Hằng",
     role: "NURSE",
-    title: "Điều dưỡng Trưởng",
+    title: "Y tá / Thư ký y khoa",
     age: 37,
-    department: "Khối Chẩn đoán & Thăm dò chức năng",
+    department: "Khối Nội",
     specialty: "Phụ trách Test lẩy da dị ứng & Phân luồng tiếp đón",
     experienceYears: 14,
-    qualifications: ["CNĐD (Cử nhân Điều dưỡng)"],
+    qualifications: ["Y tá / Thư ký y khoa"],
     languages: ["Tiếng Việt"],
     email: "hang.trinh@smartclinic.vn",
     phone: "+84 (028) 3900 1011",
     extension: "Máy lẻ 111",
-    roomNumber: "Trạm Điều dưỡng A (Tầng 1)",
+    roomNumber: "Phòng khám 101 (Tầng 1)",
     imageUrl:
       "https://cdn.prod.website-files.com/5babc11099f97ea5dbcf24d5/674e02bfb70719d29df790c2_clinic-nurse.jpg",
     availableToday: true,
-    bio: "Phụ trách quy trình an toàn tiêm dị nguyên, đo dấu hiệu sinh tồn và hướng dẫn bệnh nhân trước khi vào khám.",
+    bio: "Hỗ trợ bác sĩ tại phòng khám: đo dấu hiệu sinh tồn, ghi nhận bệnh án và hướng dẫn bệnh nhân trong lượt khám.",
   },
   {
     id: "do-phuong-mai",
-    name: "ĐD. Đỗ Phương Mai",
+    name: "Y tá Đỗ Phương Mai",
     role: "NURSE",
-    title: "Cử nhân Điều dưỡng Nhi khoa",
+    title: "Y tá / Thư ký y khoa",
     age: 29,
-    department: "Phòng Tiêm chủng & Chăm sóc Nhi",
+    department: "Khối Nội",
     specialty: "Kỹ thuật tiêm không đau & Hỗ trợ khám Nhi",
     experienceYears: 6,
-    qualifications: ["CNĐD (Cử nhân Điều dưỡng)"],
+    qualifications: ["Y tá / Thư ký y khoa"],
     languages: ["Tiếng Việt"],
     email: "mai.do@smartclinic.vn",
     phone: "+84 (028) 3900 1012",
@@ -292,14 +260,14 @@ export const MEDICAL_STAFF: StaffMember[] = [
   },
   {
     id: "nguyen-thao-ly",
-    name: "ĐD. Nguyễn Thảo Ly",
+    name: "Y tá Nguyễn Thảo Ly",
     role: "NURSE",
-    title: "Cử nhân Điều dưỡng Hồi sức",
+    title: "Y tá / Thư ký y khoa",
     age: 32,
-    department: "Phòng Điều trị & Truyền thuốc trong ngày",
+    department: "Khối Nội",
     specialty: "Theo dõi truyền dịch sinh học & Giải mẫn cảm",
     experienceYears: 8,
-    qualifications: ["CNĐD (Cử nhân Điều dưỡng)"],
+    qualifications: ["Y tá / Thư ký y khoa"],
     languages: ["Tiếng Việt"],
     email: "ly.nguyen@smartclinic.vn",
     phone: "+84 (028) 3900 1013",
@@ -312,14 +280,14 @@ export const MEDICAL_STAFF: StaffMember[] = [
   },
   {
     id: "tran-kim-oanh",
-    name: "ĐD. Trần Kim Oanh",
+    name: "Y tá Trần Kim Oanh",
     role: "NURSE",
-    title: "Điều dưỡng Điều phối Kiosk",
+    title: "Y tá / Thư ký y khoa",
     age: 35,
-    department: "Quầy Tiếp đón & Phân luồng Cấp cứu",
+    department: "Khối Nội",
     specialty: "Hỗ trợ quét BHYT, Kiosk & Sàng lọc ban đầu",
     experienceYears: 11,
-    qualifications: ["ĐD (Điều dưỡng)"],
+    qualifications: ["Y tá / Thư ký y khoa"],
     languages: ["Tiếng Việt"],
     email: "oanh.tran@smartclinic.vn",
     phone: "+84 (028) 3900 1014",
@@ -391,27 +359,19 @@ export interface Faq {
 /**
  * How the voice triage gateway's `department_id` maps onto this booking form.
  *
- * The gateway triages into three buckets, while `CLINIC_SERVICES` is a list of six
- * bookable services, so the mapping is a projection, not a lookup: `serviceIndex`
- * is the service the dispatcher pre-selects, and `ticketPrefix` is the queue
- * letter the reception desk stamps on the printed ticket.
- *
- * `department_id` is the key rather than `department_name` because the name is
- * free text the LLM writes ("Khoa Hô hấp và Dị ứng", "Phòng Da liễu"), and will
- * not match a fixed string.
- *
- * The one genuinely lossy row is `2`, which merges two bookable services. It
- * points at the allergy service, because the complaints that reach it are
- * overwhelmingly allergic rhinitis and urticaria rather than asthma - but it is a
- * guess, and the patient can still change the service on the next step.
+ * The gateway still emits three specialty buckets, while the clinic now books
+ * into two blocks. `normalizeTriageDepartments` folds legacy `3` into `1` before
+ * the verdict reaches here; the alias below is a defensive fallback.
  */
 export const VOICE_TRIAGE_DEPARTMENTS: Record<
   number,
   { serviceIndex: number; ticketPrefix: string; label: string }
 > = {
-  1: { serviceIndex: 3, ticketPrefix: "#A", label: "Nội tổng quát" },
-  2: { serviceIndex: 0, ticketPrefix: "#B", label: "Hô hấp & Dị ứng" },
-  3: { serviceIndex: 4, ticketPrefix: "#C", label: "Da liễu" },
+  1: { serviceIndex: 0, ticketPrefix: "#A", label: "Khối Nội" },
+  2: { serviceIndex: 1, ticketPrefix: "#B", label: "Khối Ngoại" },
+  // Legacy gateway id, kept as an alias so a stale verdict still books into
+  // Khối Nội rather than falling through to an unrelated service.
+  3: { serviceIndex: 0, ticketPrefix: "#A", label: "Khối Nội" },
 };
 
 /** The queue letter for a triage department, or a neutral one when unknown. */
@@ -420,44 +380,30 @@ export function ticketPrefixFor(departmentId: number): string {
 }
 
 /**
- * The bookable service a triage department should pre-select.
- *
- * Falls back to general medicine rather than to index 0 (the allergy panel): an
- * unrecognised department is most often a general complaint the LLM labelled
- * unconventionally, and a specific test panel is the wrong default.
+ * The bookable block a triage department should pre-select. An unrecognised
+ * department defaults to Khối Nội, the clinic's general catch-all.
  */
 export function serviceIndexForDepartment(departmentId: number): number {
-  return VOICE_TRIAGE_DEPARTMENTS[departmentId]?.serviceIndex ?? 3;
+  return VOICE_TRIAGE_DEPARTMENTS[departmentId]?.serviceIndex ?? 0;
 }
 
 /**
- * PatientIntakeService's real department rows, keyed by the `CLINIC_SERVICES`
- * index the booking form actually submits.
- *
- * The backend only knows three departments (1/2/3 - see the ticket-prefix
- * switch in IntakeService), so the six marketing services have to collapse onto
- * them: the two allergy/respiratory panels go to 2, dermatology to 3, and
- * everything else - paediatrics included, since there is no children's
- * department - to general internal medicine. Names mirror
- * RECEPTION_DEPARTMENTS so a booking lands under the same label the reception
- * desk groups it by.
+ * PatientIntakeService's two outpatient blocks, keyed by the `CLINIC_SERVICES`
+ * index the booking form actually submits. Legacy department `3` is folded into
+ * `Khối Nội`; every consumer uses these same two names.
  */
 export const BOOKING_DEPARTMENTS: Record<
   number,
   { departmentId: number; departmentName: string }
 > = {
-  0: { departmentId: 2, departmentName: "Khoa Hô hấp & Dị ứng - Miễn dịch lâm sàng" },
-  1: { departmentId: 2, departmentName: "Khoa Hô hấp & Dị ứng - Miễn dịch lâm sàng" },
-  2: { departmentId: 1, departmentName: "Khoa Nội Tổng quát & Tim mạch" },
-  3: { departmentId: 1, departmentName: "Khoa Nội Tổng quát & Tim mạch" },
-  4: { departmentId: 3, departmentName: "Khoa Da liễu" },
-  5: { departmentId: 1, departmentName: "Khoa Nội Tổng quát & Tim mạch" },
+  0: { departmentId: 1, departmentName: "Khối Nội" },
+  1: { departmentId: 2, departmentName: "Khối Ngoại" },
 };
 
-/** General internal medicine - the catch-all the form falls back to. */
+/** Khối Nội - the catch-all the form falls back to. */
 const FALLBACK_BOOKING_DEPARTMENT = {
   departmentId: 1,
-  departmentName: "Khoa Nội Tổng quát & Tim mạch",
+  departmentName: "Khối Nội",
 };
 
 /**
@@ -474,19 +420,12 @@ export function departmentForServiceIndex(
 }
 
 export function resolveDoctorForService(serviceTitle: string): StaffMember {
-  const title = serviceTitle.toLowerCase();
-  const match = MEDICAL_STAFF.find((staff) => {
-    const haystack = `${staff.department} ${staff.title}`.toLowerCase();
-    if (title.includes("nhi khoa") || title.includes("y học gia đình"))
-      return haystack.includes("nhi");
-    if (title.includes("nội tổng quát") || title.includes("sức khỏe tổng quát"))
-      return haystack.includes("nội tổng quát");
-    if (title.includes("hô hấp") || title.includes("hen suyễn"))
-      return haystack.includes("dị ứng");
-    if (title.includes("dị ứng") || title.includes("da liễu"))
-      return haystack.includes("dị ứng");
-    return false;
-  });
+  const isExternal = serviceTitle.toLowerCase().includes("ngoại");
+  const match = MEDICAL_STAFF.find(
+    (staff) =>
+      staff.role === "DOCTOR" &&
+      staff.department === (isExternal ? "Khối Ngoại" : "Khối Nội"),
+  );
   return match ?? MEDICAL_STAFF[0];
 }
 

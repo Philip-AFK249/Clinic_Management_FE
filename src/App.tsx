@@ -8,7 +8,6 @@ import BookingPage from "./pages/patient/BookingPage";
 import PatientDashboardPage from "./pages/patient/PatientDashboardPage";
 import PatientProfilePage from "./pages/patient/PatientProfilePage";
 import DoctorEHRPage from "./pages/doctor/DoctorEHRPage";
-import NurseStationPage from "./pages/nurse/NurseStationPage";
 import ReceptionDeskPage from "./pages/reception/ReceptionDeskPage";
 import PharmacyPage from "./pages/pharmacy/PharmacyPage";
 import KioskPage from "./pages/kiosk/KioskPage";
@@ -57,14 +56,10 @@ export default function App() {
           </ProtectedRoute>
         }
       />
-      <Route
-        path="/nurse"
-        element={
-          <ProtectedRoute>
-            <NurseStationPage />
-          </ProtectedRoute>
-        }
-      />
+      {/* The former external vital-signs station is gone: "Y tá / Thư ký y khoa"
+          works inside the same exam room as the doctor. Keep the old URL alive
+          as a redirect so saved links and in-flight logins still land there. */}
+      <Route path="/nurse" element={<Navigate to="/doctor/ehr" replace />} />
       <Route
         path="/reception"
         element={

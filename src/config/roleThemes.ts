@@ -32,7 +32,7 @@ export const ROLE_THEMES: Record<UserRole, RoleTheme> = {
     button: "bg-violet-600 hover:bg-violet-700",
     focusClasses: "focus:ring-violet-500/20 focus:border-violet-600",
     badge: "bg-violet-100 text-violet-800 border-violet-200",
-    portalLabel: "Điều Dưỡng Lâm Sàng",
+    portalLabel: "Y tá / Thư ký y khoa",
   },
   RECEPTIONIST: {
     heroBg: "bg-clinical-700",
@@ -83,7 +83,7 @@ export const ROLE_ORDER: UserRole[] = [
 export const ROLE_LABELS: Record<UserRole, { label: string; emoji: string }> = {
   PATIENT: { label: "Bệnh nhân", emoji: "🧑‍🦽" },
   DOCTOR: { label: "Bác sĩ", emoji: "🩺" },
-  NURSE: { label: "Điều dưỡng", emoji: "💉" },
+  NURSE: { label: "Y tá / Thư ký y khoa", emoji: "📋" },
   RECEPTIONIST: { label: "Tiếp đón viên", emoji: "🏢" },
   PHARMACIST: { label: "Dược sĩ", emoji: "💊" },
   ADMIN: { label: "Quản trị viên", emoji: "🛡️" },

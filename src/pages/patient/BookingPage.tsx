@@ -372,7 +372,7 @@ export default function BookingPage() {
     nowLabel: string;
   } | null>(null);
   /**
-   * The gateway's `department_id` for the current verdict (1/2/3), kept apart from
+   * The gateway's normalised `department_id` (1/2), kept apart from
    * `deptIdx`.
    *
    * They are different things: this is a stable backend category, `deptIdx` is a
@@ -1394,7 +1394,7 @@ export default function BookingPage() {
       // The voice path derives the department from its verdict; the keyword path
       // has no rota payload, so the patient must have picked one on the card.
       if (!voiceTriage && deptIdx === null) {
-        toast.error("Vui lòng chọn một chuyên khoa.");
+        toast.error("Vui lòng chọn một khối khám.");
         return false;
       }
     }
@@ -1602,6 +1602,10 @@ export default function BookingPage() {
             <p className="mt-2 text-base leading-relaxed text-slate-500">
               Hai bước nhanh chóng và bạn xong - chúng tôi sẽ xác nhận qua tin
               nhắn SMS.
+            </p>
+            <p className="mx-auto mt-3 max-w-xl rounded-lg border border-teal-200 bg-teal-50 px-4 py-2 text-sm leading-relaxed text-teal-800">
+              Sau khi check-in, bạn đi thẳng đến phòng khám được ghi trên phiếu.
+              Y tá / Thư ký y khoa sẽ đo sinh hiệu và hỗ trợ bác sĩ ngay tại phòng.
             </p>
           </div>
 
@@ -1852,11 +1856,11 @@ export default function BookingPage() {
                     </p>
                     <dl className="mt-2 space-y-1.5 text-base text-slate-600">
                       <div className="flex justify-between">
-                        <dt>Chuyên khoa</dt>
+                        <dt>Khối khám</dt>
                         <dd className="font-medium text-slate-900">
                           {deptIdx !== null
                             ? CLINIC_SERVICES[deptIdx].title
-                            : "Khám Nội Tổng quát & Tầm soát"}
+                            : "Khối Nội"}
                         </dd>
                       </div>
                       <div className="flex justify-between">

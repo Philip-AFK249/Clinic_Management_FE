@@ -38,8 +38,7 @@ const SESSION_CHIP: Record<ShiftSession, string> = {
 };
 
 const DUTY_LABELS: Record<DoctorShift["dutyType"], string> = {
-  OUTPATIENT: "Ngoại trú",
-  INPATIENT: "Nội trú",
+  OUTPATIENT: "Khám ngoại trú",
 };
 
 function isMine(shift: DoctorShift, nurse: NurseProfile): boolean {
@@ -54,8 +53,8 @@ function dateLabelFrom(iso: string): string {
 }
 
 /**
- * Who is on duty at this khoa today, and which điều dưỡng each shift is paired
- * with - the pairing the admin console writes through `POST /schedules/shifts`.
+ * Who is on duty in this block today, and which Y tá / Thư ký y khoa each shift
+ * is paired with - the pairing the admin console writes through `POST /schedules/shifts`.
  * The signed-in nurse's own shifts are called out so the desk knows where they
  * are expected.
  */
@@ -203,8 +202,8 @@ export default function NurseDutyPanel({
                                 mine ? "text-violet-700" : "text-slate-600"
                               }`}
                             >
-                              Điều dưỡng:{" "}
-                              {shift.nurseName?.trim() || "Chưa phân điều dưỡng"}
+                              Y tá / Thư ký y khoa:{" "}
+                              {shift.nurseName?.trim() || "Chưa phân Y tá"}
                             </p>
                           </div>
                           {mine ? (
@@ -214,11 +213,11 @@ export default function NurseDutyPanel({
                             </span>
                           ) : (
                             <span
-                              title="Điều dưỡng khác được phân cho ca này"
+                              title="Y tá / Thư ký y khoa khác được phân cho ca này"
                               className="inline-flex shrink-0 items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-400"
                             >
                               <Users className="h-3 w-3" aria-hidden="true" />
-                              ĐD khác
+                              Y tá khác
                             </span>
                           )}
                         </li>
@@ -234,7 +233,7 @@ export default function NurseDutyPanel({
 
       <div className="flex h-9 shrink-0 items-center justify-between border-t border-slate-200/80 bg-white px-4 text-[10px] text-slate-400">
         <span>DoctorScheduleService :8081 &middot; /api/v1/schedules/shifts</span>
-        <span>Ngoại trú = phòng khám &middot; Nội trú = buồng bệnh / thủ thuật</span>
+        <span>Khám ngoại trú = phòng khám</span>
       </div>
     </section>
   );

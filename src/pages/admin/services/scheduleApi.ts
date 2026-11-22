@@ -16,7 +16,8 @@ attachBearerInterceptor(scheduleApi);
 
 export type ShiftSession = "MORNING" | "AFTERNOON";
 
-export type DutyType = "OUTPATIENT" | "INPATIENT";
+/** The clinic runs outpatient consultations only. */
+export type DutyType = "OUTPATIENT";
 
 export interface Department {
   id: number;
@@ -50,10 +51,10 @@ export interface DoctorShift {
   maxPatientsPerSlot: number;
   roomNumber?: string;
   /**
-   * Paired điều dưỡng. Optional because the column is nullable and a shift
-   * created before the pairing landed comes back without one; `nurseName` is
-   * back-filled department-side by DoctorScheduleService when the column is
-   * null, so consumers render `nurseName ?? "Chưa phân điều dưỡng"`.
+   * Paired Y tá / Thư ký y khoa. Optional because the column is nullable and a
+   * shift created before the pairing landed comes back without one; `nurseName`
+   * is back-filled department-side when the column is null, so consumers render
+   * `nurseName ?? "Chưa phân Y tá"`.
    */
   nurseId?: number | null;
   nurseName?: string | null;
@@ -101,8 +102,8 @@ export interface CreateShiftPayload {
   session: ShiftSession;
   dutyType: DutyType;
   /**
-   * Optional pairing with an điều dưỡng. Omit both to let the service fall
-   * back to its per-khoa default nurse; send them to pin a specific person.
+   * Optional pairing with a Y tá / Thư ký y khoa. Omit both to let the service
+   * fall back to its per-block default; send them to pin a specific person.
    */
   nurseId?: number | null;
   nurseName?: string | null;
@@ -112,8 +113,8 @@ export interface CreateShiftPayload {
  * Patch payload for `PUT /shifts/{id}`. DoctorScheduleService's
  * `updateShift` only writes the fields it receives (a `null`/missing field is
  * skipped), so the modal sends every edited value and leaves the pairing out
- * when the admin picks "-- Để mặc định theo Khoa --" - the service cannot
- * un-assign an điều dưỡng that is already stored.
+ * when the admin picks "-- Để mặc định theo Khối --" - the service cannot
+ * un-assign a Y tá / Thư ký y khoa who is already stored.
  */
 export interface UpdateShiftPayload {
   doctorId?: number;
@@ -231,6 +232,16 @@ function toApiError(error: unknown): ScheduleApiError {
   return new ScheduleApiError(toErrorMessage(error), status);
 }
 
+/**
+ * Older backend rows may still carry the legacy duty value. The frontend no
+ * longer has a second duty mode, so every shift is presented as an outpatient
+ * examination
+ * shift - including when an old row is edited and saved back.
+ */
+function asOutpatientShift(shift: DoctorShift): DoctorShift {
+  return { ...shift, dutyType: "OUTPATIENT" };
+}
+
 // ---------------------------------------------------------------------------
 // Departments
 // ---------------------------------------------------------------------------
@@ -281,7 +292,7 @@ export async function getShifts(
       params: { departmentId, date: shiftDate },
       signal,
     });
-    return data;
+    return data.map(asOutpatientShift);
   } catch (error) {
     if (axios.isCancel(error)) throw error;
     throw toApiError(error);
@@ -299,7 +310,7 @@ export async function getWeeklyShifts(
       params: { departmentId, startDate, endDate },
       signal,
     });
-    return data;
+    return data.map(asOutpatientShift);
   } catch (error) {
     if (axios.isCancel(error)) throw error;
     throw toApiError(error);
@@ -314,7 +325,7 @@ export async function createShift(
     const { data } = await scheduleApi.post<DoctorShift>("/shifts", payload, {
       signal,
     });
-    return data;
+    return asOutpatientShift(data);
   } catch (error) {
     if (axios.isCancel(error)) throw error;
     throw toApiError(error);
@@ -332,7 +343,7 @@ export async function updateShift(
       payload,
       { signal },
     );
-    return data;
+    return asOutpatientShift(data);
   } catch (error) {
     if (axios.isCancel(error)) throw error;
     throw toApiError(error);

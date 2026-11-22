@@ -27,13 +27,8 @@ import type { QueueDateFilter } from "../reception/data/queueDates";
 const ACTIVE_STATUSES: QueueStatus[] = ["WAITING", "CALLED", "IN_CONSULTATION"];
 
 /**
- * `/nurse` - the điều dưỡng station.
- *
- * Three things a triage nurse needs on one screen: their khoa's live queue
- * (PatientIntakeService), today's doctor duty roster with the pairing written
- * by the admin console (DoctorScheduleService), and bedside vitals capture.
- * The queue is scoped to the signed-in nurse's department; everything else on
- * the screen is clinic-wide by design (who is on, who is paired with whom).
+ * Legacy `/nurse` station, now redirected to the unified exam room by `App`.
+ * Kept only as a reference for the queue/duty data it used to render.
  */
 export default function NurseStationPage() {
   const { user } = useAuth();

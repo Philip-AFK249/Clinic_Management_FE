@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { ArrowRight, Microscope, Stethoscope, Wind } from "lucide-react";
+import { ArrowRight, Stethoscope, Wind } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 interface CoreDepartment {
@@ -13,7 +13,7 @@ interface CoreDepartment {
 
 const CORE_DEPARTMENTS: CoreDepartment[] = [
   {
-    title: "Khoa Nội Tổng quát & Tim mạch",
+    title: "Khối Nội",
     description:
       "Tầm soát và điều trị các bệnh lý nội khoa, tim mạch và chuyển hóa trong một quy trình liền mạch.",
     highlights: [
@@ -25,28 +25,16 @@ const CORE_DEPARTMENTS: CoreDepartment[] = [
     accentClassName: "text-clinical-600",
   },
   {
-    title: "Khoa Hô hấp & Dị ứng - Miễn dịch",
+    title: "Khối Ngoại",
     description:
-      "Chẩn đoán chính xác các bệnh lý hô hấp và dị ứng bằng xét nghiệm chuyên sâu, phác đồ cá nhân hóa.",
+      "Khám ngoại trú và thực hiện thủ thuật, với đánh giá hô hấp - dị ứng, tai mũi họng và các vấn đề da liễu trong cùng một khối.",
     highlights: [
       "Hen suyễn, viêm mũi dị ứng, mề đay mạn tính",
-      "Test lẩy da và tư vấn kiểm soát dị nguyên",
+      "Khám ngoại trú, thủ thuật và soi da khi có chỉ định",
     ],
     icon: Wind,
     iconClassName: "bg-emerald-50 text-emerald-600",
     accentClassName: "text-emerald-600",
-  },
-  {
-    title: "Khoa Da liễu",
-    description:
-      "Thăm khám da liễu nhẹ nhàng với hỗ trợ soi da kỹ thuật số, phù hợp cho cả người lớn và trẻ em.",
-    highlights: [
-      "Viêm da cơ địa, chàm, mụn, nấm da",
-      "Soi da Dermoscopy và tư vấn chăm sóc phục hồi",
-    ],
-    icon: Microscope,
-    iconClassName: "bg-violet-50 text-violet-600",
-    accentClassName: "text-violet-600",
   },
 ];
 
@@ -56,18 +44,18 @@ export default function ClinicalServices() {
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="max-w-2xl">
           <p className="text-xs font-semibold uppercase tracking-wider text-clinical-600">
-            Chuyên khoa khám
+            Khối khám
           </p>
           <h2 className="mt-2 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
-            Ba chuyên khoa trọng tâm, một trải nghiệm liền mạch
+            Hai khối khám ngoại trú, một trải nghiệm liền mạch
           </h2>
           <p className="mt-3 text-base leading-relaxed text-slate-500">
-            Mỗi chuyên khoa được thiết kế để bạn được đánh giá đúng vấn đề, đúng
-            bác sĩ và đúng thời điểm.
+            Mỗi khối được thiết kế để bạn được đánh giá đúng vấn đề, đúng bác sĩ
+            và đúng thời điểm.
           </p>
         </div>
 
-        <div className="mt-10 grid grid-cols-1 gap-6 md:grid-cols-3">
+        <div className="mt-10 grid grid-cols-1 gap-6 md:grid-cols-2">
           {CORE_DEPARTMENTS.map((department) => {
             const Icon = department.icon;
             return (
@@ -106,7 +94,7 @@ export default function ClinicalServices() {
                   to="/patient/booking"
                   className={`mt-5 inline-flex items-center gap-1.5 text-sm font-semibold ${department.accentClassName} transition-colors hover:opacity-80`}
                 >
-                  Đặt khám chuyên khoa
+                  Đặt khám theo khối
                   <ArrowRight
                     className="h-4 w-4 transition-transform group-hover:translate-x-0.5"
                     aria-hidden="true"

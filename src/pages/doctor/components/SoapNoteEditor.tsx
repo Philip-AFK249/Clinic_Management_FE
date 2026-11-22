@@ -28,7 +28,7 @@ interface SoapNoteEditorProps {
   rxLines: RxLine[];
   setRxLines: React.Dispatch<React.SetStateAction<RxLine[]>>;
   allergies: Allergy[];
-  /** Nurse-recorded vitals, dropped into "O" only while that section is empty. */
+  /** In-room vitals (BS & Y tá), dropped into "O" only while it is empty. */
   objectiveSeed?: SoapObjectiveSeed | null;
   /** One copilot turn; the answer lands as ICD-10 codes + prescription lines. */
   onSubmitAiProposal: (prompt: string) => void;

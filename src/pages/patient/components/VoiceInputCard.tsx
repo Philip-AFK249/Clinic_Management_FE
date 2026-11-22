@@ -128,7 +128,7 @@ export default function VoiceInputCard({
       </div>
       <p className="mt-2 text-base leading-relaxed text-slate-500">
         Nói trực tiếp hoặc gõ tay - hệ thống sẽ tự động chuyển lời nói thành chữ và
-        gợi ý chuyên khoa phù hợp.
+        gợi ý khối khám phù hợp.
       </p>
 
       <textarea

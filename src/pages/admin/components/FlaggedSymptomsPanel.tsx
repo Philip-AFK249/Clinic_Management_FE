@@ -107,7 +107,7 @@ function statusTone(status: FlaggedStatus): string {
 function flagReasonLabel(reason?: string | null): string {
   const lowered = (reason ?? "").toLowerCase();
   if (/(ngoài|ngoai|chuyên khoa|chuyen khoa|specialty|department)/.test(lowered)) {
-    return "Ngoài chuyên khoa";
+    return "Ngoài khối khám";
   }
   return "Triệu chứng mới";
 }
@@ -330,7 +330,7 @@ export default function FlaggedSymptomsPanel({
           ? null
           : Number(draft.ai_department_id);
       if (departmentId !== null && Number.isNaN(departmentId)) {
-        throw new Error("Mã chuyên khoa phải là số.");
+        throw new Error("Mã khối khám phải là số.");
       }
       await updateFlaggedSymptomApi(editingItem.flag_id, {
         ...draft,
@@ -390,7 +390,7 @@ export default function FlaggedSymptomsPanel({
         ))}
         <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
           <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-            Nhóm bệnh / chuyên khoa phát sinh nhiều nhất
+            Nhóm bệnh / khối khám phát sinh nhiều nhất
           </p>
           <div className="mt-1.5 flex flex-wrap gap-1">
             {(stats.top_clusters ?? []).length > 0 ? (
@@ -592,7 +592,7 @@ export default function FlaggedSymptomsPanel({
                         </span>
                       </div>
                       <p className="mt-1 text-[11px] text-slate-500">
-                        Chuyên khoa gần nhất:{" "}
+                        Khối khám gần nhất:{" "}
                         {item.ai_department_name ||
                           (item.ai_department_id !== null
                             ? `Khoa #${item.ai_department_id}`
@@ -741,7 +741,7 @@ export default function FlaggedSymptomsPanel({
                 />
               </label>
               <label className="text-xs font-semibold text-slate-700">
-                ID chuyên khoa AI gợi ý
+                ID khối khám AI gợi ý
                 <input
                   type="number"
                   value={draft.ai_department_id}
@@ -768,7 +768,7 @@ export default function FlaggedSymptomsPanel({
                 <input
                   value={draft.reception_action}
                   onChange={(e) => setDraft({ ...draft, reception_action: e.target.value })}
-                  placeholder="VD: Ưu tiên khám chuyên khoa hô hấp"
+                  placeholder="VD: Ưu tiên khám Khối Ngoại"
                   className="mt-1 h-9 w-full rounded-lg border border-slate-200 px-2.5 text-xs font-normal text-slate-800 focus:border-slate-400 focus:outline-none"
                 />
               </label>

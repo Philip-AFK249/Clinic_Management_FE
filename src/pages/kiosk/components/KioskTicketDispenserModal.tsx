@@ -127,6 +127,10 @@ export default function KioskTicketDispenserModal({
               <p className="mt-1 text-[11px] font-semibold text-slate-700">
                 {room} • Bác sĩ: {doctor}
               </p>
+              <p className="mt-1 text-[10px] leading-relaxed text-slate-600">
+                Vui lòng đi thẳng đến {room || "phòng khám ghi trên phiếu"} sau khi
+                nhận số. Sinh hiệu được đo tại phòng bởi Y tá / Thư ký y khoa.
+              </p>
               <p className="mt-1 text-[11px] text-slate-500">
                 Khung giờ {ticket?.slotStartTime.slice(0, 5) ?? "--:--"} • Ước tính chờ ~
                 {ESTIMATED_WAIT_MINUTES} phút ({PATIENTS_AHEAD} người đang khám phía trước)

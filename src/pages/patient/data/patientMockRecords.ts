@@ -87,7 +87,7 @@ export function triageSymptoms(symptoms: string): TriageSuggestion | null {
 
   if (emergency.test(text)) {
     return {
-      department: "Khám Nội Tổng quát & Tầm soát",
+      department: "Khối Nội",
       priority: "P1",
       priorityLabel: "P1 - Khẩn cấp (Ưu tiên 1)",
       confidence: 97,
@@ -97,17 +97,17 @@ export function triageSymptoms(symptoms: string): TriageSuggestion | null {
   }
   if (allergy.test(text)) {
     return {
-      department: "Xét nghiệm Dị ứng Toàn diện",
+      department: "Khối Ngoại",
       priority: "P2",
       priorityLabel: "P2 - Cần khám sớm",
       confidence: 94,
       summary:
-        "Phát hiện biểu hiện dị ứng. Nên được bác sĩ chuyên khoa dị ứng đánh giá trong ngày.",
+        "Phát hiện biểu hiện dị ứng. Nên được bác sĩ Khối Ngoại đánh giá trong ngày.",
     };
   }
   if (respiratory.test(text)) {
     return {
-      department: "Khám & Quản lý Hen suyễn - Hô hấp",
+      department: "Khối Ngoại",
       priority: "P2",
       priorityLabel: "P2 - Cần khám sớm",
       confidence: 91,
@@ -117,7 +117,7 @@ export function triageSymptoms(symptoms: string): TriageSuggestion | null {
   }
   if (child.test(text)) {
     return {
-      department: "Nhi khoa & Y học Gia đình",
+      department: "Khối Nội",
       priority: "P3",
       priorityLabel: "P3 - Khám thông thường",
       confidence: 88,
@@ -127,7 +127,7 @@ export function triageSymptoms(symptoms: string): TriageSuggestion | null {
   }
   if (skin.test(text)) {
     return {
-      department: "Da liễu & Viêm da Cơ địa",
+      department: "Khối Nội",
       priority: "P3",
       priorityLabel: "P3 - Khám thông thường",
       confidence: 84,
@@ -136,7 +136,7 @@ export function triageSymptoms(symptoms: string): TriageSuggestion | null {
     };
   }
   return {
-    department: "Khám Nội Tổng quát & Tầm soát",
+    department: "Khối Nội",
     priority: "P3",
     priorityLabel: "P3 - Khám thông thường",
     confidence: 80,
@@ -255,7 +255,7 @@ export const RAG_KNOWLEDGE_BASE: KbEntry[] = [
       "price",
     ],
     answer:
-      "Bảng giá xét nghiệm dị ứng: Gói cơ bản 35 chất - 750.000 VND; Gói mở rộng 60 chất - 1.200.000 VND (đã gồm hẹn đọc kết quả cùng bác sĩ chuyên khoa). Hô hấp ký Spirometry - 350.000 VND. Phí đã bao gồm VAT và được hiển thị minh bạch trước khi xác nhận.",
+      "Bảng giá xét nghiệm dị ứng: Gói cơ bản 35 chất - 750.000 VND; Gói mở rộng 60 chất - 1.200.000 VND (đã gồm hẹn đọc kết quả cùng bác sĩ Khối Ngoại). Hô hấp ký Spirometry - 350.000 VND. Phí đã bao gồm VAT và được hiển thị minh bạch trước khi xác nhận.",
     source: "Bảng giá dịch vụ Phòng khám Q3/2026",
   },
   {
@@ -273,7 +273,7 @@ export const RAG_KNOWLEDGE_BASE: KbEntry[] = [
       "procedure",
     ],
     answer:
-      "Quy trình khám: (1) Đặt lịch online để nhận phiếu QR check-in. (2) Quét QR tại kiosk tầng trệt (chỉ mất 5 giây) để lấy số thứ tự tự động. (3) Làm thủ tục tại quầy tiếp đón và chờ đến lượt. Vui lòng mang theo thẻ BHYT và CCCD để đối soát danh tính.",
+      "Quy trình khám: (1) Đặt lịch online để nhận phiếu QR check-in. (2) Quét QR tại kiosk tầng trệt (chỉ mất 5 giây) để lấy số thứ tự tự động. (3) Đi thẳng đến phòng khám ghi trên phiếu; Y tá / Thư ký y khoa đo sinh hiệu ngay tại phòng. Vui lòng mang theo thẻ BHYT và CCCD để đối soát danh tính.",
     source: "Hướng dẫn quy trình khám Phòng khám v3.1",
   },
   {

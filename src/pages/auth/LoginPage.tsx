@@ -533,7 +533,7 @@ export default function LoginPage() {
             <section className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-card">
               <div className="mb-3 flex items-center gap-2 text-xs font-medium text-slate-500">
                 <Building2 className="h-4 w-4 text-slate-400" aria-hidden="true" />
-                Khoa phụ trách
+                Khối phụ trách
               </div>
               <div className="grid gap-2 sm:grid-cols-3">
                 {CLINICAL_DEPARTMENTS.map((department) => {
@@ -574,7 +574,7 @@ export default function LoginPage() {
                 Bác sĩ trực (
                 {CLINICAL_DEPARTMENTS.find(
                   (department) => department.id === selectedDepartmentId,
-                )?.shortName ?? "Chuyên khoa"}
+                )?.shortName ?? "Khối khám"}
                 )
               </div>
               <div className="flex flex-wrap gap-2">

@@ -1,18 +1,164 @@
-import { useState } from "react";
-import { AlertTriangle, FileText } from "lucide-react";
-import type { QueueTicketDetailResponse } from "../../../services/intakeApi";
+import { useState, type FormEvent } from "react";
+import { AlertTriangle, FileText, Loader2, Save } from "lucide-react";
+import { toast } from "sonner";
+import {
+  updateTicketVitalsApi,
+} from "../../../services/intakeApi";
+import type {
+  QueueTicketDetailResponse,
+  UpdateVitalsPayload,
+} from "../../../services/intakeApi";
 import type { Allergy, PatientRecord } from "../data/doctorMockData";
+
+/** The reading the room just saved, forwarded to the encounter sign-off. */
+export interface SavedVitals {
+  bloodPressure: string;
+  heartRate?: number;
+  temperature?: string;
+  spo2?: number;
+}
 
 interface ActivePatientBannerProps {
   patient: PatientRecord;
   /**
-   * The ticket as PatientIntakeService holds it, including the vitals the
-   * nurse station recorded. Preferred over `patient.vitals`: it is pulled the
-   * moment the patient is called and re-pulled on every queue poll, so it is
-   * the freshest copy in the room.
+   * The ticket as PatientIntakeService holds it, including the vitals taken
+   * in this room. Preferred over `patient.vitals`: it is pulled the moment the
+   * patient is called and re-pulled on every queue poll, so it is the freshest
+   * copy in the room.
    */
   ticketDetail?: QueueTicketDetailResponse | null;
   onOpenHistory: () => void;
+  onVitalsSaved?: (vitals: SavedVitals) => void;
+}
+
+interface InRoomVitalsProps {
+  ticket: QueueTicketDetailResponse;
+  onSaved?: (vitals: SavedVitals) => void;
+}
+
+type VitalsForm = {
+  bloodPressure: string;
+  heartRate: string;
+  temperature: string;
+  spo2: string;
+};
+
+/** Vitals captured where the patient actually is: the examination room. */
+function InRoomVitals({ ticket, onSaved }: InRoomVitalsProps) {
+  const [form, setForm] = useState<VitalsForm>({
+    bloodPressure: ticket.bloodPressure ?? "",
+    heartRate: ticket.heartRate ? String(ticket.heartRate) : "",
+    temperature: ticket.temperature ?? "",
+    spo2: ticket.spo2 ? String(ticket.spo2) : "",
+  });
+  const [saving, setSaving] = useState(false);
+
+  function update(field: keyof VitalsForm, value: string) {
+    setForm((current) => ({ ...current, [field]: value }));
+  }
+
+  async function handleSave(event: FormEvent) {
+    event.preventDefault();
+    const bp = form.bloodPressure.trim().replace(/\s+/g, "");
+    const heartRate = Number(form.heartRate);
+    const temperature = form.temperature.trim().replace(",", ".");
+    const spo2 = Number(form.spo2);
+
+    if (!/^\d{2,3}\/\d{2,3}$/.test(bp)) {
+      toast.error("Huyết áp phải có dạng 120/80.");
+      return;
+    }
+    if (!Number.isFinite(heartRate) || heartRate < 30 || heartRate > 220) {
+      toast.error("Mạch phải nằm trong khoảng 30 - 220 ck/p.");
+      return;
+    }
+    const tempValue = Number(temperature);
+    if (!temperature || !Number.isFinite(tempValue) || tempValue < 30 || tempValue > 45) {
+      toast.error("Nhiệt độ phải nằm trong khoảng 30 - 45 °C.");
+      return;
+    }
+    if (!Number.isFinite(spo2) || spo2 < 50 || spo2 > 100) {
+      toast.error("SpO2 phải nằm trong khoảng 50 - 100%.");
+      return;
+    }
+
+    const payload: UpdateVitalsPayload = {
+      bloodPressure: bp,
+      heartRate,
+      temperature,
+      spo2,
+    };
+    setSaving(true);
+    try {
+      const saved = await updateTicketVitalsApi(ticket.ticketNumber, payload);
+      const vitals: SavedVitals = {
+        bloodPressure: saved.bloodPressure?.trim() || bp,
+        heartRate: saved.heartRate ?? heartRate,
+        temperature: saved.temperature?.trim() || temperature,
+        spo2: saved.spo2 ?? spo2,
+      };
+      onSaved?.(vitals);
+      setForm({
+        bloodPressure: vitals.bloodPressure,
+        heartRate: String(vitals.heartRate ?? heartRate),
+        temperature: vitals.temperature ?? temperature,
+        spo2: String(vitals.spo2 ?? spo2),
+      });
+      toast.success(`Đã lưu sinh hiệu tại phòng khám cho phiếu ${ticket.ticketNumber}.`);
+    } catch (cause) {
+      toast.error(
+        cause instanceof Error ? cause.message : "Không lưu được sinh hiệu. Vui lòng thử lại.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const fields: { key: keyof VitalsForm; label: string; unit: string; placeholder: string }[] = [
+    { key: "bloodPressure", label: "Huyết áp", unit: "mmHg", placeholder: "120/80" },
+    { key: "heartRate", label: "Mạch (ck/p)", unit: "", placeholder: "80" },
+    { key: "temperature", label: "Nhiệt độ (°C)", unit: "", placeholder: "36.5" },
+    { key: "spo2", label: "SpO2 (%)", unit: "", placeholder: "98" },
+  ];
+
+  return (
+    <form
+      onSubmit={(event) => void handleSave(event)}
+      className="flex flex-wrap items-end gap-2"
+    >
+      {fields.map((field) => (
+        <label key={field.key} className="block">
+          <span className="mb-0.5 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+            {field.label}
+          </span>
+          <span className="flex items-center gap-1">
+            <input
+              type="text"
+              inputMode={field.key === "bloodPressure" ? "text" : "decimal"}
+              value={form[field.key]}
+              onChange={(event) => update(field.key, event.target.value)}
+              placeholder={field.placeholder}
+              aria-label={field.label}
+              className="h-8 w-[76px] rounded-md border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-800 outline-none transition-colors focus:border-teal-500 focus:ring-1 focus:ring-teal-500/30"
+            />
+            {field.unit && <span className="text-[10px] text-slate-400">{field.unit}</span>}
+          </span>
+        </label>
+      ))}
+      <button
+        type="submit"
+        disabled={saving}
+        className="inline-flex h-8 items-center gap-1.5 rounded-md bg-teal-600 px-2.5 text-[11px] font-semibold text-white transition-colors hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        {saving ? (
+          <Loader2 size={12} className="animate-spin" aria-hidden="true" />
+        ) : (
+          <Save size={12} aria-hidden="true" />
+        )}
+        {saving ? "Đang lưu..." : "Lưu sinh hiệu"}
+      </button>
+    </form>
+  );
 }
 
 function AllergyBadge({ allergy }: { allergy: Allergy }) {
@@ -34,6 +180,7 @@ export default function ActivePatientBanner({
   patient,
   ticketDetail,
   onOpenHistory,
+  onVitalsSaved,
 }: ActivePatientBannerProps) {
   /** Popover visibility for the multi-specialty advisory, hover *and* click. */
   const [showMultiSpecialtyNote, setShowMultiSpecialtyNote] = useState(false);
@@ -110,44 +257,28 @@ export default function ActivePatientBanner({
         </p>
       </div>
 
-      {/* Vitals */}
-      <div className="flex shrink-0 flex-wrap items-center gap-5 whitespace-nowrap border-x border-slate-200/80 px-4">
+      {/* Vitals are measured and edited right here in the exam room. */}
+      <div className="min-w-[430px] flex-1 border-x border-slate-200/80 px-4">
+        <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-teal-700">
+          Sinh hiệu tại phòng khám (BS &amp; Y tá nhập trực tiếp)
+        </p>
         {ticketDetail ? (
-          // The nurse station's own reading. Placeholders, not zeros: an
-          // unmeasured vital is "unknown", never "0".
-          <>
-            <Vital
-              label="Huyết áp"
-              value={ticketDetail.bloodPressure || "--/--"}
-              unit="mmHg"
-            />
-            <Vital
-              label="Mạch"
-              value={ticketDetail.heartRate ? String(ticketDetail.heartRate) : "--"}
-              unit="bpm"
-            />
-            <Vital
-              label="SpO2"
-              value={ticketDetail.spo2 ? String(ticketDetail.spo2) : "--"}
-              unit="%"
-            />
-            <Vital
-              label="Nhiệt độ"
-              value={ticketDetail.temperature || "--"}
-              unit="°C"
-            />
-          </>
+          <InRoomVitals
+            key={ticketDetail.ticketNumber}
+            ticket={ticketDetail}
+            onSaved={onVitalsSaved}
+          />
         ) : patient.vitalsRecorded === false ? (
-          <span className="text-xs text-slate-400">
-            Chưa đo sinh hiệu tại phòng tiếp đón
-          </span>
+          <div className="flex h-8 items-center gap-2">
+            <span className="text-xs text-slate-400">Chưa có chỉ số sinh hiệu</span>
+          </div>
         ) : (
-          <>
+          <div className="flex h-8 items-center gap-5 whitespace-nowrap">
             <Vital label="Huyết áp" value={patient.vitals.bp} unit="mmHg" />
             <Vital label="Mạch" value={String(patient.vitals.hr)} unit="ck/p" />
-            <Vital label="Nhiệt độ" value={patient.vitals.temp} unit="" />
+            <Vital label="Nhiệt độ" value={patient.vitals.temp} unit="°C" />
             <Vital label="SpO2" value={String(patient.vitals.spo2)} unit="%" />
-          </>
+          </div>
         )}
       </div>
 
@@ -168,8 +299,8 @@ export default function ActivePatientBanner({
               aria-describedby="multi-specialty-note"
               className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-amber-300 bg-amber-50 px-3 py-1.5 text-right text-[11px] font-bold leading-tight text-amber-900 shadow-sm transition-colors hover:border-amber-400 hover:bg-amber-100"
             >
-              🩺 Đa chuyên khoa: Bệnh nhân có triệu chứng kèm tại{" "}
-              {multiSpecialty.secondaryDepartmentName ?? "chuyên khoa khác"}
+              🩺 Đa khối: Bệnh nhân có triệu chứng kèm tại{" "}
+              {multiSpecialty.secondaryDepartmentName ?? "khối khác"}
             </button>
 
             {showMultiSpecialtyNote && (
@@ -179,16 +310,16 @@ export default function ActivePatientBanner({
                 className="absolute right-0 top-full z-30 mt-1.5 w-80 rounded-xl border border-amber-200 bg-white p-3 text-left shadow-elevated"
               >
                 <p className="text-[11px] font-bold uppercase tracking-wide text-amber-700">
-                  Tư vấn đa chuyên khoa
+                  Tư vấn đa khối
                 </p>
                 <p className="mt-1 text-xs leading-relaxed text-slate-700">
                   {multiSpecialty.multiSpecialtyNote ||
-                    "Bệnh nhân có triệu chứng kèm theo ở chuyên khoa khác."}
+                    "Bệnh nhân có triệu chứng kèm theo ở khối khác."}
                 </p>
                 <p className="mt-1.5 text-xs font-medium leading-relaxed text-slate-500">
                   Cân nhắc xử lý ngay triệu chứng kèm hoặc chỉ định hội chẩn
                   liên khoa với{" "}
-                  {multiSpecialty.secondaryDepartmentName ?? "chuyên khoa đó"}{" "}
+                  {multiSpecialty.secondaryDepartmentName ?? "khối đó"}{" "}
                   trong lần khám này.
                 </p>
               </div>

@@ -125,7 +125,7 @@ export default function TicketPrintModal({
             {ticket.secondaryDepartmentName && (
               <div className="border-t border-dashed border-slate-300 px-4 py-3 text-[11px]">
                 <p className="font-bold uppercase tracking-wider text-slate-800">
-                  Hướng dẫn đa chuyên khoa
+                  Hướng dẫn đa khối
                 </p>
                 <p className="mt-1 font-semibold leading-relaxed text-slate-800">
                   Hoàn thành khám chính tại {ticket.departmentName} trước, sau
@@ -165,8 +165,9 @@ export default function TicketPrintModal({
             </div>
 
             <div className="border-t border-dashed border-slate-300 px-4 py-2 text-center text-[9px] leading-relaxed text-slate-500">
-              Vui lòng đến phòng khám trước giờ hẹn 10 phút và giữ thẻ BHYT /
-              CCCD để làm thủ tục. Phiếu có giá trị trong ngày.
+              Vui lòng đến thẳng phòng khám {ticket.roomNumber || "ghi trên phiếu"} trước
+              giờ hẹn 10 phút và giữ thẻ BHYT / CCCD. Sinh hiệu được đo tại phòng,
+              không cần ghé quầy riêng. Phiếu có giá trị trong ngày.
             </div>
           </div>
 

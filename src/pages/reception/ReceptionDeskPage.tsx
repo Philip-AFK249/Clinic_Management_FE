@@ -50,7 +50,7 @@ const FIELD_LABELS: Record<IntakeField, string> = {
   gender: "Giới tính",
   phone: "Số điện thoại",
   address: "Địa chỉ",
-  departmentId: "Chuyên khoa",
+  departmentId: "Khối Nội",
   appointmentDate: "Ngày khám",
   slotStartTime: "Khung giờ",
   priorityLevel: "Mức độ ưu tiên",

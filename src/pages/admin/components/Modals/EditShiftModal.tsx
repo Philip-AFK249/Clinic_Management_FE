@@ -35,13 +35,11 @@ const SESSION_LABELS: Record<ShiftSession, string> = {
 };
 
 const DUTY_TYPE_OPTIONS: { value: DutyType; label: string }[] = [
-  { value: "OUTPATIENT", label: "Ngoại trú (Trực phòng khám)" },
-  { value: "INPATIENT", label: "Nội trú (Trực nội trú / Thủ thuật)" },
+  { value: "OUTPATIENT", label: "Khám ngoại trú (Trực phòng khám)" },
 ];
 
 const DUTY_LABELS: Record<DutyType, string> = {
-  OUTPATIENT: "Ngoại trú",
-  INPATIENT: "Nội trú",
+  OUTPATIENT: "Khám ngoại trú",
 };
 
 /**
@@ -49,9 +47,9 @@ const DUTY_LABELS: Record<DutyType, string> = {
  * through `PUT /api/v1/schedules/shifts/{id}` and removes it through
  * `DELETE` after an explicit confirm.
  *
- * The pairing select cannot clear an existing điều dưỡng - DoctorScheduleService
- * skips null fields on update - so picking the khoa default simply omits the
- * pair and keeps whoever is stored (a note says so in that case).
+ * The pairing select cannot clear an existing Y tá / Thư ký y khoa -
+ * DoctorScheduleService skips null fields on update - so picking the block
+ * default simply omits the pair and keeps whoever is stored.
  */
 export default function EditShiftModal({
   shift,
@@ -93,7 +91,7 @@ export default function EditShiftModal({
     return [
       {
         id: selectedNurseId,
-        fullName: shift.nurseName ?? "ĐD. đã phân ca",
+        fullName: shift.nurseName ?? "Y tá đã phân ca",
         departmentId: shift.departmentId,
         email: "",
         roomNumber: undefined,
@@ -342,7 +340,7 @@ export default function EditShiftModal({
 
           <div>
             <label className="mb-1 block text-xs font-semibold text-slate-700">
-              Điều dưỡng phối hợp
+              Y tá / Thư ký y khoa phối hợp
             </label>
             <select
               value={selectedNurseId}
@@ -354,7 +352,7 @@ export default function EditShiftModal({
               disabled={busy}
               className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-300 disabled:cursor-not-allowed disabled:bg-slate-50"
             >
-              <option value="">-- Để mặc định theo Khoa --</option>
+              <option value="">-- Để mặc định theo Khối --</option>
               {nurseOptions.map((nurse) => (
                 <option key={nurse.id} value={nurse.id}>
                   {nurse.fullName}
@@ -364,9 +362,9 @@ export default function EditShiftModal({
             </select>
             {pairingKept && (
               <p className="mt-1 text-[11px] text-slate-400">
-                Chọn "-- Để mặc định theo Khoa --" không bỏ được điều dưỡng đã
+                Chọn "-- Để mặc định theo Khối --" không bỏ được Y tá đã
                 gán; ca vẫn giữ {shift.nurseName ?? "người hiện tại"}. Hãy chọn
-                một điều dưỡng khác để đổi.
+                một Y tá / Thư ký y khoa khác để đổi.
               </p>
             )}
           </div>

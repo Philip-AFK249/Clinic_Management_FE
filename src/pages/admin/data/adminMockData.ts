@@ -9,7 +9,7 @@ export type AdminTab =
 
 export type ShiftSession = "MORNING" | "AFTERNOON";
 
-export type DutyType = "OUTPATIENT" | "INPATIENT";
+export type DutyType = "OUTPATIENT";
 
 export interface Department {
   id: string;
@@ -141,11 +141,8 @@ export const MOCK_SYSTEM_METRICS: SystemMetrics = {
 };
 
 export const MOCK_DEPARTMENTS: Department[] = [
-  { id: "DEP-CARD", code: "CARD", name: "Khoa Tim mạch" },
-  { id: "DEP-GIM", code: "GIM", name: "Khoa Nội Tổng quát" },
-  { id: "DEP-PED", code: "PED", name: "Khoa Nhi" },
-  { id: "DEP-ALL", code: "ALLR", name: "Khoa Dị ứng & Miễn dịch lâm sàng" },
-  { id: "DEP-ENT", code: "ENT", name: "Khoa Tai Mũi Họng" },
+  { id: "DEP-INT", code: "INT", name: "Khối Nội" },
+  { id: "DEP-EXT", code: "EXT", name: "Khối Ngoại" },
 ];
 
 export const MOCK_DOCTORS: Doctor[] = [
@@ -154,7 +151,7 @@ export const MOCK_DOCTORS: Doctor[] = [
     fullName: "PGS. TS. BS. Trần Minh Tuấn",
     title: "PGS.TS",
     roomNumber: "Phòng 201",
-    departmentId: "DEP-ALL",
+    departmentId: "DEP-EXT",
     active: true,
   },
   {
@@ -162,7 +159,7 @@ export const MOCK_DOCTORS: Doctor[] = [
     fullName: "BS. CKI. Nguyễn Văn Dũng",
     title: "BS.CKI",
     roomNumber: "Phòng 104",
-    departmentId: "DEP-GIM",
+    departmentId: "DEP-INT",
     active: true,
   },
   {
@@ -170,7 +167,7 @@ export const MOCK_DOCTORS: Doctor[] = [
     fullName: "ThS. BS. Phạm Thị Hoa",
     title: "ThS.BS",
     roomNumber: "Phòng 105",
-    departmentId: "DEP-GIM",
+    departmentId: "DEP-INT",
     active: true,
   },
   {
@@ -178,7 +175,7 @@ export const MOCK_DOCTORS: Doctor[] = [
     fullName: "BS. CKI. Lê Văn Bảo",
     title: "BS.CKI",
     roomNumber: "Phòng 301",
-    departmentId: "DEP-CARD",
+    departmentId: "DEP-INT",
     active: true,
   },
   {
@@ -186,7 +183,7 @@ export const MOCK_DOCTORS: Doctor[] = [
     fullName: "BS. Nguyễn Thanh Hà",
     title: "BS",
     roomNumber: "Phòng 302",
-    departmentId: "DEP-CARD",
+    departmentId: "DEP-INT",
     active: true,
   },
   {
@@ -194,7 +191,7 @@ export const MOCK_DOCTORS: Doctor[] = [
     fullName: "BS. CKI. Trần Quốc Khánh",
     title: "BS.CKI",
     roomNumber: "Phòng 401",
-    departmentId: "DEP-PED",
+    departmentId: "DEP-INT",
     active: true,
   },
   {
@@ -202,7 +199,7 @@ export const MOCK_DOCTORS: Doctor[] = [
     fullName: "ThS. BS. Đỗ Thu Vân",
     title: "ThS.BS",
     roomNumber: "Phòng 402",
-    departmentId: "DEP-PED",
+    departmentId: "DEP-INT",
     active: true,
   },
   {
@@ -210,7 +207,7 @@ export const MOCK_DOCTORS: Doctor[] = [
     fullName: "BS. CKI. Hoàng Kim Ngân",
     title: "BS.CKI",
     roomNumber: "Phòng 501",
-    departmentId: "DEP-ENT",
+    departmentId: "DEP-EXT",
     active: true,
   },
   {
@@ -218,7 +215,7 @@ export const MOCK_DOCTORS: Doctor[] = [
     fullName: "BS. Vũ Đức Minh",
     title: "BS",
     roomNumber: "Phòng 202",
-    departmentId: "DEP-ALL",
+    departmentId: "DEP-EXT",
     active: true,
   },
   {
@@ -226,7 +223,7 @@ export const MOCK_DOCTORS: Doctor[] = [
     fullName: "BS. CKI. Ngô Bá Khôi",
     title: "BS.CKI",
     roomNumber: "Phòng 502",
-    departmentId: "DEP-ENT",
+    departmentId: "DEP-EXT",
     active: true,
   },
   {
@@ -234,7 +231,7 @@ export const MOCK_DOCTORS: Doctor[] = [
     fullName: "BS. Lê Thị Ngọc",
     title: "BS",
     roomNumber: "Phòng 106",
-    departmentId: "DEP-GIM",
+    departmentId: "DEP-INT",
     active: true,
   },
 ];
@@ -255,13 +252,13 @@ export const MOCK_STAFF: StaffAccount[] = [
     status: "ACTIVE",
     lastLogin: "22/09/2026 07:50",
   },
-  // --- 9 Doctors - Khoa Nội Tổng quát & Tim mạch (Department ID 1) ---
+  // --- Doctors - Khối Nội (Department ID 1) ---
   {
     id: "STF-002",
     fullName: "PGS. TS. BS. Trần Minh Tuấn",
     email: "tuan.tran@smartclinic.vn",
     role: "DOCTOR",
-    department: "Khoa Nội Tổng quát & Tim mạch",
+    department: "Khối Nội",
     departmentId: "1",
     title: "PGS.TS",
     roomNumber: "Phòng 101",
@@ -274,7 +271,7 @@ export const MOCK_STAFF: StaffAccount[] = [
     fullName: "BS. CKI. Nguyễn Văn Dũng",
     email: "dung.nguyen@smartclinic.vn",
     role: "DOCTOR",
-    department: "Khoa Nội Tổng quát & Tim mạch",
+    department: "Khối Nội",
     departmentId: "1",
     title: "BS.CKI",
     roomNumber: "Phòng 102",
@@ -287,7 +284,7 @@ export const MOCK_STAFF: StaffAccount[] = [
     fullName: "ThS. BS. Phạm Quốc Bảo",
     email: "bao.pham@smartclinic.vn",
     role: "DOCTOR",
-    department: "Khoa Nội Tổng quát & Tim mạch",
+    department: "Khối Nội",
     departmentId: "1",
     title: "ThS.BS",
     roomNumber: "Phòng 101",
@@ -295,13 +292,13 @@ export const MOCK_STAFF: StaffAccount[] = [
     status: "ACTIVE",
     lastLogin: "22/09/2026 08:15",
   },
-  // --- Khoa Hô hấp & Dị ứng - Miễn dịch lâm sàng (Department ID 2) ---
+  // --- Doctors - Khối Ngoại (Department ID 2) ---
   {
     id: "STF-005",
     fullName: "BS. CKI. Lê Thị Hoàng Yến",
     email: "yen.le@smartclinic.vn",
     role: "DOCTOR",
-    department: "Khoa Hô hấp & Dị ứng - Miễn dịch lâm sàng",
+    department: "Khối Ngoại",
     departmentId: "2",
     title: "BS.CKI",
     roomNumber: "Phòng 201",
@@ -314,7 +311,7 @@ export const MOCK_STAFF: StaffAccount[] = [
     fullName: "BS. CKII. Phạm Thị Hoa",
     email: "hoa.pham@smartclinic.vn",
     role: "DOCTOR",
-    department: "Khoa Hô hấp & Dị ứng - Miễn dịch lâm sàng",
+    department: "Khối Ngoại",
     departmentId: "2",
     title: "BS.CKII",
     roomNumber: "Phòng 202",
@@ -327,7 +324,7 @@ export const MOCK_STAFF: StaffAccount[] = [
     fullName: "ThS. BS. Hoàng Hoài Nam",
     email: "nam.hoang@smartclinic.vn",
     role: "DOCTOR",
-    department: "Khoa Hô hấp & Dị ứng - Miễn dịch lâm sàng",
+    department: "Khối Ngoại",
     departmentId: "2",
     title: "ThS.BS",
     roomNumber: "Phòng 201",
@@ -335,14 +332,14 @@ export const MOCK_STAFF: StaffAccount[] = [
     status: "ACTIVE",
     lastLogin: "22/09/2026 07:55",
   },
-  // --- Khoa Da liễu (Department ID 3) ---
+  // --- Doctors - Khối Nội (legacy department 3, merged into 1) ---
   {
     id: "STF-008",
     fullName: "BS. CKI. Nguyễn Thị Lan",
     email: "lan.nguyen@smartclinic.vn",
     role: "DOCTOR",
-    department: "Khoa Da liễu",
-    departmentId: "3",
+    department: "Khối Nội",
+    departmentId: "1",
     title: "BS.CKI",
     roomNumber: "Phòng 205",
     phone: "0902000007",
@@ -354,8 +351,8 @@ export const MOCK_STAFF: StaffAccount[] = [
     fullName: "ThS. BS. Vũ Minh Đức",
     email: "duc.vu@smartclinic.vn",
     role: "DOCTOR",
-    department: "Khoa Da liễu",
-    departmentId: "3",
+    department: "Khối Nội",
+    departmentId: "1",
     title: "ThS.BS",
     roomNumber: "Phòng 206",
     phone: "0902000008",
@@ -367,22 +364,22 @@ export const MOCK_STAFF: StaffAccount[] = [
     fullName: "BS. Mai Thu Hương",
     email: "huong.mai@smartclinic.vn",
     role: "DOCTOR",
-    department: "Khoa Da liễu",
-    departmentId: "3",
+    department: "Khối Nội",
+    departmentId: "1",
     title: "BS",
     roomNumber: "Phòng 205",
     phone: "0902000009",
     status: "ACTIVE",
     lastLogin: "22/09/2026 08:25",
   },
-  // --- 9 Nurses - Phòng khám ngoại trú ---
+  // --- Y tá / Thư ký y khoa - Khối Nội ---
   {
     id: "STF-011",
-    fullName: "ĐD. Trịnh Thu Hằng",
+    fullName: "Y tá Trịnh Thu Hằng",
     email: "hang.trinh@smartclinic.vn",
     role: "NURSE",
-    department: "Điều dưỡng Ngoại trú",
-    title: "Cử nhân Điều dưỡng",
+    department: "Y tá / Thư ký y khoa",
+    title: "Y tá / Thư ký y khoa",
     roomNumber: "Phòng khám 101",
     phone: "0903000001",
     status: "ACTIVE",
@@ -390,11 +387,11 @@ export const MOCK_STAFF: StaffAccount[] = [
   },
   {
     id: "STF-012",
-    fullName: "ĐD. Đỗ Phương Mai",
+    fullName: "Y tá Đỗ Phương Mai",
     email: "mai.do@smartclinic.vn",
     role: "NURSE",
-    department: "Điều dưỡng Ngoại trú",
-    title: "Cử nhân Điều dưỡng",
+    department: "Y tá / Thư ký y khoa",
+    title: "Y tá / Thư ký y khoa",
     roomNumber: "Phòng khám 201",
     phone: "0903000002",
     status: "ACTIVE",
@@ -402,11 +399,11 @@ export const MOCK_STAFF: StaffAccount[] = [
   },
   {
     id: "STF-013",
-    fullName: "ĐD. Nguyễn Thảo Ly",
+    fullName: "Y tá Nguyễn Thảo Ly",
     email: "ly.nguyen@smartclinic.vn",
     role: "NURSE",
-    department: "Điều dưỡng Ngoại trú",
-    title: "Cử nhân Điều dưỡng",
+    department: "Y tá / Thư ký y khoa",
+    title: "Y tá / Thư ký y khoa",
     roomNumber: "Phòng khám 205",
     phone: "0903000003",
     status: "ACTIVE",
@@ -415,11 +412,11 @@ export const MOCK_STAFF: StaffAccount[] = [
   // --- Thủ thuật / Cận lâm sàng ---
   {
     id: "STF-014",
-    fullName: "ĐD. Trần Kim Oanh",
+    fullName: "Y tá Trần Kim Oanh",
     email: "oanh.tran@smartclinic.vn",
     role: "NURSE",
-    department: "Điều dưỡng Thủ thuật & Cận lâm sàng",
-    title: "Cử nhân Điều dưỡng",
+    department: "Y tá / Thư ký y khoa",
+    title: "Y tá / Thư ký y khoa",
     roomNumber: "Phòng Cấp cứu & Điện tim",
     phone: "0903000004",
     status: "ACTIVE",
@@ -427,23 +424,23 @@ export const MOCK_STAFF: StaffAccount[] = [
   },
   {
     id: "STF-015",
-    fullName: "ĐD. Lê Phương Thảo",
+    fullName: "Y tá Lê Phương Thảo",
     email: "thao.le@smartclinic.vn",
     role: "NURSE",
-    department: "Điều dưỡng Thủ thuật & Cận lâm sàng",
-    title: "Cử nhân Điều dưỡng",
-    roomNumber: "Buồng Test dị nguyên & Hô hấp ký",
+    department: "Y tá / Thư ký y khoa",
+    title: "Y tá / Thư ký y khoa",
+    roomNumber: "Phòng khám 205 (Tầng 2)",
     phone: "0903000005",
     status: "ACTIVE",
     lastLogin: "22/09/2026 07:42",
   },
   {
     id: "STF-016",
-    fullName: "ĐD. Phạm Yến Nhi",
+    fullName: "Y tá Phạm Yến Nhi",
     email: "nhi.pham@smartclinic.vn",
     role: "NURSE",
-    department: "Điều dưỡng Thủ thuật & Cận lâm sàng",
-    title: "Cao đẳng Điều dưỡng",
+    department: "Y tá / Thư ký y khoa",
+    title: "Y tá / Thư ký y khoa",
     roomNumber: "Buồng Tiểu phẫu & Laser da",
     phone: "0903000006",
     status: "ACTIVE",
@@ -452,11 +449,11 @@ export const MOCK_STAFF: StaffAccount[] = [
   // --- Tiếp đón / Kiosk ---
   {
     id: "STF-017",
-    fullName: "ĐD. Vũ Thùy Linh",
+    fullName: "Y tá Vũ Thùy Linh",
     email: "linh.vu@smartclinic.vn",
     role: "NURSE",
     department: "Tiếp đón & Kiosk",
-    title: "Cử nhân Điều dưỡng",
+    title: "Y tá / Thư ký y khoa",
     roomNumber: "Quầy Tiếp đón Sảnh A",
     phone: "0903000007",
     status: "ACTIVE",
@@ -464,11 +461,11 @@ export const MOCK_STAFF: StaffAccount[] = [
   },
   {
     id: "STF-018",
-    fullName: "ĐD. Bùi Ánh Ngọc",
+    fullName: "Y tá Bùi Ánh Ngọc",
     email: "ngoc.bui@smartclinic.vn",
     role: "NURSE",
     department: "Tiếp đón & Kiosk",
-    title: "Cao đẳng Điều dưỡng",
+    title: "Y tá / Thư ký y khoa",
     roomNumber: "Khu Kiosk Tự phục vụ",
     phone: "0903000008",
     status: "ACTIVE",
@@ -476,11 +473,11 @@ export const MOCK_STAFF: StaffAccount[] = [
   },
   {
     id: "STF-019",
-    fullName: "ĐD. Hoàng Bích Trâm",
+    fullName: "Y tá Hoàng Bích Trâm",
     email: "tram.hoang@smartclinic.vn",
     role: "NURSE",
     department: "Tiếp đón & Kiosk",
-    title: "Cao đẳng Điều dưỡng",
+    title: "Y tá / Thư ký y khoa",
     roomNumber: "Bàn Đo Dấu hiệu Sinh tồn",
     phone: "0903000009",
     status: "ACTIVE",
@@ -595,13 +592,13 @@ function buildMockDoctorShifts(): DoctorShift[] {
     });
   }
 
-  // --- DEP-ALL (Dị ứng & Miễn dịch lâm sàng) ---
-  // Thứ 2: Sáng đủ (1 Ngoại trú + 1 Nội trú), Chiều thiếu Nội trú
+  // --- DEP-EXT (Khối Ngoại) ---
+  // Thứ 2: Sáng có BS trực, Chiều chưa phân BS
   shift(0, {
     doctorId: "D001",
     doctorName: "PGS. TS. BS. Trần Minh Tuấn",
-    departmentId: "DEP-ALL",
-    departmentName: getDepartmentName("DEP-ALL"),
+    departmentId: "DEP-EXT",
+    departmentName: getDepartmentName("DEP-EXT"),
     session: "MORNING",
     dutyType: "OUTPATIENT",
     maxPatientsPerSlot: 4,
@@ -609,27 +606,27 @@ function buildMockDoctorShifts(): DoctorShift[] {
   shift(0, {
     doctorId: "D009",
     doctorName: "BS. Vũ Đức Minh",
-    departmentId: "DEP-ALL",
-    departmentName: getDepartmentName("DEP-ALL"),
+    departmentId: "DEP-EXT",
+    departmentName: getDepartmentName("DEP-EXT"),
     session: "MORNING",
-    dutyType: "INPATIENT",
+    dutyType: "OUTPATIENT",
     maxPatientsPerSlot: 3,
   });
   shift(0, {
     doctorId: "D001",
     doctorName: "PGS. TS. BS. Trần Minh Tuấn",
-    departmentId: "DEP-ALL",
-    departmentName: getDepartmentName("DEP-ALL"),
+    departmentId: "DEP-EXT",
+    departmentName: getDepartmentName("DEP-EXT"),
     session: "AFTERNOON",
     dutyType: "OUTPATIENT",
     maxPatientsPerSlot: 4,
   });
-  // Thứ 4: Sáng đủ, Chiều thiếu Ngoại trú
+  // Thứ 4: Sáng có BS trực, Chiều chưa phân BS
   shift(2, {
     doctorId: "D001",
     doctorName: "PGS. TS. BS. Trần Minh Tuấn",
-    departmentId: "DEP-ALL",
-    departmentName: getDepartmentName("DEP-ALL"),
+    departmentId: "DEP-EXT",
+    departmentName: getDepartmentName("DEP-EXT"),
     session: "MORNING",
     dutyType: "OUTPATIENT",
     maxPatientsPerSlot: 4,
@@ -637,48 +634,48 @@ function buildMockDoctorShifts(): DoctorShift[] {
   shift(2, {
     doctorId: "D009",
     doctorName: "BS. Vũ Đức Minh",
-    departmentId: "DEP-ALL",
-    departmentName: getDepartmentName("DEP-ALL"),
+    departmentId: "DEP-EXT",
+    departmentName: getDepartmentName("DEP-EXT"),
     session: "MORNING",
-    dutyType: "INPATIENT",
+    dutyType: "OUTPATIENT",
     maxPatientsPerSlot: 3,
   });
   shift(2, {
     doctorId: "D001",
     doctorName: "PGS. TS. BS. Trần Minh Tuấn",
-    departmentId: "DEP-ALL",
-    departmentName: getDepartmentName("DEP-ALL"),
+    departmentId: "DEP-EXT",
+    departmentName: getDepartmentName("DEP-EXT"),
     session: "AFTERNOON",
-    dutyType: "INPATIENT",
+    dutyType: "OUTPATIENT",
     maxPatientsPerSlot: 3,
   });
-  // Thứ 5 chiều: chỉ Nội trú
+  // Thứ 5 chiều: có BS trực
   shift(3, {
     doctorId: "D009",
     doctorName: "BS. Vũ Đức Minh",
-    departmentId: "DEP-ALL",
-    departmentName: getDepartmentName("DEP-ALL"),
+    departmentId: "DEP-EXT",
+    departmentName: getDepartmentName("DEP-EXT"),
     session: "AFTERNOON",
-    dutyType: "INPATIENT",
+    dutyType: "OUTPATIENT",
     maxPatientsPerSlot: 3,
   });
   shift(4, {
     doctorId: "D001",
     doctorName: "PGS. TS. BS. Trần Minh Tuấn",
-    departmentId: "DEP-ALL",
-    departmentName: getDepartmentName("DEP-ALL"),
+    departmentId: "DEP-EXT",
+    departmentName: getDepartmentName("DEP-EXT"),
     session: "MORNING",
     dutyType: "OUTPATIENT",
     maxPatientsPerSlot: 4,
   });
 
-  // --- DEP-GIM (Nội Tổng quát) ---
-  // Thứ 2: Sáng 2 Ngoại trú + 1 Nội trú (capacity 8), Chiều đủ chuẩn
+  // --- DEP-INT (Khối Nội) ---
+  // Thứ 2: Sáng 3 BS (capacity 8), Chiều đủ chuẩn
   shift(0, {
     doctorId: "D002",
     doctorName: "BS. CKI. Nguyễn Văn Dũng",
-    departmentId: "DEP-GIM",
-    departmentName: getDepartmentName("DEP-GIM"),
+    departmentId: "DEP-INT",
+    departmentName: getDepartmentName("DEP-INT"),
     session: "MORNING",
     dutyType: "OUTPATIENT",
     maxPatientsPerSlot: 4,
@@ -686,8 +683,8 @@ function buildMockDoctorShifts(): DoctorShift[] {
   shift(0, {
     doctorId: "D011",
     doctorName: "BS. Lê Thị Ngọc",
-    departmentId: "DEP-GIM",
-    departmentName: getDepartmentName("DEP-GIM"),
+    departmentId: "DEP-INT",
+    departmentName: getDepartmentName("DEP-INT"),
     session: "MORNING",
     dutyType: "OUTPATIENT",
     maxPatientsPerSlot: 4,
@@ -695,17 +692,17 @@ function buildMockDoctorShifts(): DoctorShift[] {
   shift(0, {
     doctorId: "D003",
     doctorName: "ThS. BS. Phạm Thị Hoa",
-    departmentId: "DEP-GIM",
-    departmentName: getDepartmentName("DEP-GIM"),
+    departmentId: "DEP-INT",
+    departmentName: getDepartmentName("DEP-INT"),
     session: "MORNING",
-    dutyType: "INPATIENT",
+    dutyType: "OUTPATIENT",
     maxPatientsPerSlot: 3,
   });
   shift(0, {
     doctorId: "D002",
     doctorName: "BS. CKI. Nguyễn Văn Dũng",
-    departmentId: "DEP-GIM",
-    departmentName: getDepartmentName("DEP-GIM"),
+    departmentId: "DEP-INT",
+    departmentName: getDepartmentName("DEP-INT"),
     session: "AFTERNOON",
     dutyType: "OUTPATIENT",
     maxPatientsPerSlot: 4,
@@ -713,18 +710,18 @@ function buildMockDoctorShifts(): DoctorShift[] {
   shift(0, {
     doctorId: "D003",
     doctorName: "ThS. BS. Phạm Thị Hoa",
-    departmentId: "DEP-GIM",
-    departmentName: getDepartmentName("DEP-GIM"),
+    departmentId: "DEP-INT",
+    departmentName: getDepartmentName("DEP-INT"),
     session: "AFTERNOON",
-    dutyType: "INPATIENT",
+    dutyType: "OUTPATIENT",
     maxPatientsPerSlot: 3,
   });
   // Thứ 3: Sáng + Chiều đều đủ chuẩn
   shift(1, {
     doctorId: "D002",
     doctorName: "BS. CKI. Nguyễn Văn Dũng",
-    departmentId: "DEP-GIM",
-    departmentName: getDepartmentName("DEP-GIM"),
+    departmentId: "DEP-INT",
+    departmentName: getDepartmentName("DEP-INT"),
     session: "MORNING",
     dutyType: "OUTPATIENT",
     maxPatientsPerSlot: 4,
@@ -732,17 +729,17 @@ function buildMockDoctorShifts(): DoctorShift[] {
   shift(1, {
     doctorId: "D003",
     doctorName: "ThS. BS. Phạm Thị Hoa",
-    departmentId: "DEP-GIM",
-    departmentName: getDepartmentName("DEP-GIM"),
+    departmentId: "DEP-INT",
+    departmentName: getDepartmentName("DEP-INT"),
     session: "MORNING",
-    dutyType: "INPATIENT",
+    dutyType: "OUTPATIENT",
     maxPatientsPerSlot: 3,
   });
   shift(1, {
     doctorId: "D002",
     doctorName: "BS. CKI. Nguyễn Văn Dũng",
-    departmentId: "DEP-GIM",
-    departmentName: getDepartmentName("DEP-GIM"),
+    departmentId: "DEP-INT",
+    departmentName: getDepartmentName("DEP-INT"),
     session: "AFTERNOON",
     dutyType: "OUTPATIENT",
     maxPatientsPerSlot: 4,
@@ -750,18 +747,18 @@ function buildMockDoctorShifts(): DoctorShift[] {
   shift(1, {
     doctorId: "D003",
     doctorName: "ThS. BS. Phạm Thị Hoa",
-    departmentId: "DEP-GIM",
-    departmentName: getDepartmentName("DEP-GIM"),
+    departmentId: "DEP-INT",
+    departmentName: getDepartmentName("DEP-INT"),
     session: "AFTERNOON",
-    dutyType: "INPATIENT",
+    dutyType: "OUTPATIENT",
     maxPatientsPerSlot: 3,
   });
-  // Thứ 4 chiều: chỉ Ngoại trú -> không đủ điều kiện
+  // Thứ 4 chiều: có BS trực
   shift(2, {
     doctorId: "D002",
     doctorName: "BS. CKI. Nguyễn Văn Dũng",
-    departmentId: "DEP-GIM",
-    departmentName: getDepartmentName("DEP-GIM"),
+    departmentId: "DEP-INT",
+    departmentName: getDepartmentName("DEP-INT"),
     session: "AFTERNOON",
     dutyType: "OUTPATIENT",
     maxPatientsPerSlot: 4,
@@ -770,8 +767,8 @@ function buildMockDoctorShifts(): DoctorShift[] {
   shift(3, {
     doctorId: "D002",
     doctorName: "BS. CKI. Nguyễn Văn Dũng",
-    departmentId: "DEP-GIM",
-    departmentName: getDepartmentName("DEP-GIM"),
+    departmentId: "DEP-INT",
+    departmentName: getDepartmentName("DEP-INT"),
     session: "MORNING",
     dutyType: "OUTPATIENT",
     maxPatientsPerSlot: 4,
@@ -779,17 +776,17 @@ function buildMockDoctorShifts(): DoctorShift[] {
   shift(3, {
     doctorId: "D003",
     doctorName: "ThS. BS. Phạm Thị Hoa",
-    departmentId: "DEP-GIM",
-    departmentName: getDepartmentName("DEP-GIM"),
+    departmentId: "DEP-INT",
+    departmentName: getDepartmentName("DEP-INT"),
     session: "MORNING",
-    dutyType: "INPATIENT",
+    dutyType: "OUTPATIENT",
     maxPatientsPerSlot: 3,
   });
   shift(4, {
     doctorId: "D002",
     doctorName: "BS. CKI. Nguyễn Văn Dũng",
-    departmentId: "DEP-GIM",
-    departmentName: getDepartmentName("DEP-GIM"),
+    departmentId: "DEP-INT",
+    departmentName: getDepartmentName("DEP-INT"),
     session: "MORNING",
     dutyType: "OUTPATIENT",
     maxPatientsPerSlot: 4,
@@ -797,20 +794,20 @@ function buildMockDoctorShifts(): DoctorShift[] {
   shift(4, {
     doctorId: "D003",
     doctorName: "ThS. BS. Phạm Thị Hoa",
-    departmentId: "DEP-GIM",
-    departmentName: getDepartmentName("DEP-GIM"),
+    departmentId: "DEP-INT",
+    departmentName: getDepartmentName("DEP-INT"),
     session: "MORNING",
-    dutyType: "INPATIENT",
+    dutyType: "OUTPATIENT",
     maxPatientsPerSlot: 3,
   });
 
-  // --- DEP-CARD (Tim mạch) ---
-  // Thứ 2: Sáng đủ, Chiều thiếu Nội trú
+  // --- DEP-INT (Khối Nội) ---
+  // Thứ 2: Sáng có BS trực, Chiều chưa phân BS
   shift(0, {
     doctorId: "D004",
     doctorName: "BS. CKI. Lê Văn Bảo",
-    departmentId: "DEP-CARD",
-    departmentName: getDepartmentName("DEP-CARD"),
+    departmentId: "DEP-INT",
+    departmentName: getDepartmentName("DEP-INT"),
     session: "MORNING",
     dutyType: "OUTPATIENT",
     maxPatientsPerSlot: 4,
@@ -818,27 +815,27 @@ function buildMockDoctorShifts(): DoctorShift[] {
   shift(0, {
     doctorId: "D005",
     doctorName: "BS. Nguyễn Thanh Hà",
-    departmentId: "DEP-CARD",
-    departmentName: getDepartmentName("DEP-CARD"),
+    departmentId: "DEP-INT",
+    departmentName: getDepartmentName("DEP-INT"),
     session: "MORNING",
-    dutyType: "INPATIENT",
+    dutyType: "OUTPATIENT",
     maxPatientsPerSlot: 3,
   });
   shift(0, {
     doctorId: "D004",
     doctorName: "BS. CKI. Lê Văn Bảo",
-    departmentId: "DEP-CARD",
-    departmentName: getDepartmentName("DEP-CARD"),
+    departmentId: "DEP-INT",
+    departmentName: getDepartmentName("DEP-INT"),
     session: "AFTERNOON",
     dutyType: "OUTPATIENT",
     maxPatientsPerSlot: 4,
   });
-  // Thứ 5: Sáng đủ, Chiều thiếu Nội trú
+  // Thứ 5: Sáng có BS trực, Chiều chưa phân BS
   shift(3, {
     doctorId: "D004",
     doctorName: "BS. CKI. Lê Văn Bảo",
-    departmentId: "DEP-CARD",
-    departmentName: getDepartmentName("DEP-CARD"),
+    departmentId: "DEP-INT",
+    departmentName: getDepartmentName("DEP-INT"),
     session: "MORNING",
     dutyType: "OUTPATIENT",
     maxPatientsPerSlot: 4,
@@ -846,29 +843,29 @@ function buildMockDoctorShifts(): DoctorShift[] {
   shift(3, {
     doctorId: "D005",
     doctorName: "BS. Nguyễn Thanh Hà",
-    departmentId: "DEP-CARD",
-    departmentName: getDepartmentName("DEP-CARD"),
+    departmentId: "DEP-INT",
+    departmentName: getDepartmentName("DEP-INT"),
     session: "MORNING",
-    dutyType: "INPATIENT",
+    dutyType: "OUTPATIENT",
     maxPatientsPerSlot: 3,
   });
   shift(3, {
     doctorId: "D004",
     doctorName: "BS. CKI. Lê Văn Bảo",
-    departmentId: "DEP-CARD",
-    departmentName: getDepartmentName("DEP-CARD"),
+    departmentId: "DEP-INT",
+    departmentName: getDepartmentName("DEP-INT"),
     session: "AFTERNOON",
     dutyType: "OUTPATIENT",
     maxPatientsPerSlot: 4,
   });
 
-  // --- DEP-PED (Nhi) ---
+  // --- DEP-INT (Nhi) ---
   // Thứ 2: Sáng đủ, Chiều trống
   shift(0, {
     doctorId: "D006",
     doctorName: "BS. CKI. Trần Quốc Khánh",
-    departmentId: "DEP-PED",
-    departmentName: getDepartmentName("DEP-PED"),
+    departmentId: "DEP-INT",
+    departmentName: getDepartmentName("DEP-INT"),
     session: "MORNING",
     dutyType: "OUTPATIENT",
     maxPatientsPerSlot: 4,
@@ -876,18 +873,18 @@ function buildMockDoctorShifts(): DoctorShift[] {
   shift(0, {
     doctorId: "D007",
     doctorName: "ThS. BS. Đỗ Thu Vân",
-    departmentId: "DEP-PED",
-    departmentName: getDepartmentName("DEP-PED"),
+    departmentId: "DEP-INT",
+    departmentName: getDepartmentName("DEP-INT"),
     session: "MORNING",
-    dutyType: "INPATIENT",
+    dutyType: "OUTPATIENT",
     maxPatientsPerSlot: 3,
   });
-  // Thứ 3: Sáng đủ, Chiều chỉ Nội trú
+  // Thứ 3: Sáng có BS trực, Chiều có BS trực
   shift(1, {
     doctorId: "D006",
     doctorName: "BS. CKI. Trần Quốc Khánh",
-    departmentId: "DEP-PED",
-    departmentName: getDepartmentName("DEP-PED"),
+    departmentId: "DEP-INT",
+    departmentName: getDepartmentName("DEP-INT"),
     session: "MORNING",
     dutyType: "OUTPATIENT",
     maxPatientsPerSlot: 4,
@@ -895,29 +892,29 @@ function buildMockDoctorShifts(): DoctorShift[] {
   shift(1, {
     doctorId: "D007",
     doctorName: "ThS. BS. Đỗ Thu Vân",
-    departmentId: "DEP-PED",
-    departmentName: getDepartmentName("DEP-PED"),
+    departmentId: "DEP-INT",
+    departmentName: getDepartmentName("DEP-INT"),
     session: "MORNING",
-    dutyType: "INPATIENT",
+    dutyType: "OUTPATIENT",
     maxPatientsPerSlot: 3,
   });
   shift(1, {
     doctorId: "D007",
     doctorName: "ThS. BS. Đỗ Thu Vân",
-    departmentId: "DEP-PED",
-    departmentName: getDepartmentName("DEP-PED"),
+    departmentId: "DEP-INT",
+    departmentName: getDepartmentName("DEP-INT"),
     session: "AFTERNOON",
-    dutyType: "INPATIENT",
+    dutyType: "OUTPATIENT",
     maxPatientsPerSlot: 3,
   });
 
-  // --- DEP-ENT (Tai Mũi Họng) ---
-  // Thứ 2: Sáng chỉ Ngoại trú, Chiều chỉ Nội trú -> cả hai không đạt
+  // --- DEP-EXT (Tai Mũi Họng) ---
+  // Thứ 2: Sáng và chiều chưa đạt chuẩn mở khám
   shift(0, {
     doctorId: "D008",
     doctorName: "BS. CKI. Hoàng Kim Ngân",
-    departmentId: "DEP-ENT",
-    departmentName: getDepartmentName("DEP-ENT"),
+    departmentId: "DEP-EXT",
+    departmentName: getDepartmentName("DEP-EXT"),
     session: "MORNING",
     dutyType: "OUTPATIENT",
     maxPatientsPerSlot: 4,
@@ -925,27 +922,27 @@ function buildMockDoctorShifts(): DoctorShift[] {
   shift(0, {
     doctorId: "D008",
     doctorName: "BS. CKI. Hoàng Kim Ngân",
-    departmentId: "DEP-ENT",
-    departmentName: getDepartmentName("DEP-ENT"),
+    departmentId: "DEP-EXT",
+    departmentName: getDepartmentName("DEP-EXT"),
     session: "AFTERNOON",
-    dutyType: "INPATIENT",
+    dutyType: "OUTPATIENT",
     maxPatientsPerSlot: 3,
   });
   shift(0, {
     doctorId: "D010",
     doctorName: "BS. CKI. Ngô Bá Khôi",
-    departmentId: "DEP-ENT",
-    departmentName: getDepartmentName("DEP-ENT"),
+    departmentId: "DEP-EXT",
+    departmentName: getDepartmentName("DEP-EXT"),
     session: "AFTERNOON",
-    dutyType: "INPATIENT",
+    dutyType: "OUTPATIENT",
     maxPatientsPerSlot: 3,
   });
   // Thứ 6: Sáng đủ chuẩn
   shift(4, {
     doctorId: "D008",
     doctorName: "BS. CKI. Hoàng Kim Ngân",
-    departmentId: "DEP-ENT",
-    departmentName: getDepartmentName("DEP-ENT"),
+    departmentId: "DEP-EXT",
+    departmentName: getDepartmentName("DEP-EXT"),
     session: "MORNING",
     dutyType: "OUTPATIENT",
     maxPatientsPerSlot: 4,
@@ -953,10 +950,10 @@ function buildMockDoctorShifts(): DoctorShift[] {
   shift(4, {
     doctorId: "D010",
     doctorName: "BS. CKI. Ngô Bá Khôi",
-    departmentId: "DEP-ENT",
-    departmentName: getDepartmentName("DEP-ENT"),
+    departmentId: "DEP-EXT",
+    departmentName: getDepartmentName("DEP-EXT"),
     session: "MORNING",
-    dutyType: "INPATIENT",
+    dutyType: "OUTPATIENT",
     maxPatientsPerSlot: 3,
   });
 
@@ -979,7 +976,7 @@ export const MOCK_KNOWLEDGE_BASE: KnowledgeDocument[] = [
   },
   {
     id: "KB-002",
-    title: "Bảng giá dịch vụ & Xét nghiệm Dị ứng Q3/2026",
+    title: "Bảng giá dịch vụ & Xét nghiệm Khối Ngoại Q3/2026",
     category: "PRICING",
     contentSnippet:
       "Xét nghiệm IgE Total: 250.000đ. Test lẩy Da (Prick Test) 12 allergen: 480.000đ. Consultation Specialist: 350.000đ.",
@@ -990,7 +987,7 @@ export const MOCK_KNOWLEDGE_BASE: KnowledgeDocument[] = [
   },
   {
     id: "KB-003",
-    title: "Lịch công tác Bác sĩ Chuyên khoa Tuần này",
+    title: "Lịch công tác Bác sĩ Tuần này",
     category: "DOCTOR_SCHEDULE",
     contentSnippet:
       "PGS.TS Trần Minh Tuấn: Thứ 2, 4, 6 (Sáng 7h-11h). BS.CKI Nguyễn Văn Dũng: Thứ 2-6 (Cả ngày). BSCK2 Phạm Thị Hoa: Thứ 3, 5 (Chiều 13h-17h).",
@@ -1004,7 +1001,7 @@ export const MOCK_KNOWLEDGE_BASE: KnowledgeDocument[] = [
     title: "Quy trình Tiếp đón Kiosk & Check-in QR v3.1",
     category: "CLINIC_GUIDE",
     contentSnippet:
-      "Bước 1: Quét mã QR tại Kiosk. Bước 2: Xác thực CCCD/Thẻ BHYT qua PaddleOCR. Bước 3: Chọn chuyên khoa. Bước 4: In phiếu & chuyển hàng đợi.",
+      "Bước 1: Quét mã QR tại Kiosk. Bước 2: Xác thực CCCD/Thẻ BHYT qua PaddleOCR. Bước 3: Chọn khối khám. Bước 4: In phiếu & chuyển hàng đợi.",
     chunkCount: 15,
     embeddingModel: "text-embedding-3-small (1536d)",
     updatedAt: "05/09/2026",
@@ -1013,7 +1010,7 @@ export const MOCK_KNOWLEDGE_BASE: KnowledgeDocument[] = [
 ];
 
 export const MOCK_HOSPITAL_CODES: HospitalCode[] = [
-  { code: "79-014", name: "BV Đa Khoa Sài Gòn", copayPercent: 20 },
+  { code: "79-014", name: "BV Đa khoa Sài Gòn", copayPercent: 20 },
   { code: "01-002", name: "BV Bạch Mai", copayPercent: 20 },
   { code: "79-021", name: "BV Nhi Đồng 2", copayPercent: 20 },
   { code: "79-018", name: "BV FV", copayPercent: 40 },
@@ -1073,7 +1070,7 @@ export const MOCK_DRUGS: DrugItem[] = [
 
 export const MOCK_SERVICE_FEES: ServiceFee[] = [
   { id: "SVC-001", code: "CONS-GEN", name: "Khám Tổng quát", price: 150000, bhytCovered: true },
-  { id: "SVC-002", code: "CONS-SPC", name: "Khám Chuyên khoa Dị ứng", price: 350000, bhytCovered: true },
+  { id: "SVC-002", code: "CONS-SPC", name: "Khám Khối Ngoại", price: 350000, bhytCovered: true },
   { id: "SVC-003", code: "LAB-IGE", name: "Xét nghiệm IgE Total", price: 250000, bhytCovered: true },
   { id: "SVC-004", code: "LAB-PRICK", name: "Test lẩy Da (Prick Test 12 allergen)", price: 480000, bhytCovered: false },
   { id: "SVC-005", code: "LAB-SPT", name: "Test lẩy Da mở rộng (Extended Panel)", price: 620000, bhytCovered: false },
@@ -1105,7 +1102,7 @@ export const CATEGORY_LABELS: Record<KnowledgeDocument["category"], string> = {
 export const ROLE_LABELS: Record<StaffAccount["role"], string> = {
   DOCTOR: "Bác sĩ",
   PHARMACIST: "Dược sĩ",
-  NURSE: "Điều dưỡng",
+  NURSE: "Y tá / Thư ký y khoa",
   ADMIN: "Quản trị viên",
 };
 
@@ -1120,8 +1117,7 @@ export const SHIFT_SESSION_SHORT_LABELS: Record<ShiftSession, string> = {
 };
 
 export const DUTY_TYPE_LABELS: Record<DutyType, string> = {
-  OUTPATIENT: "Ngoại trú",
-  INPATIENT: "Nội trú",
+  OUTPATIENT: "Khám ngoại trú",
 };
 
 export const DOCTOR_TITLE_OPTIONS = ["PGS.TS", "BS.CKI", "BS.CKII", "ThS.BS", "BS"] as const;

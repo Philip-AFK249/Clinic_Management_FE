@@ -206,7 +206,7 @@ export default function BookingTicketModal({
                   wide
                 />
                 <PassField
-                  label="Chuyên khoa"
+                  label="Khối khám"
                   value={appointment.department}
                   wide
                 />
@@ -217,6 +217,11 @@ export default function BookingTicketModal({
                 />
                 <PassField label="Phòng" value={appointment.room} />
               </div>
+              <p className="border-t border-slate-200/80 bg-teal-50 px-5 py-2.5 text-xs font-medium leading-relaxed text-teal-800">
+                Sau check-in, đi thẳng đến {appointment.room || "phòng khám ghi trên phiếu"}.
+                Sinh hiệu được đo và nhập ngay tại phòng khám bởi Y tá / Thư ký
+                y khoa.
+              </p>
 
               <div className="flex flex-col items-center gap-2 border-t border-slate-200/80 bg-slate-50 px-5 py-4">
                 <div className="relative rounded-xl bg-white p-2 shadow-card">
@@ -236,7 +241,7 @@ export default function BookingTicketModal({
                     ? "Vé chỉ có giá trị check-in sau khi admin xác thực."
                     : isRejected
                       ? "Vé không còn giá trị check-in. Vui lòng đặt lịch mới."
-                      : "Quét mã QR này tại bất kỳ kiosk cửa vào nào để lấy số thứ tự trong 5 giây."}
+                      : "Quét mã QR này tại bất kỳ kiosk cửa vào nào để lấy số thứ tự trong 5 giây, sau đó đi thẳng đến phòng khám ghi trên phiếu."}
                 </p>
               </div>
             </div>

@@ -99,7 +99,7 @@ export default function KioskQrScanModal({
                   Bệnh nhân: {patient.patientName}
                 </p>
                 <p className="mt-1 text-xs font-medium text-emerald-700">
-                  Chuyên khoa: Dị ứng - Miễn dịch lâm sàng ({targetRoom?.number})
+                  Khối khám: Khối Ngoại ({targetRoom?.number})
                 </p>
                 <p className="text-xs font-medium text-emerald-700">
                   Giờ hẹn: 15:30

@@ -154,9 +154,9 @@ const ACTIVE_TICKET_STATUSES: readonly QueueStatus[] = [
 
 /** The three khoa the clinic runs, keyed by `departments.id`. */
 const DEPARTMENT_LABELS: Record<number, string> = {
-  1: "Khoa Nội Tổng quát & Tim mạch",
-  2: "Khoa Hô hấp & Dị ứng",
-  3: "Khoa Da liễu",
+  1: "Khối Nội",
+  2: "Khối Ngoại",
+  3: "Khối Nội",
 };
 
 const ENCOUNTER_STATUS_BADGES: Record<
@@ -178,8 +178,8 @@ const ENCOUNTER_STATUS_BADGES: Record<
 };
 
 function departmentLabelOf(departmentId: number | undefined): string {
-  if (departmentId === undefined) return "Chuyên khoa";
-  return DEPARTMENT_LABELS[departmentId] ?? "Chuyên khoa";
+  if (departmentId === undefined) return "Khối khám";
+  return DEPARTMENT_LABELS[departmentId] ?? "Khối khám";
 }
 
 /** `BS. Nguyễn Văn A`, without doubling a title the backend already wrote. */
@@ -716,7 +716,7 @@ export default function PatientDashboardPage() {
                     label="Ngày & Giờ"
                     value={`${display.date}, ${display.timeSlot}`}
                   />
-                  <Row label="Chuyên khoa" value={display.department} />
+                  <Row label="Khối khám" value={display.department} />
                   <Row label="Bác sĩ" value={display.doctor} />
                   <Row label="Phòng khám" value={display.room} />
                 </dl>
@@ -809,7 +809,7 @@ export default function PatientDashboardPage() {
                       highlight
                       detail={
                         ticket.yourTurn
-                          ? "Đến lượt của bạn - vui lòng đến phòng khám"
+                          ? `Đến lượt của bạn - vui lòng đi thẳng đến ${display.room || "phòng khám ghi trên phiếu"}`
                           : ticket.personsAhead !== null
                             ? `${ticket.personsAhead} người trước bạn`
                             : "Đang cập nhật thứ tự..."
@@ -1251,7 +1251,7 @@ function EncounterCard({
           <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-slate-600">
             <span className="inline-flex items-center gap-1.5">
               <Stethoscope className="h-4 w-4 text-clinical-600" aria-hidden="true" />
-              <span className="font-medium text-slate-500">Chuyên khoa:</span>
+              <span className="font-medium text-slate-500">Khối khám:</span>
               {departmentLabelOf(encounter.departmentId)}
             </span>
             <span className="inline-flex items-center gap-1.5">

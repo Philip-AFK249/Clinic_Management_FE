@@ -126,7 +126,7 @@ const NO_SESSION_REASON: Record<string, string> = {
   NEXT_DAY:
     "Hệ thống đề xuất khám vào ngày hôm sau - lịch hôm nay của khoa này đã kín hoặc hết ca trực.",
   NO_DUTY:
-    "Khoa này không có ca trực phù hợp với tình trạng của bạn. Vui lòng liên hệ quầy tiếp đón để được hướng dẫn.",
+    "Khối này không có ca trực phù hợp với tình trạng của bạn. Vui lòng liên hệ quầy tiếp đón để được hướng dẫn.",
 };
 
 /**

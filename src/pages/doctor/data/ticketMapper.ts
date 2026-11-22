@@ -14,7 +14,7 @@ import type {
 const NOT_MEASURED: Vitals = { bp: "", hr: 0, temp: "", spo2: 0 };
 
 /**
- * The ticket's nurse-recorded vitals, in the presentation shape the banner and
+ * The ticket's in-room vitals, in the presentation shape the banner and
  * the copilot context render. `recorded` is false while nothing has been
  * measured, so the UI says "unknown" instead of showing zeros.
  */
@@ -40,7 +40,7 @@ function vitalsFromTicket(ticket: QueueTicket): { vitals: Vitals; recorded: bool
 
 /**
  * The Objective-section line a doctor should not have to retype: what the
- * điều dưỡng measured at the station, in one sentence. Empty when the ticket
+ * Y tá / Thư ký y khoa measured in the exam room, in one sentence. Empty when the ticket
  * carries no vitals at all, so a blank O section is never seeded with
  * placeholders.
  */
@@ -61,7 +61,7 @@ export function vitalsObjectiveLine(detail: QueueTicketDetailResponse): string {
   return [
     `Dấu hiệu sinh tồn: Huyết áp ${bp || "--"} mmHg, Mạch ${hr > 0 ? hr : "--"} ck/phút, SpO2 ${spo2 > 0 ? spo2 : "--"}%, Thân nhiệt ${temp || "--"}°C.`,
     physique ? `Thể trạng: ${physique}.` : "",
-    `Ghi chú ĐD: ${detail.nurseNotes?.trim() || "Không có"}`,
+    `Ghi chú Y tá / Thư ký y khoa: ${detail.nurseNotes?.trim() || "Không có"}`,
   ]
     .filter(Boolean)
     .join(" ");
@@ -111,7 +111,7 @@ function waitingMinutesFrom(iso: string | null): number {
 /**
  * Projects a queue ticket onto the richer `PatientRecord` shape the EHR
  * components render. The intake API carries the administrative data plus the
- * vitals an điều dưỡng recorded on the ticket, so those are mapped straight
+ * vitals recorded on the ticket in the exam room, so those are mapped straight
  * through; the clinical history sections stay empty and are explicitly flagged
  * as unknown rather than fabricated.
  */

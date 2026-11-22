@@ -79,7 +79,7 @@ export default function CompleteTicketDialog({
 
           <p className="text-sm leading-relaxed text-slate-700">
             {hasVitals
-              ? `Xác nhận hoàn tất đo sinh hiệu & tiếp nhận điều dưỡng cho phiếu ${ticket.ticketNumber} (${patientName})?`
+              ? `Xác nhận hoàn tất đo sinh hiệu & tiếp nhận tại phòng khám cho phiếu ${ticket.ticketNumber} (${patientName})?`
               : `Phiếu ${ticket.ticketNumber} (${patientName}) chưa có chỉ số sinh hiệu. Bạn có muốn đo sinh hiệu ngay trước khi hoàn tất không?`}
           </p>
 

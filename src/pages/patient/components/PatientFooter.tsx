@@ -9,7 +9,7 @@ import {
 import { CLINIC_SERVICES } from "../data/clinicContent";
 
 const QUICK_LINKS = [
-  { label: "Chuyên khoa", href: "#services" },
+  { label: "Khối khám", href: "#services" },
   { label: "Quy trình khám", href: "#quy-trinh" },
   { label: "Đội ngũ Bác sĩ", href: "#doctors" },
   { label: "Cơ sở phòng khám", href: "#locations" },
@@ -63,7 +63,7 @@ export default function PatientFooter() {
           </div>
 
           <div>
-            <h3 className="text-sm font-semibold text-slate-900">Chuyên khoa khám</h3>
+            <h3 className="text-sm font-semibold text-slate-900">Khối khám</h3>
             <ul className="mt-4 space-y-2.5 text-sm text-slate-600">
               {CLINIC_SERVICES.map((service) => (
                 <li key={service.title}>

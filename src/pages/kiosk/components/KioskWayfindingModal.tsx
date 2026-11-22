@@ -15,7 +15,7 @@ const GROUND_FLOOR = [
 const SECOND_FLOOR = [
   { id: "elevator", name: "Thang Máy" },
   { id: "stairs", name: "Cầu Thang Bộ" },
-  { id: "room201", name: "Phòng 201 (Dị ứng - Miễn dịch)", highlight: true },
+  { id: "room201", name: "Phòng 201 (Khối Ngoại - Thủ thuật)", highlight: true },
   { id: "room205", name: "Phòng 205 (Tai Mũi Họng)" },
 ];
 

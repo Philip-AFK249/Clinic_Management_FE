@@ -134,12 +134,12 @@ export default function SlotSelector({
       <div className="grid gap-3 sm:grid-cols-2">
         <div id="intake-department">
           <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-            Chuyên khoa tiếp nhận
+            Khối khám tiếp nhận
             <span className="ml-0.5 text-red-500">*</span>
           </p>
           <div
             role="radiogroup"
-            aria-label="Chọn chuyên khoa tiếp nhận"
+            aria-label="Chọn khối khám tiếp nhận"
             className="grid gap-1.5"
           >
             {RECEPTION_DEPARTMENTS.map((department) => {
@@ -283,7 +283,7 @@ export default function SlotSelector({
           </div>
         ) : grouped.length === 0 ? (
           <p className="rounded-lg border border-dashed border-slate-300 px-3 py-4 text-center text-xs text-slate-500">
-            Không có khung giờ nào được mở cho chuyên khoa này. Vui lòng thử
+            Không có khung giờ nào được mở cho khối khám này. Vui lòng thử
             ngày khác.
           </p>
         ) : (

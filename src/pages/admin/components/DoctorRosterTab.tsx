@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import { toast } from "sonner";
 import {
-  Activity,
   AlertTriangle,
   CalendarDays,
   CalendarRange,
@@ -28,7 +27,6 @@ import {
   getShifts,
   getWeeklyShifts,
   ScheduleApiError,
-  validateRoster,
 } from "../services/scheduleApi";
 import type {
   CreateShiftPayload,
@@ -61,18 +59,15 @@ const SESSION_SWATCH_COLORS: Record<ShiftSession, string> = {
 };
 
 const DUTY_LABELS: Record<DutyType, string> = {
-  OUTPATIENT: "Ngoại trú",
-  INPATIENT: "Nội trú",
+  OUTPATIENT: "Khám ngoại trú",
 };
 
 const DUTY_CHIP_COLORS: Record<DutyType, string> = {
   OUTPATIENT: "border-teal-200 bg-teal-50/60",
-  INPATIENT: "border-purple-200 bg-purple-50/60",
 };
 
 const DUTY_TAG_COLORS: Record<DutyType, string> = {
   OUTPATIENT: "bg-teal-100 text-teal-800",
-  INPATIENT: "bg-purple-100 text-purple-800",
 };
 
 const DAY_LABELS = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"];
@@ -133,13 +128,13 @@ function shortLastName(fullName: string): string {
 }
 
 /**
- * "ĐD. Trịnh Thu Hằng" -> "Thu Hằng": the credential prefix is redundant inside
- * a cell that already colours the line as the paired điều dưỡng.
+ * "Y tá Trịnh Thu Hằng" -> "Thu Hằng": the role prefix is redundant inside a
+ * cell that already colours the line as the paired Y tá.
  */
 function shortNurseName(fullName: string | null | undefined): string {
   const tokens = (fullName ?? "")
     .trim()
-    .replace(/^ĐD\.?\s*/i, "")
+    .replace(/^(ĐD\.?|Y tá)\s*/i, "")
     .split(/\s+/)
     .filter(Boolean);
   if (tokens.length <= 2) return tokens.join(" ");
@@ -181,8 +176,8 @@ function DoctorChip({
         </p>
         <p className="truncate text-[10px] font-semibold text-violet-700">
           {shortNurseName(shift.nurseName)
-            ? `ĐD. ${shortNurseName(shift.nurseName)}`
-            : "Chưa phân điều dưỡng"}
+            ? `Y tá ${shortNurseName(shift.nurseName)}`
+            : "Chưa phân Y tá"}
         </p>
       </div>
       <span className="flex shrink-0 items-center gap-1">
@@ -207,17 +202,8 @@ function TimetableDoctorBadge({
   onEdit: (shift: DoctorShift) => void;
 }) {
   const doctor = shift.doctor;
-  const dutyType = shift.dutyType;
-  const color =
-    dutyType === "OUTPATIENT"
-      ? "border-teal-200 bg-teal-50 text-teal-800"
-      : "border-purple-200 bg-purple-50 text-purple-800";
-  const suffix =
-    dutyType === "OUTPATIENT"
-      ? showRoom && doctor.roomNumber
-        ? ` (${doctor.roomNumber})`
-        : ""
-      : " (Nội trú)";
+  const color = "border-teal-200 bg-teal-50 text-teal-800";
+  const suffix = showRoom && doctor.roomNumber ? ` (${doctor.roomNumber})` : "";
   const nurse = shortNurseName(shift.nurseName);
   return (
     <button
@@ -234,7 +220,7 @@ function TimetableDoctorBadge({
         {suffix}
       </p>
       <p className="truncate px-0.5 text-[9px] font-semibold text-violet-600">
-        {nurse ? `ĐD. ${nurse}` : "Chưa phân ĐD"}
+        {nurse ? `Y tá ${nurse}` : "Chưa phân Y tá"}
       </p>
     </button>
   );
@@ -260,9 +246,7 @@ function TimetableCell({
   onEdit,
 }: TimetableCellProps) {
   const outpatientShifts = shifts.filter((s) => s.dutyType === "OUTPATIENT");
-  const inpatientShifts = shifts.filter((s) => s.dutyType === "INPATIENT");
-  const compliant =
-    outpatientShifts.length >= 1 && inpatientShifts.length >= 1;
+  const compliant = outpatientShifts.length >= 1;
 
   return (
     <div
@@ -302,24 +286,7 @@ function TimetableCell({
             )}
           </div>
         )}
-        {inpatientShifts.length > 0 && (
-          <div className="space-y-0.5">
-            {inpatientShifts.slice(0, 2).map((shift) => (
-              <TimetableDoctorBadge
-                key={shift.id}
-                shift={shift}
-                showRoom={false}
-                onEdit={onEdit}
-              />
-            ))}
-            {inpatientShifts.length > 2 && (
-              <p className="text-[9px] font-medium text-slate-400">
-                +{inpatientShifts.length - 2} BS khác
-              </p>
-            )}
-          </div>
-        )}
-        {outpatientShifts.length === 0 && inpatientShifts.length === 0 && (
+        {outpatientShifts.length === 0 && (
           <p className="text-[9px] italic text-slate-300">Chưa phân ca</p>
         )}
       </div>
@@ -328,12 +295,12 @@ function TimetableCell({
         {compliant ? (
           <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700">
             <CheckCircle2 size={11} aria-hidden="true" />
-            Đủ BS Ngoại trú &amp; Nội trú
+            Đủ BS Khám ngoại trú
           </span>
         ) : (
           <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-600">
             <AlertTriangle size={11} aria-hidden="true" />
-            Thiếu BS hoặc chưa đủ 2 loại
+            Chưa phân BS Khám ngoại trú
           </span>
         )}
       </div>
@@ -353,7 +320,7 @@ function ComplianceBadge({ compliant }: { compliant: boolean | null }) {
         <span>
           Đang kiểm tra chuẩn ca trực
           <span className="mt-0.5 block font-normal text-slate-400">
-            Đối chiếu BS Ngoại trú &amp; Nội trú...
+            Đối chiếu BS Khám ngoại trú...
           </span>
         </span>
       </span>
@@ -371,7 +338,7 @@ function ComplianceBadge({ compliant }: { compliant: boolean | null }) {
         <span>
           Đạt chuẩn ca trực
           <span className="mt-0.5 block font-normal text-emerald-600">
-            Đủ BS Ngoại trú &amp; Nội trú
+            Đủ BS Khám ngoại trú
           </span>
         </span>
       </span>
@@ -388,7 +355,7 @@ function ComplianceBadge({ compliant }: { compliant: boolean | null }) {
       <span>
         Chưa đạt chuẩn
         <span className="mt-0.5 block font-normal text-amber-600">
-          Thiếu BS Ngoại trú hoặc Nội trú - Khóa tiếp nhận
+          Thiếu BS Khám ngoại trú - Khóa tiếp nhận
         </span>
       </span>
     </span>
@@ -468,7 +435,7 @@ function EmptyDepartments({ onRetry }: { onRetry: () => void }) {
     <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-slate-300 bg-white px-6 py-12 text-center shadow-card">
       <Stethoscope size={24} className="text-slate-300" aria-hidden="true" />
       <p className="text-xs font-medium text-slate-500">
-        Không tải được danh sách Khoa từ DoctorScheduleService
+        Không tải được danh sách Khối từ DoctorScheduleService
         (http://localhost:8081).
       </p>
       <button
@@ -477,7 +444,7 @@ function EmptyDepartments({ onRetry }: { onRetry: () => void }) {
         className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50"
       >
         <RefreshCw size={13} aria-hidden="true" />
-        Tải lại danh sách Khoa
+        Tải lại danh sách Khối
       </button>
     </div>
   );
@@ -554,7 +521,7 @@ export default function DoctorRosterTab() {
         toast.error(
           error instanceof Error
             ? error.message
-            : "Không tải được danh sách Khoa từ DoctorScheduleService.",
+            : "Không tải được danh sách Khối từ DoctorScheduleService.",
         );
       })
       .finally(() => {
@@ -583,15 +550,25 @@ export default function DoctorRosterTab() {
         Promise.all([
           getShifts(departmentId, date, controller.signal),
           getAvailableSlots(departmentId, date, controller.signal),
-          validateRoster(departmentId, date, "MORNING", controller.signal),
-          validateRoster(departmentId, date, "AFTERNOON", controller.signal),
         ]),
       )
-      .then(([shiftList, slotList, morningOk, afternoonOk]) => {
+      .then(([shiftList, slotList]) => {
         if (seq !== rosterSeq.current) return;
         setShifts(shiftList);
         setSlots(slotList);
-        setCompliance({ MORNING: morningOk, AFTERNOON: afternoonOk });
+        // Outpatient-only rule: one duty doctor per session opens reception.
+        // The backend validator still models the retired two-duty rule, so the
+        // roster derives compliance from the shifts it actually renders.
+        setCompliance({
+          MORNING: shiftList.some(
+            (shift) =>
+              shift.session === "MORNING" && shift.dutyType === "OUTPATIENT",
+          ),
+          AFTERNOON: shiftList.some(
+            (shift) =>
+              shift.session === "AFTERNOON" && shift.dutyType === "OUTPATIENT",
+          ),
+        });
       })
       .catch((error: unknown) => {
         if (axios.isCancel(error)) return;
@@ -685,11 +662,8 @@ export default function DoctorRosterTab() {
         const outpatientShifts = sessionShifts.filter(
           (s) => s.dutyType === "OUTPATIENT",
         );
-        const inpatientShifts = sessionShifts.filter(
-          (s) => s.dutyType === "INPATIENT",
-        );
-        // Unique paired điều dưỡng, in first-seen order - the matrix lists them
-        // once each rather than once per shift.
+        // Unique paired Y tá / Thư ký y khoa, in first-seen order - the matrix
+        // lists them once each rather than once per shift.
         const nurseNames = Array.from(
           new Set(
             sessionShifts.map((s) => (s.nurseName ?? "").trim()).filter(Boolean),
@@ -698,11 +672,9 @@ export default function DoctorRosterTab() {
         return {
           session,
           outpatientShifts,
-          inpatientShifts,
           nurseNames,
           totalDoctors: sessionShifts.length,
           outpatientCount: outpatientShifts.length,
-          inpatientCount: inpatientShifts.length,
           outpatientCapacity: outpatientShifts.reduce(
             (sum, s) => sum + s.maxPatientsPerSlot,
             0,
@@ -761,7 +733,7 @@ export default function DoctorRosterTab() {
       shiftDate: toISODate(addDays(parseISODate(shift.shiftDate), 7)),
       session: shift.session,
       dutyType: shift.dutyType,
-      // Carry the paired điều dưỡng across: a copy that silently dropped it
+      // Carry the paired Y tá / Thư ký y khoa across: a copy that dropped it
       // would fall back to the per-khoa default nurse.
       ...(typeof shift.nurseId === "number" ? { nurseId: shift.nurseId } : {}),
       ...(shift.nurseName ? { nurseName: shift.nurseName } : {}),
@@ -857,8 +829,8 @@ export default function DoctorRosterTab() {
             Lịch Trực &amp; Phân Ca Bác Sĩ (DoctorScheduleService)
           </h2>
           <p className="mt-0.5 text-xs text-slate-500">
-            Thời khoá biểu tuần, phân bổ ca Sáng / Chiều (Ngoại trú &amp; Nội trú) và
-            giám sát dung lượng khung 60 phút cho từng Khoa
+            Thời khoá biểu tuần, phân bổ ca Sáng / Chiều Khám ngoại trú và
+            giám sát dung lượng khung 60 phút cho từng Khối
           </p>
         </div>
         <button
@@ -943,7 +915,7 @@ export default function DoctorRosterTab() {
             }
             className="h-9 w-64 rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-300"
           >
-            <option value="">-- Chọn Khoa --</option>
+            <option value="">-- Chọn Khối --</option>
             {departments.map((department) => (
               <option key={department.id} value={department.id}>
                 {department.name}
@@ -993,17 +965,17 @@ export default function DoctorRosterTab() {
       </div>
 
       {departmentsLoading ? (
-        <LoadingBlock label="Đang tải danh sách Khoa..." />
+        <LoadingBlock label="Đang tải danh sách Khối..." />
       ) : departments.length === 0 ? (
         <EmptyDepartments onRetry={loadDepartments} />
       ) : selectedDepartmentId === "" ? (
-        <LoadingBlock label="Vui lòng chọn Khoa điều trị để xem lịch trực." />
+        <LoadingBlock label="Vui lòng chọn Khối điều trị để xem lịch trực." />
       ) : view === "TIMETABLE" ? (
         <>
           <div className="mb-1 flex items-center gap-2">
             <CalendarRange size={16} className="text-slate-500" aria-hidden="true" />
             <h3 className="text-sm font-bold text-slate-900">
-              Thời khoá biểu tuần - {selectedDepartment?.name ?? "Khoa"}
+              Thời khoá biểu tuần - {selectedDepartment?.name ?? "Khối"}
             </h3>
             <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
               7 ngày × 2 ca
@@ -1096,23 +1068,17 @@ export default function DoctorRosterTab() {
               <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-500">
                 <span className="inline-flex items-center gap-1.5">
                   <span className="rounded border border-teal-200 bg-teal-50 px-1.5 py-0.5 font-semibold text-teal-800">
-                    Ngoại trú
+                    Khám ngoại trú
                   </span>
                   Bác sĩ khám bệnh nhân tại phòng khám
                 </span>
-                <span className="inline-flex items-center gap-1.5">
-                  <span className="rounded border border-purple-200 bg-purple-50 px-1.5 py-0.5 font-semibold text-purple-800">
-                    Nội trú
-                  </span>
-                  Trực buồng bệnh / thủ thuật
-                </span>
                 <span className="inline-flex items-center gap-1.5 text-emerald-700">
                   <CheckCircle2 size={12} aria-hidden="true" />
-                  Đạt chuẩn: đủ ≥ 1 BS Ngoại trú &amp; ≥ 1 BS Nội trú
+                  Đạt chuẩn: mỗi buổi có ≥ 1 BS Khám ngoại trú
                 </span>
                 <span className="inline-flex items-center gap-1.5 text-violet-700">
                   <Syringe size={12} aria-hidden="true" />
-                  ĐD. = điều dưỡng phối hợp với ca trực
+                  Y tá = Y tá / Thư ký y khoa phối hợp với ca trực
                 </span>
                 <span className="text-slate-400">
                   Nhấn "+" tại ô khung giờ để phân ca nhanh, hoặc nhấn vào tên bác
@@ -1151,13 +1117,13 @@ export default function DoctorRosterTab() {
                       : "text-amber-800"
                 }`}
               >
-                {selectedDepartment?.name ?? "Khoa"} · {compliantCount}/2 ca trực đạt
+                {selectedDepartment?.name ?? "Khối"} · {compliantCount}/2 ca trực đạt
                 chuẩn điều kiện mở khám
               </p>
               <p className="mt-0.5 text-slate-500">
                 {hasPendingValidation
                   ? "Đang đối chiếu chuẩn ca trực với DoctorScheduleService..."
-                  : "Mỗi ca phải có ≥ 1 BS Ngoại trú và ≥ 1 BS Nội trú thì mới được tiếp nhận bệnh nhân tại quầy."}
+                  : "Mỗi buổi cần ≥ 1 BS Khám ngoại trú để mở tiếp nhận bệnh nhân tại quầy."}
               </p>
             </div>
           </div>
@@ -1178,19 +1144,13 @@ export default function DoctorRosterTab() {
                         <th className="w-1/3 px-4 py-3 font-semibold text-slate-600">
                           <span className="inline-flex items-center gap-1.5">
                             <Stethoscope size={13} className="text-teal-600" aria-hidden="true" />
-                            BS Ngoại trú (Phòng khám)
-                          </span>
-                        </th>
-                        <th className="w-1/3 px-4 py-3 font-semibold text-slate-600">
-                          <span className="inline-flex items-center gap-1.5">
-                            <Activity size={13} className="text-purple-500" aria-hidden="true" />
-                            BS Nội trú (Thủ thuật / Trực)
+                            BS Khám ngoại trú (Phòng khám)
                           </span>
                         </th>
                         <th className="w-48 px-4 py-3 font-semibold text-slate-600">
                           <span className="inline-flex items-center gap-1.5">
                             <Syringe size={13} className="text-violet-500" aria-hidden="true" />
-                            ĐD Phối Hợp
+                            Y tá phối hợp
                           </span>
                         </th>
                         <th className="w-56 px-4 py-3 font-semibold text-slate-600">
@@ -1215,13 +1175,13 @@ export default function DoctorRosterTab() {
                             </span>
                             <p className="mt-1.5 text-[10px] text-slate-400">
                               {plan.totalDoctors} BS · {plan.outpatientCapacity} BN/khung
-                              (Ngoại trú)
+                              (Khám ngoại trú)
                             </p>
                           </td>
                           <td className="px-4 py-3">
                             {plan.outpatientShifts.length === 0 ? (
                               <span className="text-[11px] italic text-slate-300">
-                                Chưa phân BS Ngoại trú
+                                Chưa phân BS Khám ngoại trú
                               </span>
                             ) : (
                               <div className="space-y-1.5">
@@ -1236,26 +1196,9 @@ export default function DoctorRosterTab() {
                             )}
                           </td>
                           <td className="px-4 py-3">
-                            {plan.inpatientShifts.length === 0 ? (
-                              <span className="text-[11px] italic text-slate-300">
-                                Chưa phân BS Nội trú
-                              </span>
-                            ) : (
-                              <div className="space-y-1.5">
-                                {plan.inpatientShifts.map((shift) => (
-                                  <DoctorChip
-                                    key={shift.id}
-                                    shift={shift}
-                                    onEdit={setEditingShift}
-                                  />
-                                ))}
-                              </div>
-                            )}
-                          </td>
-                          <td className="px-4 py-3">
                             {plan.nurseNames.length === 0 ? (
                               <span className="text-[11px] italic text-slate-300">
-                                Chưa phân điều dưỡng
+                                Chưa phân Y tá
                               </span>
                             ) : (
                               <div className="flex flex-wrap gap-1.5">
@@ -1284,24 +1227,18 @@ export default function DoctorRosterTab() {
               <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-500">
                 <span className="inline-flex items-center gap-1.5">
                   <span className="rounded border border-teal-200 bg-teal-50 px-1.5 py-0.5 font-semibold text-teal-800">
-                    Ngoại trú
+                    Khám ngoại trú
                   </span>
                   Bác sĩ khám bệnh nhân tại phòng khám
                 </span>
-                <span className="inline-flex items-center gap-1.5">
-                  <span className="rounded border border-purple-200 bg-purple-50 px-1.5 py-0.5 font-semibold text-purple-800">
-                    Nội trú
-                  </span>
-                  Trực buồng bệnh / thủ thuật
-                </span>
                 <span className="inline-flex items-center gap-1.5 text-violet-700">
                   <Syringe size={12} aria-hidden="true" />
-                  ĐD phối hợp do quản trị viên chọn lúc phân ca
+                  Y tá / Thư ký y khoa phối hợp do quản trị viên chọn lúc phân ca
                 </span>
                 <span>•</span>
                 <span className="text-slate-400">
                   Dung lượng mỗi khung 60 phút do DoctorScheduleService tính theo số BS
-                  Ngoại trú đang trực.
+                  Khám ngoại trú đang trực.
                 </span>
                 <span className="text-slate-400">
                   Nhấn vào một ca trực trong bảng để sửa hoặc xóa.
@@ -1316,7 +1253,7 @@ export default function DoctorRosterTab() {
           <div className="mb-1 flex items-center gap-2">
             <Hourglass size={16} className="text-slate-500" aria-hidden="true" />
             <h3 className="text-sm font-bold text-slate-900">
-              Cân bằng tải khung 60 phút - {selectedDepartment?.name ?? "Khoa"}
+              Cân bằng tải khung 60 phút - {selectedDepartment?.name ?? "Khối"}
             </h3>
             <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
               Least-Busy Load Balancing
@@ -1329,7 +1266,7 @@ export default function DoctorRosterTab() {
             <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-slate-300 bg-white px-6 py-10 text-center shadow-card">
               <Hourglass size={20} className="text-slate-300" aria-hidden="true" />
               <p className="text-xs font-medium text-slate-500">
-                Không có khung 60 phút nào được trả về cho Khoa này vào ngày đã chọn.
+                Không có khung 60 phút nào được trả về cho Khối này vào ngày đã chọn.
               </p>
             </div>
           ) : (

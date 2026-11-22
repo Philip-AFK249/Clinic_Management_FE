@@ -143,7 +143,7 @@ export default function QueueMonitorPanel({
         {/* Department filter tabs */}
         <div
           role="tablist"
-          aria-label="Lọc hàng đợi theo chuyên khoa"
+          aria-label="Lọc hàng đợi theo khối khám"
           className="mt-1.5 flex flex-wrap gap-1"
         >
           <FilterTab

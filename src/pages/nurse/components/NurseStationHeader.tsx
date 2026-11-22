@@ -40,7 +40,7 @@ export default function NurseStationHeader({
           <p className="truncate text-sm font-bold leading-tight text-slate-900">
             Smart Clinic{" "}
             <span className="ml-1 rounded-md bg-violet-50 px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-violet-700">
-              Điều Dưỡng Lâm Sàng
+              Y tá / Thư ký y khoa
             </span>
           </p>
           <p className="truncate text-xs text-slate-500">

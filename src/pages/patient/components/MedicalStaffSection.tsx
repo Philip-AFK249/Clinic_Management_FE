@@ -9,7 +9,7 @@ type RoleFilter = "ALL" | "DOCTOR" | "NURSE";
 const FILTERS: { key: RoleFilter; label: string }[] = [
   { key: "ALL", label: "Toàn đội ngũ" },
   { key: "DOCTOR", label: "Bác sĩ chuyên khoa" },
-  { key: "NURSE", label: "Điều dưỡng lâm sàng" },
+  { key: "NURSE", label: "Y tá / Thư ký y khoa" },
 ];
 
 export default function MedicalStaffSection() {
@@ -32,7 +32,7 @@ export default function MedicalStaffSection() {
             Gặp Gỡ Đội Ngũ Chăm Sóc
           </h2>
           <p className="mt-3 text-base leading-relaxed text-slate-600">
-            Đội ngũ bác sĩ chuyên khoa và điều dưỡng lâm sàng, sẵn sàng hỗ trợ
+            Đội ngũ bác sĩ và y tá / thư ký y khoa, sẵn sàng hỗ trợ
             bạn hôm nay với quy trình khám chuẩn hóa và lịch khám linh hoạt.
           </p>
         </div>
@@ -107,7 +107,7 @@ function StaffCard({ staff }: { staff: StaffMember }) {
             isDoctor ? "bg-clinical-600" : "bg-teal-600"
           }`}
         >
-          {isDoctor ? "Bác sĩ" : "Điều dưỡng lâm sàng"}
+          {isDoctor ? "Bác sĩ" : "Y tá / Thư ký y khoa"}
         </span>
         {staff.availableToday && (
           <span className="absolute right-3 top-3 inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50/90 px-2.5 py-0.5 text-xs font-medium text-emerald-700 backdrop-blur-sm">

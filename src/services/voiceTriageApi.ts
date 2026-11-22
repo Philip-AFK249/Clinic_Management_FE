@@ -170,7 +170,7 @@ export interface VoiceTriageResult {
   disease_guess: string;
   /** ICD-10 code, e.g. `J30`. May be empty when the LLM would not commit. */
   icd10_code: string;
-  /** 1: Nội tổng quát, 2: Hô hấp & Dị ứng, 3: Da liễu. */
+  /** 1: Khối Nội, 2: Khối Ngoại. Legacy 3 is normalised to 1 below. */
   department_id: number;
   department_name: string;
   /**
@@ -180,7 +180,7 @@ export interface VoiceTriageResult {
    * complaint - the UI must render exactly as before in that case.
    */
   secondary_department_id?: number | null;
-  /** Display name of the co-consult clinic, e.g. `Khoa Da liễu`. */
+  /** Display name of the co-consult block, e.g. `Khối Nội`. */
   secondary_department_name?: string | null;
   /** The LLM's clinical advisory about routing the two departments. */
   multi_specialty_note?: string;
@@ -516,9 +516,37 @@ function requireSuccess(payload: VoiceScheduleTriageResponse): VoiceScheduleTria
   return normalizeTriagePayload(payload);
 }
 
+/**
+ * The AI Gateway still emits three specialty buckets, while the clinic now runs
+ * two outpatient blocks. Fold legacy `3` into `Khối Nội` and replace
+ * free-text department names with the canonical block names so every consumer
+ * (booking, reception, kiosk) sees the same two choices.
+ */
+export function normalizeTriageDepartments(
+  departmentId: number | null | undefined,
+): number {
+  if (departmentId === 3) return 1;
+  return departmentId === 1 || departmentId === 2 ? departmentId : 1;
+}
+
+function blockName(departmentId: number): string {
+  return departmentId === 2 ? "Khối Ngoại" : "Khối Nội";
+}
+
 function normalizeTriagePayload(payload: VoiceTriageResult): VoiceTriageResult {
+  const departmentId = normalizeTriageDepartments(payload.department_id);
+  const secondaryId =
+    payload.secondary_department_id == null
+      ? null
+      : normalizeTriageDepartments(payload.secondary_department_id);
   return normalizeScheduleDoctors({
     ...payload,
+    department_id: departmentId,
+    department_name: blockName(departmentId),
+    secondary_department_id: secondaryId,
+    ...(secondaryId !== null
+      ? { secondary_department_name: blockName(secondaryId) }
+      : {}),
     needs_clarification: payload.needs_clarification === true,
     clarification_options: payload.clarification_options ?? [],
     clarifying_questions: payload.clarifying_questions ?? [],

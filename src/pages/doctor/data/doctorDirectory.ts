@@ -41,25 +41,23 @@ export interface ClinicalDepartment {
   specialties: string;
 }
 
-/** The three khoa the clinic runs, in `departments.id` order. */
+/**
+ * The outpatient clinic runs two blocks, not three specialty khoa. IDs stay
+ * stable for the backend seed: the legacy third block was folded into
+ * `Khối Nội` as required by the streamlined outpatient model.
+ */
 export const CLINICAL_DEPARTMENTS: ClinicalDepartment[] = [
   {
     id: 1,
-    name: "Khoa Nội Tổng quát & Tim mạch",
-    shortName: "Nội tổng quát & Tim mạch",
-    specialties: "Bệnh tim mạch, nội tiết, chuyển hóa",
+    name: "Khối Nội",
+    shortName: "Khối Nội",
+    specialties: "Nội tổng quát & Tim mạch",
   },
   {
     id: 2,
-    name: "Khoa Hô hấp & Dị ứng - Miễn dịch lâm sàng",
-    shortName: "Hô hấp & Dị ứng",
-    specialties: "Hen suyễn, viêm mũi họng, dị ứng, TMH",
-  },
-  {
-    id: 3,
-    name: "Khoa Da liễu",
-    shortName: "Da liễu",
-    specialties: "Viêm da cơ địa, mẩn ngứa, dị ứng tiếp xúc",
+    name: "Khối Ngoại",
+    shortName: "Khối Ngoại",
+    specialties: "Ngoại tổng quát & Thủ thuật",
   },
 ];
 
@@ -71,8 +69,11 @@ const DEPARTMENT_BY_ID = new Map(
 export const FALLBACK_DEPARTMENT_ID = CLINICAL_DEPARTMENTS[0].id;
 
 export function departmentNameOf(departmentId: number | undefined): string {
-  if (departmentId === undefined) return "Chuyên khoa";
-  return DEPARTMENT_BY_ID.get(departmentId)?.name ?? "Chuyên khoa";
+  if (departmentId === undefined) return "Khối khám";
+  // Legacy department 3 was merged into Khối Nội; older tickets and
+  // accounts may still carry it, so normalise at the display boundary too.
+  if (departmentId === 3) return "Khối Nội";
+  return DEPARTMENT_BY_ID.get(departmentId)?.name ?? "Khối khám";
 }
 
 interface SeededDoctor extends Omit<DoctorProfile, "departmentName"> {
@@ -142,7 +143,7 @@ const SEEDED_DOCTORS: SeededDoctor[] = [
     credential: "Bác sĩ Chuyên khoa I",
     email: "lan.nguyen@smartclinic.vn",
     roomNumber: "Phòng 205",
-    departmentId: 3,
+    departmentId: 1,
   },
   {
     id: 8,
@@ -151,7 +152,7 @@ const SEEDED_DOCTORS: SeededDoctor[] = [
     credential: "Thạc sĩ Y khoa",
     email: "duc.vu@smartclinic.vn",
     roomNumber: "Phòng 206",
-    departmentId: 3,
+    departmentId: 1,
   },
   {
     id: 9,
@@ -160,7 +161,7 @@ const SEEDED_DOCTORS: SeededDoctor[] = [
     credential: "Bác sĩ",
     email: "huong.mai@smartclinic.vn",
     roomNumber: "Phòng 205",
-    departmentId: 3,
+    departmentId: 1,
   },
 ];
 
@@ -177,6 +178,11 @@ export function doctorsOfDepartment(departmentId: number): DoctorProfile[] {
 }
 
 const DOCTOR_BY_ID = new Map(DOCTOR_DIRECTORY.map((doctor) => [doctor.id, doctor]));
+
+/** Seeded profile for a doctor id, or undefined for an unseeded account. */
+export function doctorProfileById(id: number): DoctorProfile | undefined {
+  return DOCTOR_BY_ID.get(id);
+}
 
 const DOCTOR_ID_BY_EMAIL = new Map(
   DOCTOR_DIRECTORY.map((doctor) => [doctor.email.toLowerCase(), doctor.id]),
@@ -235,7 +241,7 @@ export function resolveDoctorProfile(
     credential: "",
     email: user?.email ?? "",
     roomNumber: seeded?.roomNumber ?? "Chưa phân phòng",
-    departmentName: seeded?.departmentName ?? "Chuyên khoa",
+    departmentName: seeded?.departmentName ?? "Khối khám",
     departmentId: seeded?.departmentId ?? FALLBACK_DEPARTMENT_ID,
   };
   return { profile: fallback, isSeeded: false };

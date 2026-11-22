@@ -230,7 +230,7 @@ export default function SymptomsStep({
   const voiceSuggestion: TriageSuggestion | null =
     voiceTriage && !isClarifying
       ? {
-          department: voiceTriage.department_name || "Khoa Nội Tổng quát & Tim mạch",
+          department: voiceTriage.department_name || "Khối Nội",
           priority: voiceTriage.priority_level ?? "P3",
           priorityLabel:
             PRIORITY_LABELS[voiceTriage.priority_level] ?? PRIORITY_LABELS.P3,
@@ -263,7 +263,7 @@ export default function SymptomsStep({
       ? {
           primaryDepartmentName: voiceTriage.department_name,
           secondaryDepartmentName:
-            voiceTriage.secondary_department_name ?? "Khoa khám kèm",
+            voiceTriage.secondary_department_name ?? "Khối khám kèm",
           note: voiceTriage.multi_specialty_note ?? null,
         }
       : null;
@@ -406,14 +406,14 @@ export default function SymptomsStep({
           <div className="flex flex-wrap gap-2">
             <span className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700">
               <Stethoscope className="h-3.5 w-3.5 text-clinical-600" aria-hidden="true" />
-              {preliminaryResult.department_name || "Đang xác định chuyên khoa"}
+              {preliminaryResult.department_name || "Đang xác định khối khám"}
             </span>
             {(preliminaryResult.secondary_department_name ||
               preliminaryResult.multi_specialty_note) && (
               <span className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
                 <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                 Đa cơ quan · khám kèm:{" "}
-                {preliminaryResult.secondary_department_name || "Khoa khám kèm"}
+                {preliminaryResult.secondary_department_name || "Khối khám kèm"}
               </span>
             )}
           </div>
@@ -794,7 +794,7 @@ export default function SymptomsStep({
       {!voiceTriage && (
         <section className="rounded-xl border border-slate-200/80 bg-white p-5">
           <p className="mb-3 text-base font-medium text-slate-900">
-            Chọn chuyên khoa
+            Chọn khối khám
           </p>
           <div className="grid gap-2 sm:grid-cols-2">
             {CLINIC_SERVICES.map((service, index) => (
@@ -841,11 +841,11 @@ export default function SymptomsStep({
         </span>
         <div>
           <p className="text-base font-semibold text-slate-900">
-            Chưa chắc nên chọn chuyên khoa nào?
+            Chưa chắc nên chọn khối khám nào?
           </p>
           <p className="mt-1 text-base leading-relaxed text-slate-600">
             Chạm micro ở trên để nói triệu chứng, gõ tay hoặc bấm "Phân tích &amp;
-            gợi ý chẩn đoán" - Trợ lý Ảo Y khoa AI sẽ gợi ý chuyên khoa phù hợp
+            gợi ý chẩn đoán" - Trợ lý Ảo Y khoa AI sẽ gợi ý khối khám phù hợp
             nhất cùng mức độ ưu tiên khám và lịch khám còn trống.
           </p>
         </div>

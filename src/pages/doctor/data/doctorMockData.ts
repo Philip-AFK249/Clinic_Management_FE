@@ -103,7 +103,7 @@ const NGUYEN_VAN_AN: PatientRecord = {
     {
       id: "FHIR-ENC-8815",
       date: "15/08/2026",
-      department: "Khoa Dị ứng & Miễn dịch lâm sàng",
+      department: "Khối Ngoại",
       complaint: "Tái khám viêm mũi dị ứng mạn tính",
       diagnosis: "J30.9 - Viêm mũi dị ứng mạn tính",
       notes: "Kê Loratadine 10mg/ngày. Khuyến cáo tránh dị nguyên mạt bụi nhà.",
@@ -111,7 +111,7 @@ const NGUYEN_VAN_AN: PatientRecord = {
     {
       id: "FHIR-ENC-8802",
       date: "27/02/2026",
-      department: "Khoa Dị ứng & Miễn dịch lâm sàng",
+      department: "Khối Ngoại",
       complaint: "Mề đay dị ứng sau bữa ăn hải sản",
       diagnosis: "L50.0 - Mề đay do thức ăn dị ứng",
       notes: "Nhập viện điều trị kháng histamin. Khuyến cáo tuyệt đối tránh hải sản.",
@@ -199,7 +199,7 @@ const QUEUE_SEED: PatientRecord[] = [
       {
         id: "FHIR-ENC-8788",
         date: "19/04/2026",
-        department: "Khoa Hô hấp & Hen suyễn",
+        department: "Khối Ngoại",
         complaint: "Cơn hen suyễn cấp",
         diagnosis: "J45.901 - Hen suyễn không đặc hiệu",
         notes: "Hướng dẫn kỹ thuật bình xịt; bổ sung duy trì Budesonide.",
@@ -295,7 +295,7 @@ const QUEUE_SEED: PatientRecord[] = [
       {
         id: "FHIR-ENC-8766",
         date: "08/02/2026",
-        department: "Khoa Dị ứng & Miễn dịch lâm sàng",
+        department: "Khối Ngoại",
         complaint: "Liệu pháp miễn dịch duy trì - tuần 12",
         diagnosis: "Z07.9 - Chăm sóc sau điều trị",
         notes: "Tiếp tục liệu pháp miễn dịch dưới lưỡi; không ghi nhận phản ứng.",

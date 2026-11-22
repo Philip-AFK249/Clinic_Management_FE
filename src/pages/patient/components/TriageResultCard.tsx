@@ -77,7 +77,7 @@ export default function TriageResultCard({
         >
           <Info className="mt-0.5 h-4 w-4 shrink-0 text-sky-600" aria-hidden="true" />
           <p className="text-sm font-medium leading-relaxed">
-            Triệu chứng nằm ngoài danh mục gợi ý sẵn có — hệ thống đã chọn chuyên khoa sát nhất và gắn cờ lưu dữ liệu để bác sĩ ưu tiên thăm khám.
+            Triệu chứng nằm ngoài danh mục gợi ý sẵn có — hệ thống đã chọn khối khám sát nhất và gắn cờ lưu dữ liệu để bác sĩ ưu tiên thăm khám.
           </p>
         </div>
       )}
@@ -107,7 +107,7 @@ export default function TriageResultCard({
           {multiSpecialty.note && (
             <div className="rounded-xl border border-sky-200 bg-sky-50 p-3">
               <p className="text-xs font-bold uppercase tracking-wide text-sky-700">
-                Tư vấn lâm sàng đa chuyên khoa
+                Tư vấn lâm sàng đa khối
               </p>
               <p className="mt-1 text-sm font-medium leading-relaxed text-sky-900">
                 {multiSpecialty.note}
@@ -122,7 +122,7 @@ export default function TriageResultCard({
           <div className="grid gap-2 sm:grid-cols-3">
             <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
               <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
-                Chuyên khoa đề xuất
+                Khối khám đề xuất
               </p>
               <p className="mt-1 text-sm font-bold text-slate-900">
                 {suggestion.department}

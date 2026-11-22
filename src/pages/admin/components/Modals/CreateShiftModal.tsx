@@ -40,8 +40,7 @@ const SESSION_LABELS: Record<ShiftSession, string> = {
 };
 
 const DUTY_TYPE_OPTIONS: { value: DutyType; label: string }[] = [
-  { value: "OUTPATIENT", label: "Ngoại trú (Trực phòng khám)" },
-  { value: "INPATIENT", label: "Nội trú (Trực nội trú / Thủ thuật)" },
+  { value: "OUTPATIENT", label: "Khám ngoại trú (Trực phòng khám)" },
 ];
 
 /**
@@ -123,7 +122,7 @@ export default function CreateShiftModal({
   const activeDoctors = doctors.filter((d) => d.active);
   const selectedDoctor = activeDoctors.find((d) => d.id === selectedDoctorId);
   // The pairing roster is local: AuthService has no nurses endpoint, and the
-  // seeded điều dưỡng are the same rows `nurseDirectory` mirrors.
+  // seeded Y tá / Thư ký y khoa are the rows `nurseDirectory` mirrors.
   const nurses =
     selectedDepartmentId === "" ? [] : nursesOfDepartment(selectedDepartmentId);
   const selectedNurse = nurses.find((nurse) => nurse.id === selectedNurseId);
@@ -209,7 +208,7 @@ export default function CreateShiftModal({
           toast.error(
             error instanceof Error
               ? error.message
-              : "Không tải được danh sách Khoa từ DoctorScheduleService.",
+              : "Không tải được danh sách Khối từ DoctorScheduleService.",
           );
         }
       })
@@ -256,7 +255,7 @@ export default function CreateShiftModal({
   }, []);
 
   /**
-   * Picking a bác sĩ suggests the điều dưỡng posted to the same phòng: the two
+   * Picking a bác sĩ suggests the Y tá posted to the same phòng: the two
    * rosters only share the room number ("Phòng 101" vs "Phòng khám 101"), so
    * the digits are the join. The suggestion never overwrites a nurse the
    * admin picked explicitly, and clearing the doctor clears it too.
@@ -281,7 +280,7 @@ export default function CreateShiftModal({
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!selectedDepartment) {
-      toast.error("Vui lòng chọn Khoa cần phân ca.");
+      toast.error("Vui lòng chọn Khối cần phân ca.");
       return;
     }
     if (!selectedDoctor) {
@@ -317,10 +316,10 @@ export default function CreateShiftModal({
     try {
       const created = await createShift(payload);
       toast.success(
-        `Đã phân ca ${session === "MORNING" ? "Sáng" : "Chiều"} (${
-          dutyType === "OUTPATIENT" ? "Ngoại trú" : "Nội trú"
-        }) cho ${created.doctor.fullName}${
-          selectedNurse ? ` & ĐD. ${selectedNurse.fullName.replace(/^ĐD\.\s*/, "")}` : ""
+        `Đã phân ca Khám ngoại trú ${session === "MORNING" ? "Sáng" : "Chiều"} cho ${created.doctor.fullName}${
+          selectedNurse
+            ? ` & Y tá ${selectedNurse.fullName.replace(/^(ĐD\.|Y tá)\s*/i, "")}`
+            : ""
         } – ${selectedDepartment.name}.`,
         { duration: 4000 },
       );
@@ -375,7 +374,7 @@ export default function CreateShiftModal({
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <label className="mb-1 block text-xs font-semibold text-slate-700">
-                Khoa điều trị *
+                Khối điều trị *
               </label>
               <select
                 value={selectedDepartmentId}
@@ -384,10 +383,10 @@ export default function CreateShiftModal({
                 className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-300 disabled:cursor-not-allowed disabled:bg-slate-50"
               >
                 {departmentsLoading && (
-                  <option value="">Đang tải danh sách Khoa...</option>
+                  <option value="">Đang tải danh sách Khối...</option>
                 )}
                 {!departmentsLoading && departments.length === 0 && (
-                  <option value="">-- Không có Khoa --</option>
+                  <option value="">-- Không có Khối --</option>
                 )}
                 {departments.map((department) => (
                   <option key={department.id} value={department.id}>
@@ -442,7 +441,7 @@ export default function CreateShiftModal({
 
           <div>
             <label className="mb-1 block text-xs font-semibold text-slate-700">
-              Điều dưỡng phối hợp
+              Y tá / Thư ký y khoa phối hợp
             </label>
             <select
               value={selectedNurseId}
@@ -456,8 +455,8 @@ export default function CreateShiftModal({
             >
               <option value="">
                 {selectedDepartmentId === ""
-                  ? "-- Chọn Khoa trước --"
-                  : "-- Để mặc định theo Khoa --"}
+                  ? "-- Chọn Khối trước --"
+                  : "-- Để mặc định theo Khối --"}
               </option>
               {nurses.map((nurse) => (
                 <option key={nurse.id} value={nurse.id}>
@@ -468,8 +467,8 @@ export default function CreateShiftModal({
             </select>
             <p className="mt-1 text-[11px] text-slate-400">
               Gợi ý tự động theo số phòng trùng với Bác sĩ. Hiển thị trên thời
-              khoá biểu và tại trạm điều dưỡng; bỏ trống để DoctorScheduleService
-              tự chọn điều dưỡng theo Khoa.
+              khoá biểu và tại phòng khám; bỏ trống để DoctorScheduleService tự
+              chọn Y tá / Thư ký y khoa theo Khối.
             </p>
           </div>
 
@@ -550,10 +549,10 @@ export default function CreateShiftModal({
               </div>
             </div>
             <p className="text-[11px] text-slate-400">
-              Mỗi ca Ngoại trú mặc định tiếp nhận tối đa{" "}
+              Mỗi ca Khám ngoại trú mặc định tiếp nhận tối đa{" "}
               <span className="font-semibold text-slate-600">4 bệnh nhân / khung 60 phút</span>{" "}
-              (chuẩn phòng khám). Mỗi ca phải có đủ ≥ 1 BS Ngoại trú và ≥ 1 BS Nội trú để mở
-              tiếp nhận bệnh.
+              (chuẩn phòng khám). Mỗi buổi chỉ cần ≥ 1 bác sĩ trực để mở tiếp nhận
+              bệnh nhân.
             </p>
           </div>
 

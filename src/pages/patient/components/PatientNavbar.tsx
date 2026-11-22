@@ -17,7 +17,7 @@ import {
 import { useAuth } from "../../../context/useAuth";
 
 const NAV_LINKS = [
-  { label: "Chuyên khoa", href: "#services" },
+  { label: "Khối khám", href: "#services" },
   { label: "Quy trình khám", href: "#quy-trinh" },
   { label: "Đội ngũ Bác sĩ", href: "#doctors" },
   { label: "Cơ sở phòng khám", href: "#locations" },

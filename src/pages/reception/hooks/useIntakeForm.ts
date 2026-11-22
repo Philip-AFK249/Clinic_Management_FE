@@ -167,7 +167,7 @@ export function validateIntakeForm(form: IntakeFormState): IntakeErrors {
       "Số điện thoại di động Việt Nam phải gồm 10 chữ số, bắt đầu bằng 03, 05, 07, 08 hoặc 09.";
   }
   if (!Number.isFinite(form.departmentId) || form.departmentId <= 0) {
-    errors.departmentId = "Vui lòng chọn chuyên khoa tiếp nhận.";
+    errors.departmentId = "Vui lòng chọn khối khám tiếp nhận.";
   }
 
   if (!form.appointmentDate) {

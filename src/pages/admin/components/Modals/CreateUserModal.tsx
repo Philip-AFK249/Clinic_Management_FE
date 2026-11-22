@@ -20,7 +20,7 @@ interface CreateUserModalProps {
 const ROLE_OPTIONS: { value: UserRole; label: string }[] = [
   { value: "DOCTOR", label: "Bác sĩ (DOCTOR)" },
   { value: "PHARMACIST", label: "Dược sĩ (PHARMACIST)" },
-  { value: "NURSE", label: "Điều dưỡng (NURSE)" },
+  { value: "NURSE", label: "Y tá / Thư ký y khoa (NURSE)" },
   { value: "ADMIN", label: "Quản trị viên (ADMIN)" },
 ];
 
@@ -54,7 +54,7 @@ export default function CreateUserModal({ onClose, onCreated }: CreateUserModalP
         toast.error(
           error instanceof Error
             ? error.message
-            : "Không tải được danh sách Khoa từ DoctorScheduleService.",
+            : "Không tải được danh sách Khối từ DoctorScheduleService.",
         );
       })
       .finally(() => setDepartmentsLoading(false));
@@ -80,7 +80,7 @@ export default function CreateUserModal({ onClose, onCreated }: CreateUserModalP
       return;
     }
     if (!selectedDepartment) {
-      toast.error("Vui lòng chọn Khoa / Phòng ban cho tài khoản.");
+      toast.error("Vui lòng chọn Khối / Phòng ban cho tài khoản.");
       return;
     }
 
@@ -208,7 +208,7 @@ export default function CreateUserModal({ onClose, onCreated }: CreateUserModalP
 
           <div>
             <label className="mb-1 block text-xs font-semibold text-slate-700">
-              Khoa / Phòng ban *
+              Khối / Phòng ban *
             </label>
             <select
               value={departmentId}
@@ -216,9 +216,9 @@ export default function CreateUserModal({ onClose, onCreated }: CreateUserModalP
               disabled={submitting || departmentsLoading}
               className={FIELD_CLASS}
             >
-              {departmentsLoading && <option value="">Đang tải danh sách Khoa...</option>}
+              {departmentsLoading && <option value="">Đang tải danh sách Khối...</option>}
               {!departmentsLoading && departments.length === 0 && (
-                <option value="">-- Không tải được danh sách Khoa --</option>
+                <option value="">-- Không tải được danh sách Khối --</option>
               )}
               {departments.map((department) => (
                 <option key={department.id} value={department.id}>
@@ -228,7 +228,7 @@ export default function CreateUserModal({ onClose, onCreated }: CreateUserModalP
             </select>
             <p className="mt-1 text-[11px] text-slate-400">
               Danh sách khoa đọc từ DoctorScheduleService (:8081); khoa được lưu
-              kèm tài khoản và dùng để định tuyến bệnh nhân khi bác sĩ / điều dưỡng
+              kèm tài khoản và dùng để định tuyến bệnh nhân khi bác sĩ / Y tá
               vào ca trực.
             </p>
           </div>

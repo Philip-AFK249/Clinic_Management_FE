@@ -557,7 +557,7 @@ export default function OnlineTicketVerificationTab() {
                   <tr className="border-b border-surface-border bg-slate-50 text-[11px] font-bold uppercase tracking-wide text-slate-500">
                     <th className="px-3 py-3">Mã vé (#A-xxx)</th>
                     <th className="px-3 py-3">Bệnh nhân &amp; liên lạc</th>
-                    <th className="px-3 py-3">Chuyên khoa / Bác sĩ</th>
+                    <th className="px-3 py-3">Khối / Bác sĩ</th>
                     <th className="px-3 py-3">Lịch hẹn</th>
                     <th className="px-3 py-3">Thanh toán</th>
                     <th className="px-3 py-3">Trạng thái</th>

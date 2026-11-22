@@ -129,7 +129,7 @@ export const LEGACY_PATIENT_PROFILE_FIELDS: Record<string, keyof PatientProfileF
 
 /**
  * Department context chosen on the login screen before the account is known,
- * e.g. the doctor picked "Khoa Da liễu" and then typed a personal email.
+ * e.g. the doctor picked "Khối Nội" and then typed a personal email.
  * The email match in the staff directory always wins over this fallback.
  */
 export interface LoginExtraContext {
@@ -177,7 +177,7 @@ export interface DemoAccount {
 export const ROLE_HOME: Record<UserRole, string> = {
   PATIENT: "/patient/dashboard",
   DOCTOR: "/doctor/ehr",
-  NURSE: "/nurse",
+  NURSE: "/doctor/ehr",
   RECEPTIONIST: "/reception",
   PHARMACIST: "/pharmacy/queue",
   ADMIN: "/admin/overview",
@@ -199,18 +199,18 @@ export const DEMO_ACCOUNTS: DemoAccount[] = [
     redirectPath: "/patient/dashboard",
   },
   {
-    label: "Điều dưỡng",
+    label: "Y tá / Thư ký y khoa",
     role: "NURSE",
     email: "hang.trinh@smartclinic.vn",
     password: DEMO_PASSWORD,
-    redirectPath: "/nurse",
+    redirectPath: "/doctor/ehr",
     departmentId: 1,
   },
   // One preset per khoa, taken from the seeded `doctors` rows. The login screen
   // builds its staff picker from DOCTOR_DIRECTORY; these are only the defaults
   // used when a role chip is tapped without picking a specific bác sĩ.
   {
-    label: "Bác sĩ (Nội - Tim mạch)",
+    label: "Bác sĩ (Khối Nội)",
     role: "DOCTOR",
     email: "tuan.tran@smartclinic.vn",
     password: DEMO_PASSWORD,
@@ -219,7 +219,7 @@ export const DEMO_ACCOUNTS: DemoAccount[] = [
     departmentId: 1,
   },
   {
-    label: "Bác sĩ (Hô hấp - Dị ứng)",
+    label: "Bác sĩ (Khối Ngoại)",
     role: "DOCTOR",
     email: "yen.le@smartclinic.vn",
     password: DEMO_PASSWORD,
@@ -228,13 +228,13 @@ export const DEMO_ACCOUNTS: DemoAccount[] = [
     departmentId: 2,
   },
   {
-    label: "Bác sĩ (Da liễu)",
+    label: "Bác sĩ (Khối Nội)",
     role: "DOCTOR",
     email: "lan.nguyen@smartclinic.vn",
     password: DEMO_PASSWORD,
     redirectPath: "/doctor/ehr",
     doctorId: 7,
-    departmentId: 3,
+    departmentId: 1,
   },
   {
     label: "Tiếp đón viên",

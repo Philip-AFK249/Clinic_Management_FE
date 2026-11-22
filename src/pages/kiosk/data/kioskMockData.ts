@@ -79,10 +79,9 @@ export const KIOSK_PATIENT: KioskPatient = {
 };
 
 /**
- * Each kiosk symptom routes to one of the three seeded departments:
- * 1 = Nội Tổng quát & Tim mạch, 2 = Hô hấp & Dị ứng, 3 = Da liễu.
- * Paediatrics, emergency walk-ins and follow-ups have no dedicated seeded
- * department, so they are absorbed by general medicine.
+ * Each kiosk symptom routes to one of the two outpatient blocks:
+ * 1 = Khối Nội, 2 = Khối Ngoại.
+ * Paediatrics, emergency walk-ins and follow-ups are absorbed by Khối Nội.
  */
 export const SYMPTOM_OPTIONS: SymptomOption[] = [
   {
@@ -90,7 +89,7 @@ export const SYMPTOM_OPTIONS: SymptomOption[] = [
     icon: "🌡️",
     label: "Sốt cao & Đau rát họng",
     triage: "P2",
-    department: "Khoa Dị ứng & Hô hấp",
+    department: "Khối Ngoại",
     room: "Phòng 201",
     priorityLabel: "CẦN KHÁM SỚM",
     departmentId: 2,
@@ -105,29 +104,28 @@ export const SYMPTOM_OPTIONS: SymptomOption[] = [
     priorityLabel: "KHẨN CẤP",
     isEmergency: true,
     departmentId: 1,
-    // Đau ngực kèm nổi mẩn ngứa - the multi-organ case the triage model has
-    // to route to two clinics in one visit.
-    secondaryDepartmentId: 3,
-    secondaryDepartmentName: "Khoa Da liễu",
+    // Chest pain plus a rash: the multi-organ case routed to both blocks.
+    secondaryDepartmentId: 2,
+    secondaryDepartmentName: "Khối Ngoại",
     multiSpecialtyNote:
-      "Kèm nổi mẩn ngứa da toàn thân kéo dài: bệnh nhân được xếp khám ưu tiên tại Khoa Nội Tổng quát & Tim mạch trước, sau đó khám kèm Da liễu trong cùng ngày.",
+      "Kèm nổi mẩn ngứa da toàn thân kéo dài: bệnh nhân được khám ưu tiên tại Khối Nội trước, sau đó khám kèm tại Khối Ngoại trong cùng ngày.",
   },
   {
     id: "symptom-rash",
     icon: "🩹",
     label: "Nổi mẩn ngứa / Mề đay dị ứng",
     triage: "P2",
-    department: "Khoa Da liễu & Dị ứng",
+    department: "Khối Nội",
     room: "Phòng 205",
     priorityLabel: "CẦN KHÁM SỚM",
-    departmentId: 3,
+    departmentId: 1,
   },
   {
     id: "symptom-pediatric",
     icon: "👶",
     label: "Khám Nhi khoa (Trẻ em)",
     triage: "P3",
-    department: "Khoa Nhi",
+    department: "Khối Nội",
     room: "Phòng 108",
     priorityLabel: "THƯỜNG",
     departmentId: 1,
@@ -135,9 +133,9 @@ export const SYMPTOM_OPTIONS: SymptomOption[] = [
   {
     id: "symptom-general",
     icon: "🩺",
-    label: "Khám Nội Tổng quát / Tầm soát",
+    label: "Khối Nội",
     triage: "P3",
-    department: "Khoa Nội",
+    department: "Khối Nội",
     room: "Phòng 104",
     priorityLabel: "THƯỜNG",
     departmentId: 1,
@@ -158,8 +156,8 @@ export const ROOMS: RoomInfo[] = [
   { id: "room-101", number: "101", name: "Cấp cứu", floor: "Tầng Trệt" },
   { id: "room-104", number: "104", name: "Khám Nội", floor: "Tầng Trệt", doctor: "BS. Phạm Quốc Bảo" },
   { id: "room-108", number: "108", name: "Khám Nhi", floor: "Tầng Trệt", doctor: "BS. CKI. Nguyễn Văn Dũng" },
-  { id: "room-201", number: "201", name: "Dị ứng - Miễn dịch lâm sàng", floor: "Tầng 2", doctor: "PGS. TS. BS. Trần Minh Tuấn" },
-  { id: "room-205", number: "205", name: "Tai Mũi Họng", floor: "Tầng 2", doctor: "ThS. BS. Lê Thị Hoàng Yến" },
+  { id: "room-201", number: "201", name: "Khối Ngoại - Thủ thuật", floor: "Tầng 2", doctor: "PGS. TS. BS. Trần Minh Tuấn" },
+  { id: "room-205", number: "205", name: "Khối Nội - Khám ngoại trú", floor: "Tầng 2", doctor: "ThS. BS. Lê Thị Hoàng Yến" },
 ];
 
 export const TICKET_NUMBER = "#A-102";

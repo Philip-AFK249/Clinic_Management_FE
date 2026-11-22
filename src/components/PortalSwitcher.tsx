@@ -6,7 +6,6 @@ import {
   MonitorSmartphone,
   Pill,
   Stethoscope,
-  Syringe,
   UserCog,
   X,
 } from "lucide-react";
@@ -21,15 +20,9 @@ interface PortalTarget {
 const PORTALS: PortalTarget[] = [
   {
     path: "/doctor/ehr",
-    label: "Bác sĩ",
+    label: "Phòng khám (BS & Y tá)",
     icon: Stethoscope,
     accent: "hover:bg-teal-50 hover:text-teal-700",
-  },
-  {
-    path: "/nurse",
-    label: "Điều dưỡng",
-    icon: Syringe,
-    accent: "hover:bg-violet-50 hover:text-violet-700",
   },
   {
     path: "/reception",

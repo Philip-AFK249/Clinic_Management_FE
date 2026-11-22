@@ -18,9 +18,9 @@ import {
 } from "../data/patientEncounterLoader";
 
 const DEPARTMENT_LABELS: Record<number, string> = {
-  1: "Khoa Nội Tổng quát & Tim mạch",
-  2: "Khoa Hô hấp & Dị ứng",
-  3: "Khoa Da liễu",
+  1: "Khối Nội",
+  2: "Khối Ngoại",
+  3: "Khối Nội",
 };
 
 function vnd(value: number | null | undefined): string {
@@ -36,8 +36,8 @@ function dateLabel(encounter: PatientEncounterDto): string {
 }
 
 function departmentLabel(departmentId: number | undefined): string {
-  if (departmentId === undefined) return "Chuyên khoa";
-  return DEPARTMENT_LABELS[departmentId] ?? "Chuyên khoa";
+  if (departmentId === undefined) return "Khối khám";
+  return DEPARTMENT_LABELS[departmentId] ?? "Khối khám";
 }
 
 function doctorLabel(doctorName: string | undefined): string {

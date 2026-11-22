@@ -18,7 +18,7 @@ export const STAFF_ROLE_FILTERS: {
   { value: "ALL", label: "Tất cả" },
   { value: "DOCTOR", label: "Bác sĩ" },
   { value: "PHARMACIST", label: "Dược sĩ" },
-  { value: "NURSE", label: "Điều dưỡng" },
+  { value: "NURSE", label: "Y tá / Thư ký y khoa" },
   { value: "ADMIN", label: "Quản trị viên" },
 ];
 
@@ -35,7 +35,7 @@ const ROLE_LABELS: Record<UserRole, string> = {
   PATIENT: "Bệnh nhân",
   DOCTOR: "Bác sĩ",
   PHARMACIST: "Dược sĩ",
-  NURSE: "Điều dưỡng",
+  NURSE: "Y tá / Thư ký y khoa",
   RECEPTIONIST: "Tiếp đón viên",
   ADMIN: "Quản trị viên",
 };

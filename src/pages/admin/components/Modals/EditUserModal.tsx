@@ -22,7 +22,7 @@ interface EditUserModalProps {
 const ROLE_OPTIONS: { value: UserRole; label: string }[] = [
   { value: "DOCTOR", label: "Bác sĩ (DOCTOR)" },
   { value: "PHARMACIST", label: "Dược sĩ (PHARMACIST)" },
-  { value: "NURSE", label: "Điều dưỡng (NURSE)" },
+  { value: "NURSE", label: "Y tá / Thư ký y khoa (NURSE)" },
   { value: "ADMIN", label: "Quản trị viên (ADMIN)" },
 ];
 
@@ -183,7 +183,7 @@ export default function EditUserModal({
             </div>
             <div>
               <label className="mb-1 block text-xs font-semibold text-slate-700">
-                Khoa / Phòng ban
+                Khối / Phòng ban
               </label>
               <select
                 value={departmentId}

@@ -99,7 +99,7 @@ export default function KioskSymptomTriageStep({
           {selectedSymptom.multiSpecialtyNote && (
             <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4">
               <p className="text-xs font-bold uppercase tracking-wide text-sky-700">
-                Tư vấn lâm sàng đa chuyên khoa
+                Tư vấn lâm sàng đa khối
               </p>
               <p className="mt-1 text-sm font-medium leading-relaxed text-sky-900">
                 {selectedSymptom.multiSpecialtyNote}

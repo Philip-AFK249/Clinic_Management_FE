@@ -257,7 +257,7 @@ export default function VitalsCaptureModal({
               htmlFor="vitals-nurseNotes"
               className="mb-1 block text-xs font-semibold text-slate-700"
             >
-              Ghi chú điều dưỡng
+              Ghi chú Y tá / Thư ký y khoa
             </label>
             <textarea
               id="vitals-nurseNotes"

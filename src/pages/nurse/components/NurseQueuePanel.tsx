@@ -85,7 +85,7 @@ const ACTION_TONES: Record<NurseQueueAction["tone"], string> = {
 
 /**
  * The nurse's working queue: everything waiting at this khoa, ordered by
- * triage, with the status transitions a điều dưỡng actually performs plus the
+ * triage, with the status transitions the in-room assistant actually performs plus the
  * vitals capture that precedes hand-over to the bác sĩ.
  */
 export default function NurseQueuePanel({
@@ -625,7 +625,7 @@ function NurseHistoryCard({
       {notes && (
         <p className="mt-1.5 line-clamp-2 text-[11px] leading-relaxed text-slate-600">
           <span className="font-semibold text-slate-500">
-            Ghi chú điều dưỡng:
+            Ghi chú Y tá / Thư ký y khoa:
           </span>{" "}
           {notes}
         </p>

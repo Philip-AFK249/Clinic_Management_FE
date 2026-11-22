@@ -4,6 +4,7 @@ import { CheckCircle2, Send } from "lucide-react";
 import DoctorHeader from "./components/DoctorHeader";
 import PatientQueueDrawer from "./components/PatientQueueDrawer";
 import ActivePatientBanner from "./components/ActivePatientBanner";
+import type { SavedVitals } from "./components/ActivePatientBanner";
 import AmbientRecordingBar from "./components/AmbientRecordingBar";
 import PatientHistoryModal from "./components/PatientHistoryModal";
 import WorkspaceSplitView from "./components/WorkspaceSplitView";
@@ -81,12 +82,18 @@ export default function DoctorEHRPage() {
   const [selectedDate, setSelectedDate] = useState(() => todayIso());
   const [isUpcomingView, setIsUpcomingView] = useState(false);
 
+  /**
+   * "Y tá / Thư ký y khoa" has no doctors row of its own. It works inside the
+   * exam room and picks which doctor's queue (within its block) it supports;
+   * a doctor session always keeps its own queue.
+   */
+  const [assistantDoctorId, setAssistantDoctorId] = useState<number | null>(null);
+  const session = useDoctorSession(assistantDoctorId ?? undefined);
   const queue = useDoctorQueue(
-    undefined,
+    assistantDoctorId ?? undefined,
     selectedDate,
     isUpcomingView ? "upcoming" : "date",
   );
-  const session = useDoctorSession();
   const {
     encounters: doctorEncounters,
     isLoading: isHistoryLoading,
@@ -180,7 +187,7 @@ export default function DoctorEHRPage() {
 
   /**
    * The ticket as PatientIntakeService holds it, including the vitals the
-   * điều dưỡng recorded. Pulled the moment a patient lands in the room and
+   * Y tá / Thư ký y khoa recorded. Pulled when a patient lands in the room and
    * re-pulled on every queue poll, so a reading taken after the patient was
    * called still shows on the banner and rides into the encounter. Keyed by
    * ticket so a newly called patient can never display the previous one's
@@ -202,6 +209,48 @@ export default function DoctorEHRPage() {
   /** True once this ticket's detail pull has settled (loaded *or* failed). */
   const vitalsReady =
     isSyntheticTicket || ticketDetailState?.ticket === ticketNumber;
+
+  /**
+   * A reading entered in the room is folded into the ticket copy immediately,
+   * so the SOAP seed, the encounter start and the sign-off all carry the same
+   * numbers without waiting for the next queue poll.
+   */
+  const [savedVitalsState, setSavedVitalsState] = useState<{
+    ticket: string;
+    vitals: SavedVitals;
+  } | null>(null);
+  const savedVitals =
+    savedVitalsState?.ticket === ticketNumber ? savedVitalsState.vitals : null;
+  const effectiveTicketDetail = useMemo(() => {
+    if (!ticketDetail || !savedVitals) return ticketDetail;
+    return {
+      ...ticketDetail,
+      bloodPressure: savedVitals.bloodPressure,
+      heartRate: savedVitals.heartRate ?? ticketDetail.heartRate,
+      temperature: savedVitals.temperature ?? ticketDetail.temperature,
+      spo2: savedVitals.spo2 ?? ticketDetail.spo2,
+    };
+  }, [savedVitals, ticketDetail]);
+
+  const handleVitalsSaved = useCallback(
+    (vitals: SavedVitals) => {
+      if (!ticketNumber) return;
+      setSavedVitalsState({ ticket: ticketNumber, vitals });
+    },
+    [ticketNumber],
+  );
+
+  /** The freshest reading available, used for both encounter calls. */
+  const encounterVitals = useMemo(() => {
+    const fallback =
+      patient?.vitalsRecorded !== false ? patient?.vitals : undefined;
+    return {
+      bloodPressure: effectiveTicketDetail?.bloodPressure?.trim() || fallback?.bp || "",
+      heartRate: effectiveTicketDetail?.heartRate || fallback?.hr || 0,
+      temperature: effectiveTicketDetail?.temperature?.trim() || fallback?.temp || "",
+      spo2: effectiveTicketDetail?.spo2 || fallback?.spo2 || 0,
+    };
+  }, [effectiveTicketDetail, patient]);
 
   useEffect(() => {
     if (!ticketNumber) return undefined;
@@ -232,15 +281,15 @@ export default function DoctorEHRPage() {
 
   /**
    * What the SOAP Objective section is seeded with while it is still empty, so
-   * the doctor starts from the numbers the điều dưỡng measured instead of
+   * the doctor starts from the numbers measured in the room instead of
    * retyping them. Keyed by ticket: the editor seeds once per patient and
    * never rewrites a section the doctor has edited (or deliberately erased).
    */
   const objectiveSeed = useMemo(() => {
-    if (!ticketDetail || !ticketNumber) return null;
-    const text = vitalsObjectiveLine(ticketDetail);
-    return text ? { key: ticketNumber, text } : null;
-  }, [ticketDetail, ticketNumber]);
+    if (!effectiveTicketDetail || !ticketNumber) return null;
+    const text = vitalsObjectiveLine(effectiveTicketDetail);
+    return text ? { key: `${ticketNumber}|${text}`, text } : null;
+  }, [effectiveTicketDetail, ticketNumber]);
 
   const buildStartEncounterPayload =
     useCallback((): StartEncounterPayload | null => {
@@ -258,25 +307,25 @@ export default function DoctorEHRPage() {
         ...(insuranceCode && insuranceCode !== "Chưa cập nhật"
           ? { insuranceCode }
           : {}),
-        ...(ticketDetail?.bloodPressure
-          ? { bloodPressure: ticketDetail.bloodPressure }
+        ...(effectiveTicketDetail?.bloodPressure
+          ? { bloodPressure: effectiveTicketDetail.bloodPressure }
           : {}),
-        ...(ticketDetail?.heartRate
-          ? { heartRate: ticketDetail.heartRate }
+        ...(effectiveTicketDetail?.heartRate
+          ? { heartRate: effectiveTicketDetail.heartRate }
           : {}),
-        ...(ticketDetail?.temperature
-          ? { temperature: ticketDetail.temperature }
+        ...(effectiveTicketDetail?.temperature
+          ? { temperature: effectiveTicketDetail.temperature }
           : {}),
-        ...(ticketDetail?.spo2 ? { spo2: ticketDetail.spo2 } : {}),
+        ...(effectiveTicketDetail?.spo2 ? { spo2: effectiveTicketDetail.spo2 } : {}),
       };
     }, [
       insuranceCode,
       patientId,
       patientName,
+      effectiveTicketDetail,
       session.doctorId,
       session.profile.departmentId,
       session.profile.fullName,
-      ticketDetail,
       ticketNumber,
     ]);
 
@@ -298,16 +347,16 @@ export default function DoctorEHRPage() {
     context.pastDiagnoses = patient.pastEncounters.map(
       (encounter) => `${encounter.date} - ${encounter.diagnosis}`,
     );
-    if (patient.vitalsRecorded !== false) {
+    if (encounterVitals.bloodPressure || encounterVitals.heartRate > 0) {
       context.vitals = {
-        bloodPressure: patient.vitals.bp,
-        heartRate: patient.vitals.hr,
-        temperature: patient.vitals.temp,
-        spo2: patient.vitals.spo2,
+        bloodPressure: encounterVitals.bloodPressure,
+        heartRate: encounterVitals.heartRate,
+        temperature: encounterVitals.temperature,
+        spo2: encounterVitals.spo2,
       };
     }
     return context;
-  }, [patient, patientId, session.doctorId, session.profile.departmentId]);
+  }, [encounterVitals, patient, patientId, session.doctorId, session.profile.departmentId]);
 
   /** One copilot conversation and one alert badge per ticket. */
   const activeTicketKey = ticketNumber ?? "no-patient";
@@ -343,7 +392,7 @@ export default function DoctorEHRPage() {
       warnedTicketRef.current = null;
       return;
     }
-    // Wait for the nurse-vitals pull to settle, so the readings the điều dưỡng
+    // Wait for the in-room vitals pull to settle, so the readings the Y tá
     // took are stored on the encounter instead of arriving after it opened.
     if (!vitalsReady) return;
     if (currentEncounterId !== null) return;
@@ -616,18 +665,25 @@ export default function DoctorEHRPage() {
       return;
     }
 
-    const vitals = patient.vitals;
-    const vitalsRecorded = patient.vitalsRecorded !== false;
+    // The room's latest reading (possibly just saved inline) wins over the
+    // queue-mapped copy, so the signed encounter always carries what was
+    // actually measured at this consultation.
     const payload: CompleteEncounterPayload = {
       subjective: soapDraft.subjective,
       objective: soapDraft.objective,
       assessment: soapDraft.assessment,
       plan: soapDraft.plan,
       // Unmeasured vitals must stay off the record rather than be sent as 0.
-      ...(vitalsRecorded && vitals.bp ? { bloodPressure: vitals.bp } : {}),
-      ...(vitalsRecorded && vitals.hr > 0 ? { heartRate: vitals.hr } : {}),
-      ...(vitalsRecorded && vitals.temp ? { temperature: vitals.temp } : {}),
-      ...(vitalsRecorded && vitals.spo2 > 0 ? { spo2: vitals.spo2 } : {}),
+      ...(encounterVitals.bloodPressure
+        ? { bloodPressure: encounterVitals.bloodPressure }
+        : {}),
+      ...(encounterVitals.heartRate > 0
+        ? { heartRate: encounterVitals.heartRate }
+        : {}),
+      ...(encounterVitals.temperature
+        ? { temperature: encounterVitals.temperature }
+        : {}),
+      ...(encounterVitals.spo2 > 0 ? { spo2: encounterVitals.spo2 } : {}),
       diagnoses,
       prescriptionItems: toPrescriptionItems(rxLines),
       patientAllergies,
@@ -695,6 +751,7 @@ export default function DoctorEHRPage() {
     approve,
     buildStartEncounterPayload,
     currentEncounterId,
+    encounterVitals,
     hasPrescriptionErrors,
     icdAccepted,
     patient,
@@ -722,6 +779,7 @@ export default function DoctorEHRPage() {
       <DoctorHeader
         waitingCount={queue.waitingCount}
         emergencyCount={queue.emergencyCount}
+        doctorIdOverride={assistantDoctorId ?? undefined}
       />
 
       <div className="flex min-h-0 flex-1">
@@ -753,11 +811,36 @@ export default function DoctorEHRPage() {
 
         {/* Main workspace */}
         <main className="flex min-w-0 flex-1 flex-col">
+          {session.isNurseAssistant && (
+            <div className="flex flex-wrap items-center gap-2 border-b border-violet-200 bg-violet-50 px-3 py-2">
+              <span className="text-xs font-bold text-violet-800">
+                Phòng khám đang hỗ trợ
+              </span>
+              <select
+                aria-label="Chọn phòng khám / bác sĩ trong khối"
+                value={session.doctorId}
+                onChange={(event) =>
+                  setAssistantDoctorId(Number(event.target.value))
+                }
+                className="h-8 max-w-full rounded-md border border-violet-200 bg-white px-2 text-xs font-semibold text-violet-900 outline-none focus:border-violet-500"
+              >
+                {session.blockDoctors.map((doctor) => (
+                  <option key={doctor.id} value={doctor.id}>
+                    {doctor.fullName} · {doctor.roomNumber} · {doctor.departmentName}
+                  </option>
+                ))}
+              </select>
+              <span className="text-[11px] text-violet-700">
+                Y tá / Thư ký y khoa đo sinh hiệu và hỗ trợ ghi chú ngay tại phòng.
+              </span>
+            </div>
+          )}
           {queue.activePatient ? (
             <>
               <ActivePatientBanner
                 patient={queue.activePatient}
-                ticketDetail={ticketDetail}
+                ticketDetail={effectiveTicketDetail}
+                onVitalsSaved={handleVitalsSaved}
                 onOpenHistory={() => {
                   setSelectedHistoryEncounter(null);
                   setHistoryOpen(true);

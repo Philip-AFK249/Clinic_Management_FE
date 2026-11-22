@@ -16,9 +16,9 @@ export interface NurseProfile {
   id: number;
   fullName: string;
   email: string;
-  /** Khoa the nurse is posted to; drives the triage desk they land on. */
+  /** Block the Y tá is posted to; drives the exam-room queue they can open. */
   departmentId: number;
-  /** Academic credential on the staff account, e.g. "Cử nhân Điều dưỡng". */
+  /** Credential on the staff account, e.g. "Y tá / Thư ký y khoa". */
   title?: string;
   /** Post / station the nurse works at, e.g. "Phòng khám 101". */
   roomNumber?: string;
@@ -27,78 +27,78 @@ export interface NurseProfile {
 /** Used by an anonymous session or a login missing from the roster below. */
 export const FALLBACK_NURSE_ID = 1;
 
-/** Mirrors the nine seeded điều dưỡng accounts (`users.id` 11 -> 19). */
+/** Mirrors the nine seeded Y tá / Thư ký y khoa accounts (`users.id` 11 -> 19). */
 export const NURSE_DIRECTORY: NurseProfile[] = [
   {
     id: 1,
-    fullName: "ĐD. Trịnh Thu Hằng",
+    fullName: "Y tá Trịnh Thu Hằng",
     email: "hang.trinh@smartclinic.vn",
     departmentId: 1,
-    title: "Cử nhân Điều dưỡng",
+    title: "Y tá / Thư ký y khoa",
     roomNumber: "Phòng khám 101",
   },
   {
     id: 2,
-    fullName: "ĐD. Đỗ Phương Mai",
+    fullName: "Y tá Đỗ Phương Mai",
     email: "mai.do@smartclinic.vn",
     departmentId: 2,
-    title: "Cử nhân Điều dưỡng",
+    title: "Y tá / Thư ký y khoa",
     roomNumber: "Phòng khám 201",
   },
   {
     id: 3,
-    fullName: "ĐD. Nguyễn Thảo Ly",
+    fullName: "Y tá Nguyễn Thảo Ly",
     email: "ly.nguyen@smartclinic.vn",
-    departmentId: 3,
-    title: "Cử nhân Điều dưỡng",
+    departmentId: 1,
+    title: "Y tá / Thư ký y khoa",
     roomNumber: "Phòng khám 205",
   },
   {
     id: 4,
-    fullName: "ĐD. Trần Kim Oanh",
+    fullName: "Y tá Trần Kim Oanh",
     email: "oanh.tran@smartclinic.vn",
     departmentId: 1,
-    title: "Cử nhân Điều dưỡng",
+    title: "Y tá / Thư ký y khoa",
     roomNumber: "Phòng Cấp cứu & Điện tim",
   },
   {
     id: 5,
-    fullName: "ĐD. Lê Phương Thảo",
+    fullName: "Y tá Lê Phương Thảo",
     email: "thao.le@smartclinic.vn",
     departmentId: 2,
-    title: "Cử nhân Điều dưỡng",
-    roomNumber: "Buồng Test dị nguyên & Hô hấp ký",
+    title: "Y tá / Thư ký y khoa",
+    roomNumber: "Phòng khám 205 (Tầng 2)",
   },
   {
     id: 6,
-    fullName: "ĐD. Phạm Yến Nhi",
+    fullName: "Y tá Phạm Yến Nhi",
     email: "nhi.pham@smartclinic.vn",
-    departmentId: 3,
-    title: "Cao đẳng Điều dưỡng",
+    departmentId: 1,
+    title: "Y tá / Thư ký y khoa",
     roomNumber: "Buồng Tiểu phẫu & Laser da",
   },
   {
     id: 7,
-    fullName: "ĐD. Vũ Thùy Linh",
+    fullName: "Y tá Vũ Thùy Linh",
     email: "linh.vu@smartclinic.vn",
     departmentId: 1,
-    title: "Cử nhân Điều dưỡng",
+    title: "Y tá / Thư ký y khoa",
     roomNumber: "Quầy Tiếp đón Sảnh A",
   },
   {
     id: 8,
-    fullName: "ĐD. Bùi Ánh Ngọc",
+    fullName: "Y tá Bùi Ánh Ngọc",
     email: "ngoc.bui@smartclinic.vn",
     departmentId: 2,
-    title: "Cao đẳng Điều dưỡng",
+    title: "Y tá / Thư ký y khoa",
     roomNumber: "Khu Kiosk Tự phục vụ",
   },
   {
     id: 9,
-    fullName: "ĐD. Hoàng Bích Trâm",
+    fullName: "Y tá Hoàng Bích Trâm",
     email: "tram.hoang@smartclinic.vn",
-    departmentId: 3,
-    title: "Cao đẳng Điều dưỡng",
+    departmentId: 1,
+    title: "Y tá / Thư ký y khoa",
     roomNumber: "Bàn Đo Dấu hiệu Sinh tồn",
   },
 ];
@@ -122,7 +122,7 @@ export function nursesOfDepartment(departmentId: number): NurseProfile[] {
   );
 }
 
-/** Khoa name for a nurse, resolved against the shared department registry. */
+/** Block name for a Y tá, resolved against the shared department registry. */
 export function nurseDepartmentName(nurse: NurseProfile | undefined): string {
   return departmentNameOf(nurse?.departmentId ?? FALLBACK_DEPARTMENT_ID);
 }
