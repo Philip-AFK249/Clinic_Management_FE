@@ -642,6 +642,55 @@ export async function rejectOnlineTicketApi(
 }
 
 /**
+ * Remove one ticket from the queue service, including processed online ones.
+ * `DELETE /api/v1/queue/tickets/{ticketNumber}`.
+ *
+ * The optional appointment day disambiguates a ticket number reused on another
+ * day and is sent as `date=yyyy-MM-dd`.
+ */
+export async function deleteOnlineTicketApi(
+  ticketNumber: string,
+  appointmentDate?: string,
+): Promise<void> {
+  const date = appointmentDate?.trim();
+  const query = date ? `?date=${encodeURIComponent(date)}` : "";
+  try {
+    await intakeQueueApi.delete<void>(
+      `/tickets/${encodeURIComponent(ticketNumber)}${query}`,
+    );
+  } catch (error) {
+    if (axios.isCancel(error)) throw error;
+    throw toApiError(error);
+  }
+}
+
+/**
+ * Remove the processed (rejected / cancelled / completed) online tickets in
+ * one call. `DELETE /api/v1/queue/online-tickets/cleanup`.
+ *
+ * Some service builds answer with a bare count instead of a DTO, so both wire
+ * shapes are accepted and normalized.
+ */
+export async function cleanupProcessedOnlineTicketsApi(): Promise<{ deletedCount: number }> {
+  try {
+    const { data } = await intakeQueueApi.delete<unknown>(
+      "/online-tickets/cleanup",
+    );
+    const deletedCount =
+      typeof data === "number"
+        ? data
+        : data && typeof data === "object" &&
+            typeof (data as { deletedCount?: unknown }).deletedCount === "number"
+          ? ((data as { deletedCount: number }).deletedCount)
+          : 0;
+    return { deletedCount };
+  } catch (error) {
+    if (axios.isCancel(error)) throw error;
+    throw toApiError(error);
+  }
+}
+
+/**
  * Record the patient's online payment on a temporary ticket.
  * `PATCH /api/v1/queue/tickets/{ticketNumber}/pay`.
  *

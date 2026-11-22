@@ -7,6 +7,7 @@ import {
   RefreshCw,
   ShieldCheck,
   TicketCheck,
+  Trash2,
   X,
   XCircle,
 } from "lucide-react";
@@ -14,6 +15,8 @@ import { toast } from "sonner";
 import { useAuth } from "../../../context/useAuth";
 import {
   approveOnlineTicketApi,
+  cleanupProcessedOnlineTicketsApi,
+  deleteOnlineTicketApi,
   getPendingOnlineTicketsApi,
   rejectOnlineTicketApi,
 } from "../../../services/intakeApi";
@@ -84,6 +87,43 @@ function StatusBadge({ status }: { status: QueueStatus }) {
   );
 }
 
+/** Rows that can be removed individually from the board. */
+const DELETABLE_STATUSES: readonly QueueStatus[] = [
+  "REJECTED",
+  "CANCELLED",
+  "COMPLETED",
+  "SKIPPED",
+];
+
+/** Rows the one-click cleanup covers. */
+const CLEANUP_STATUSES: readonly QueueStatus[] = [
+  "REJECTED",
+  "CANCELLED",
+  "COMPLETED",
+];
+
+/**
+ * Pending tickets first, then newest check-in first; the number breaks ties so
+ * the order is stable between polls.
+ */
+function sortTickets(
+  tickets: QueueTicketDetailResponse[],
+): QueueTicketDetailResponse[] {
+  const checkInMs = (ticket: QueueTicketDetailResponse): number => {
+    const parsed = ticket.checkInTime ? Date.parse(ticket.checkInTime) : 0;
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+  return [...tickets].sort((left, right) => {
+    const leftRank = left.status === "PENDING_CONFIRMATION" ? 0 : 1;
+    const rightRank = right.status === "PENDING_CONFIRMATION" ? 0 : 1;
+    if (leftRank !== rightRank) return leftRank - rightRank;
+    const leftTime = checkInMs(left);
+    const rightTime = checkInMs(right);
+    if (leftTime !== rightTime) return rightTime - leftTime;
+    return left.ticketNumber.localeCompare(right.ticketNumber);
+  });
+}
+
 function PaymentBadge({ ticket }: { ticket: QueueTicketDetailResponse }) {
   const paid = ticket.isReceiptVerified === true;
   return (
@@ -124,6 +164,7 @@ interface TicketActionsProps {
   busy: boolean;
   onApprove: (ticket: QueueTicketDetailResponse) => void;
   onReject: (ticket: QueueTicketDetailResponse, reason: string) => void;
+  onDelete: (ticket: QueueTicketDetailResponse) => void;
 }
 
 function TicketActions({
@@ -132,9 +173,24 @@ function TicketActions({
   busy,
   onApprove,
   onReject,
+  onDelete,
 }: TicketActionsProps) {
   const [showReason, setShowReason] = useState(false);
   const [reason, setReason] = useState("");
+
+  // Processed rows keep their status text; the delete control sits beside it.
+  const deleteButton = DELETABLE_STATUSES.includes(ticket.status) ? (
+    <button
+      type="button"
+      disabled={busy}
+      onClick={() => onDelete(ticket)}
+      aria-label={`Xóa vé ${ticket.ticketNumber}`}
+      className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md border border-slate-200 bg-white px-2 text-[11px] font-semibold text-slate-500 transition-colors hover:border-rose-300 hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-50"
+    >
+      <Trash2 size={12} aria-hidden="true" />
+      Xóa
+    </button>
+  ) : null;
 
   if (ticket.status === "WAITING") {
     return (
@@ -146,14 +202,24 @@ function TicketActions({
   }
   if (ticket.status === "REJECTED") {
     return (
-      <div className="text-xs text-rose-700">
-        <p className="font-semibold">Đã từ chối bởi {adminName}</p>
-        {ticket.rejectionReason ? <p className="mt-0.5">Lý do: {ticket.rejectionReason}</p> : null}
+      <div className="flex flex-wrap items-start justify-between gap-2 text-xs text-rose-700">
+        <div>
+          <p className="font-semibold">Đã từ chối bởi {adminName}</p>
+          {ticket.rejectionReason ? (
+            <p className="mt-0.5">Lý do: {ticket.rejectionReason}</p>
+          ) : null}
+        </div>
+        {deleteButton}
       </div>
     );
   }
   if (ticket.status !== "PENDING_CONFIRMATION") {
-    return <span className="text-xs text-slate-400">—</span>;
+    return (
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="text-xs text-slate-400">—</span>
+        {deleteButton}
+      </div>
+    );
   }
 
   return (
@@ -223,10 +289,10 @@ function TicketActions({
 /**
  * Admin's online-ticket verification board.
  *
- * Every 5 seconds the board asks the queue service for pending tickets. Local
- * decisions are merged into that answer instead of being discarded: an
- * approved or rejected row stays visible for the rest of the session, with its
- * status and read-only action label updated in place.
+ * Every 5 seconds the rows are replaced by a fresh answer from the queue
+ * service. Local decisions only update a row for immediate feedback - they are
+ * never retained across a poll, so a ticket deleted here (or by another admin)
+ * really disappears from the board.
  */
 export default function OnlineTicketVerificationTab() {
   const { user } = useAuth();
@@ -235,33 +301,13 @@ export default function OnlineTicketVerificationTab() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyTicket, setBusyTicket] = useState<string | null>(null);
+  const [isCleaning, setIsCleaning] = useState(false);
 
   const load = useCallback(async (signal?: AbortSignal) => {
     try {
       const list = await getPendingOnlineTicketsApi(signal);
       if (signal?.aborted) return;
-      setTickets((current) => {
-        const byNumber = new Map(
-          current.map((ticket) => [ticket.ticketNumber, ticket]),
-        );
-        const retained = [...byNumber.values()].filter(
-          (ticket) => ticket.status !== "PENDING_CONFIRMATION",
-        );
-        const merged = list.map((ticket) => {
-          const decided = byNumber.get(ticket.ticketNumber);
-          return decided && decided.status !== "PENDING_CONFIRMATION"
-            ? decided
-            : ticket;
-        });
-        for (const ticket of retained) {
-          if (!list.some((item) => item.ticketNumber === ticket.ticketNumber)) {
-            merged.push(ticket);
-          }
-        }
-        return merged.sort((left, right) =>
-          left.ticketNumber.localeCompare(right.ticketNumber),
-        );
-      });
+      setTickets(sortTickets(list));
       setError(null);
     } catch (cause) {
       if (signal?.aborted) return;
@@ -360,6 +406,59 @@ export default function OnlineTicketVerificationTab() {
     }
   }
 
+  async function handleDelete(ticket: QueueTicketDetailResponse) {
+    if (busyTicket !== null) return;
+    setBusyTicket(ticket.ticketNumber);
+    try {
+      await deleteOnlineTicketApi(ticket.ticketNumber, ticket.appointmentDate);
+      // Drop the row at once: waiting for the next poll would leave a deleted
+      // ticket on screen for up to five seconds.
+      setTickets((current) =>
+        current.filter(
+          (item) =>
+            !(
+              item.ticketNumber === ticket.ticketNumber &&
+              item.appointmentDate === ticket.appointmentDate
+            ),
+        ),
+      );
+      toast.success(`Đã xóa vé ${ticket.ticketNumber}.`);
+    } catch (cause) {
+      toast.error(
+        cause instanceof Error ? cause.message : "Không xóa được vé online.",
+      );
+    } finally {
+      setBusyTicket(null);
+    }
+  }
+
+  async function handleCleanup() {
+    if (isCleaning) return;
+    if (
+      !window.confirm(
+        "Xóa toàn bộ các vé đã từ chối, đã hủy hoặc đã hoàn tất khỏi bảng?",
+      )
+    ) {
+      return;
+    }
+    setIsCleaning(true);
+    try {
+      const res = await cleanupProcessedOnlineTicketsApi();
+      toast.success(`Đã xóa ${res.deletedCount} vé đã xử lý.`);
+      await load();
+    } catch (cause) {
+      toast.error(
+        cause instanceof Error ? cause.message : "Không dọn được vé đã xử lý.",
+      );
+    } finally {
+      setIsCleaning(false);
+    }
+  }
+
+  const hasProcessedTickets = tickets.some((ticket) =>
+    CLEANUP_STATUSES.includes(ticket.status),
+  );
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -370,14 +469,30 @@ export default function OnlineTicketVerificationTab() {
             không bị giới hạn thời gian duyệt
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => void load()}
-          className="inline-flex h-9 items-center gap-1.5 self-start rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50"
-        >
-          <RefreshCw size={14} className={isLoading ? "animate-spin" : ""} aria-hidden="true" />
-          Làm mới
-        </button>
+        <div className="flex flex-wrap items-center gap-2 self-start">
+          <button
+            type="button"
+            onClick={() => void load()}
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50"
+          >
+            <RefreshCw size={14} className={isLoading ? "animate-spin" : ""} aria-hidden="true" />
+            Làm mới
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleCleanup()}
+            disabled={!hasProcessedTickets || isCleaning}
+            title={
+              hasProcessedTickets
+                ? undefined
+                : "Không có vé đã từ chối, đã hủy hoặc đã hoàn tất trên bảng"
+            }
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-rose-200 bg-white px-3 text-xs font-semibold text-rose-600 transition-colors hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Trash2 size={14} aria-hidden="true" />
+            {isCleaning ? "Đang dọn..." : "Dọn vé đã từ chối"}
+          </button>
+        </div>
       </div>
 
       <div className="grid gap-3 md:grid-cols-2">
@@ -483,6 +598,7 @@ export default function OnlineTicketVerificationTab() {
                           busy={busyTicket === ticket.ticketNumber}
                           onApprove={(item) => void handleApprove(item)}
                           onReject={(item, value) => void handleReject(item, value)}
+                          onDelete={(item) => void handleDelete(item)}
                         />
                       </td>
                     </tr>
@@ -525,6 +641,7 @@ export default function OnlineTicketVerificationTab() {
                     busy={busyTicket === ticket.ticketNumber}
                     onApprove={(item) => void handleApprove(item)}
                     onReject={(item, value) => void handleReject(item, value)}
+                    onDelete={(item) => void handleDelete(item)}
                   />
                 </div>
               </article>
