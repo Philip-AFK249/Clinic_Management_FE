@@ -109,7 +109,7 @@ export default function AmbientRecordingBar({
 
   if (status === "IDLE") {
     return (
-      <div className="flex shrink-0 flex-col gap-2 border-b border-slate-200/80 bg-white px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-4">
+      <div className="flex shrink-0 items-center justify-between gap-4 border-b border-slate-200/80 bg-white px-4 py-2.5">
         <div className="min-w-0">
           <p className="text-xs text-slate-500">
             Trợ lý AI lắng nghe cuộc đối thoại lâm sàng để tự động soạn bệnh án
@@ -124,7 +124,7 @@ export default function AmbientRecordingBar({
           type="button"
           onClick={() => void handleStart()}
           disabled={!isSupported}
-          className="inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-lg bg-teal-600 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-teal-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500 sm:w-auto"
+          className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-teal-600 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-teal-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500"
         >
           <Mic className="h-4 w-4" aria-hidden="true" />
           Bật Ghi Âm
@@ -135,7 +135,7 @@ export default function AmbientRecordingBar({
 
   if (status === "RECORDING") {
     return (
-      <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-200/80 bg-white px-3 py-2.5 sm:gap-4 sm:px-4">
+      <div className="flex shrink-0 items-center justify-between gap-4 border-b border-slate-200/80 bg-white px-4 py-2.5">
         <span
           className={`flex items-center gap-2 text-sm font-semibold ${isFollowUp ? "text-sky-700" : "text-emerald-700"
             }`}
@@ -154,7 +154,7 @@ export default function AmbientRecordingBar({
         </span>
 
         {/* Pulsating wave */}
-        <span className="hidden h-8 items-center gap-1 sm:flex" aria-hidden="true">
+        <span className="flex h-8 items-center gap-1" aria-hidden="true">
           {WAVE_BARS.map((height, index) => (
             <span
               key={index}
@@ -169,11 +169,11 @@ export default function AmbientRecordingBar({
           {formatDuration(recordingTime)}
         </span>
 
-        <div className="ml-auto flex w-full items-center gap-2 sm:w-auto">
+        <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={handleAbort}
-            className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 sm:flex-none"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
           >
             <X className="h-4 w-4" aria-hidden="true" />
             Hủy
@@ -181,7 +181,7 @@ export default function AmbientRecordingBar({
           <button
             type="button"
             onClick={() => void handleFinish()}
-            className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-cta px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-cta-hover sm:flex-none"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-cta px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-cta-hover"
           >
             <Square className="h-4 w-4" aria-hidden="true" />
             {isFollowUp ? "Dừng & Cập Nhật Bệnh Án" : "Dừng & Phân Tích"}
@@ -193,7 +193,7 @@ export default function AmbientRecordingBar({
 
   if (processing) {
     return (
-      <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-200/80 bg-white px-3 py-2.5 sm:gap-3 sm:px-4">
+      <div className="flex shrink-0 items-center gap-3 border-b border-slate-200/80 bg-white px-4 py-2.5">
         <Loader2
           className="h-4 w-4 animate-spin text-teal-600"
           aria-hidden="true"
@@ -203,7 +203,7 @@ export default function AmbientRecordingBar({
             ? "Đang nghe lại phần bổ sung & cập nhật bệnh án hiện tại..."
             : "Đang bóc băng hội thoại & đối chiếu phác đồ..."}
         </span>
-        <span className="ml-auto hidden text-xs text-slate-400 sm:inline">
+        <span className="ml-auto text-xs text-slate-400">
           Whisper STT + LLM lâm sàng trên AI Gateway
         </span>
       </div>
@@ -213,20 +213,20 @@ export default function AmbientRecordingBar({
   if (status === "DRAFT_READY" || status === "APPROVED") {
     const locked = status === "APPROVED";
     return (
-      <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-200/80 bg-teal-50 px-3 py-2.5 sm:px-4">
+      <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-200/80 bg-teal-50 px-4 py-2.5">
         <MicOff className="h-4 w-4 text-teal-700" aria-hidden="true" />
         <span className="text-sm font-semibold text-teal-800">
           Bệnh án AI đã sẵn sàng — Bác sĩ vui lòng kiểm tra và chỉnh sửa
           trước khi ký duyệt.
         </span>
 
-        <div className="ml-auto flex w-full flex-wrap items-center gap-2 sm:w-auto">
+        <div className="ml-auto flex items-center gap-2">
           <button
             type="button"
             onClick={() => void handleReRecord()}
             disabled={locked}
             title="Hủy bản ghi cũ và thu âm lại từ đầu khi gặp lỗi hoặc tiếng ồn"
-            className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-teal-300 bg-white px-3 py-1.5 text-xs font-semibold text-teal-800 transition-colors hover:bg-teal-100 disabled:cursor-not-allowed disabled:opacity-50 sm:flex-none"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-teal-300 bg-white px-3 py-1.5 text-xs font-semibold text-teal-800 transition-colors hover:bg-teal-100 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
             Ghi âm lại từ đầu
@@ -236,7 +236,7 @@ export default function AmbientRecordingBar({
             onClick={() => void handleFollowUp()}
             disabled={locked}
             title="Ghi âm thêm triệu chứng hoặc tiền sử phát sinh để AI cập nhật vào bệnh án hiện tại"
-            className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-50 sm:flex-none"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Mic className="h-3.5 w-3.5" aria-hidden="true" />
             <Plus className="-ml-1 h-3 w-3" aria-hidden="true" />

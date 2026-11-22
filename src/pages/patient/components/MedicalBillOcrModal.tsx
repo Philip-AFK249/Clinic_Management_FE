@@ -166,8 +166,8 @@ export default function MedicalBillOcrModal({
   const image = result?.image_preview || previewUrl;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
-      <div className="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-elevated">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-3 sm:p-4">
+      <div className="mx-3 max-h-[90vh] w-full overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-elevated sm:mx-auto sm:max-w-4xl">
         <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-100 bg-white px-5 py-4">
           <div className="flex items-center gap-2">
             <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-clinical-50 text-clinical-600">
@@ -189,7 +189,7 @@ export default function MedicalBillOcrModal({
               onClose();
             }}
             aria-label="Đóng"
-            className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
           >
             <X className="h-5 w-5" />
           </button>

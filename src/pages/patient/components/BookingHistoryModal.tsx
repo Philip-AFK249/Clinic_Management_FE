@@ -408,7 +408,7 @@ export default function BookingHistoryModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/50 p-4 sm:items-center"
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/50 p-3 sm:items-center sm:p-4"
       role="dialog"
       aria-modal="true"
       aria-label="Lịch sử đặt lịch"
@@ -416,7 +416,7 @@ export default function BookingHistoryModal({
         if (event.target === event.currentTarget) onClose();
       }}
     >
-      <div className="w-full max-w-3xl rounded-clinical border border-surface-border bg-surface-light shadow-elevated">
+      <div className="mx-3 max-h-[90vh] w-full overflow-y-auto rounded-clinical border border-surface-border bg-surface-light shadow-elevated sm:mx-auto sm:max-w-3xl">
         {/* Header */}
         <div className="flex items-start justify-between gap-3 border-b border-surface-border bg-surface-card px-5 py-4">
           <div className="min-w-0">
@@ -434,7 +434,7 @@ export default function BookingHistoryModal({
           <button
             type="button"
             onClick={onClose}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
             aria-label="Đóng"
           >
             <X size={16} />
@@ -490,7 +490,7 @@ export default function BookingHistoryModal({
               <Link
                 to="/patient/booking"
                 onClick={onClose}
-                className="mt-2 inline-flex h-10 items-center justify-center rounded-lg bg-clinical-600 px-5 text-xs font-semibold text-white shadow-card transition-colors hover:bg-clinical-700"
+                className="mt-2 inline-flex min-h-11 items-center justify-center rounded-lg bg-clinical-600 px-5 text-xs font-semibold text-white shadow-card transition-colors hover:bg-clinical-700"
               >
                 Đặt lịch khám ngay
               </Link>

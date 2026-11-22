@@ -35,13 +35,13 @@ export default function RescheduleMorningModal({
 }: RescheduleMorningModalProps) {
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-3 sm:p-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="reschedule-morning-title"
       aria-describedby="reschedule-morning-body"
     >
-      <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-elevated sm:p-7">
+      <div className="mx-3 max-h-[90vh] w-full overflow-y-auto rounded-2xl border border-slate-200 bg-white p-5 shadow-elevated sm:mx-auto sm:max-w-lg sm:p-7">
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-start gap-3">
             <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700">

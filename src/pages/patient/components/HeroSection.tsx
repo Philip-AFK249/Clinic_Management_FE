@@ -13,8 +13,8 @@ export default function HeroSection() {
   const { isAuthenticated } = useAuth();
 
   return (
-    <section className="bg-white pt-10 pb-16 lg:py-20">
-      <div className="mx-auto grid max-w-7xl items-center gap-12 px-4 sm:px-6 lg:grid-cols-12 lg:gap-16 lg:px-8">
+    <section className="bg-white pt-8 pb-12 sm:pt-10 sm:pb-16 lg:py-20">
+      <div className="mx-auto grid max-w-7xl items-center gap-8 px-4 sm:px-6 sm:gap-12 lg:grid-cols-12 lg:gap-16 lg:px-8">
         <div className="lg:col-span-7">
           <span className="inline-flex items-center gap-2 rounded-full border border-clinical-200 bg-clinical-50 px-3.5 py-1.5 text-xs font-semibold text-clinical-700 sm:text-sm">
             <ShieldCheck className="h-4 w-4 shrink-0 text-clinical-600" aria-hidden="true" />

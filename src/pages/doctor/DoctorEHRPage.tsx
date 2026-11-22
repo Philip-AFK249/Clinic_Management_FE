@@ -8,7 +8,6 @@ import type { SavedVitals } from "./components/ActivePatientBanner";
 import AmbientRecordingBar from "./components/AmbientRecordingBar";
 import PatientHistoryModal from "./components/PatientHistoryModal";
 import WorkspaceSplitView from "./components/WorkspaceSplitView";
-import type { WorkspaceMobileTab } from "./components/WorkspaceSplitView";
 import LiveTranscriptPanel from "./components/LiveTranscriptPanel";
 import SoapNoteEditor from "./components/SoapNoteEditor";
 import DoctorAiChatDrawer from "./components/DoctorAiChatDrawer";
@@ -58,8 +57,6 @@ function parsePatientId(patientId: string | undefined): number {
 
 export default function DoctorEHRPage() {
   const [historyOpen, setHistoryOpen] = useState(false);
-  /** Phone workspace: quick-select notes first, then diagnosis + prescription. */
-  const [mobileTab, setMobileTab] = useState<WorkspaceMobileTab>("notes");
   /** History-tab row opened in the slide-over; null means the active chart. */
   const [selectedHistoryEncounter, setSelectedHistoryEncounter] =
     useState<PatientEncounterDto | null>(null);
@@ -778,9 +775,9 @@ export default function DoctorEHRPage() {
   const isBusy = isSubmittingEncounter || isStartingEncounter;
 
   /**
-   * Shared editor state for the desktop split view and the two phone tabs.
-   * `WorkspaceSplitView` mounts only one branch at a time, so the editor's
-   * objective-seed effect still runs once per consultation.
+   * One shared editor instance for the desktop split view: the SOAP fields,
+   * the ICD-10 card with its embedded decision tree, and the prescription table
+   * all read the same draft state.
    */
   const soapEditorProps = {
     status,
@@ -793,6 +790,8 @@ export default function DoctorEHRPage() {
     rxLines,
     setRxLines,
     allergies: queue.activePatient?.allergies ?? [],
+    drugs: catalog.drugs,
+    drugsError: catalog.error,
     onSubmitAiProposal: handleAiProposal,
     isSubmittingAi,
   };
@@ -860,46 +859,33 @@ export default function DoctorEHRPage() {
           )}
           {queue.activePatient ? (
             <>
-              {/*
-                On phones the banner + recorder belong to the "Khám & Chọn
-                nhanh" tab; the review tab starts straight at the diagnosis and
-                prescription so the doctor is not scrolling past them.
-              */}
-              <div
-                className={
-                  mobileTab === "review" ? "hidden lg:block" : "block"
+              <ActivePatientBanner
+                patient={queue.activePatient}
+                ticketDetail={effectiveTicketDetail}
+                onVitalsSaved={handleVitalsSaved}
+                onOpenHistory={() => {
+                  setSelectedHistoryEncounter(null);
+                  setHistoryOpen(true);
+                }}
+              />
+              <AmbientRecordingBar
+                status={status}
+                recordingMode={recordingMode}
+                recordingTime={recordingTime}
+                isProcessing={recorderProcessing}
+                isSupported={recorderSupported}
+                error={recorderError}
+                onStart={start}
+                onStartFollowUp={recordFollowUp}
+                onReRecord={reRecord}
+                onStopRecording={stopRecording}
+                onRecordingReady={(audioBlob) =>
+                  void handleRecordingReady(audioBlob)
                 }
-              >
-                <ActivePatientBanner
-                  patient={queue.activePatient}
-                  ticketDetail={effectiveTicketDetail}
-                  onVitalsSaved={handleVitalsSaved}
-                  onOpenHistory={() => {
-                    setSelectedHistoryEncounter(null);
-                    setHistoryOpen(true);
-                  }}
-                />
-                <AmbientRecordingBar
-                  status={status}
-                  recordingMode={recordingMode}
-                  recordingTime={recordingTime}
-                  isProcessing={recorderProcessing}
-                  isSupported={recorderSupported}
-                  error={recorderError}
-                  onStart={start}
-                  onStartFollowUp={recordFollowUp}
-                  onReRecord={reRecord}
-                  onStopRecording={stopRecording}
-                  onRecordingReady={(audioBlob) =>
-                    void handleRecordingReady(audioBlob)
-                  }
-                  onCancelRecording={cancelRecording}
-                />
-              </div>
+                onCancelRecording={cancelRecording}
+              />
 
               <WorkspaceSplitView
-                mobileTab={mobileTab}
-                onMobileTabChange={setMobileTab}
                 left={
                   <LiveTranscriptPanel
                     status={status}
@@ -907,18 +893,12 @@ export default function DoctorEHRPage() {
                     patient={queue.activePatient}
                   />
                 }
-                right={<SoapNoteEditor {...soapEditorProps} section="all" />}
-                mobileNotes={
-                  <SoapNoteEditor {...soapEditorProps} section="notes" />
-                }
-                mobileReview={
-                  <SoapNoteEditor {...soapEditorProps} section="review" />
-                }
+                right={<SoapNoteEditor {...soapEditorProps} />}
               />
 
-              {/* Approval dock: pinned at the bottom on every viewport. */}
-              <footer className="sticky bottom-0 z-20 shrink-0 border-t border-slate-200/80 bg-white px-3 pb-safe pt-2 lg:flex lg:h-14 lg:items-center lg:justify-between lg:gap-3 lg:px-5 lg:py-0">
-                <div className="hidden items-center gap-2 lg:flex">
+              {/* Approval dock */}
+              <footer className="flex h-14 shrink-0 items-center justify-between gap-3 border-t border-slate-200/80 bg-white px-5">
+                <div className="flex items-center gap-2">
                   <button
                     type="button"
                     onClick={handleSaveDraft}
@@ -936,9 +916,9 @@ export default function DoctorEHRPage() {
                   </button>
                 </div>
 
-                <div className="flex items-center gap-2 lg:gap-3">
+                <div className="flex items-center gap-3">
                   <span
-                    className={`hidden items-center whitespace-nowrap rounded-full border px-2.5 py-1 text-xs font-medium sm:inline-flex ${
+                    className={`inline-flex items-center whitespace-nowrap rounded-full border px-2.5 py-1 text-xs font-medium ${
                       hasPrescriptionErrors
                         ? "border-red-200 bg-red-50 text-red-700"
                         : status === "APPROVED"
@@ -958,36 +938,21 @@ export default function DoctorEHRPage() {
                           ? "Đã hoàn tất"
                           : "Đang chờ bệnh án AI"}
                   </span>
-
-                  <div className="flex w-full items-center gap-2 lg:w-auto">
-                    <button
-                      type="button"
-                      onClick={handleSaveDraft}
-                      className="inline-flex h-10 shrink-0 items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 lg:hidden"
-                    >
-                      Lưu nháp
-                    </button>
-                    {/* The button stays clickable so a doctor who clicks
-                        through anyway gets the explanation from the toast, but
-                        the violation is spelled out above first. */}
-                    <button
-                      type="button"
-                      onClick={() => void handleApprove()}
-                      disabled={status !== "DRAFT_READY" || isBusy}
-                      className="inline-flex h-10 flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-teal-600 px-4 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-teal-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500 lg:h-9 lg:flex-none"
-                    >
-                      <CheckCircle2
-                        className="h-3.5 w-3.5 shrink-0"
-                        aria-hidden="true"
-                      />
-                      <span className="lg:hidden">
-                        Hoàn tất &amp; Ký duyệt ca khám
-                      </span>
-                      <span className="hidden lg:inline">
-                        Ký duyệt &amp; Đẩy đơn thuốc
-                      </span>
-                    </button>
-                  </div>
+                  {/* The button stays clickable so a doctor who clicks through
+                      anyway gets the explanation from the toast, but the
+                      violation is spelled out above first. */}
+                  <button
+                    type="button"
+                    onClick={() => void handleApprove()}
+                    disabled={status !== "DRAFT_READY" || isBusy}
+                    className="inline-flex h-9 items-center gap-1.5 whitespace-nowrap rounded-lg bg-teal-600 px-4 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-teal-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500"
+                  >
+                    <CheckCircle2
+                      className="h-3.5 w-3.5"
+                      aria-hidden="true"
+                    />
+                    Ký duyệt &amp; Đẩy đơn thuốc
+                  </button>
                 </div>
               </footer>
             </>

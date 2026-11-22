@@ -17,18 +17,6 @@ interface PrescriptionDraftTableProps {
 const RX_AI_NOTE =
   "Đề xuất danh sách mã chẩn đoán ICD-10 chính xác và đơn thuốc phù hợp dựa trên hội thoại và ghi chú SOAP hiện tại.";
 
-/**
- * One-tap sigs for the phone card layout. The desktop table keeps a free-text
- * field; on a 375px screen typing a full Vietnamese sig is the slow path, so
- * these cover the clinic's three common shapes (oral, tid-after-meals, topical).
- */
-const QUICK_FREQUENCIES = [
-  "Sáng 1, Chiều 1",
-  "Uống 3 lần/ngày sau ăn",
-  "Bôi ngoài da 2 lần/ngày",
-];
-const QUICK_DURATIONS = ["5 ngày", "7 ngày", "14 ngày"];
-
 export default function PrescriptionDraftTable({
   rxLines,
   setRxLines,
@@ -121,8 +109,7 @@ export default function PrescriptionDraftTable({
         </div>
       )}
 
-      <div className="mt-2 hidden md:block">
-        <table className="w-full table-fixed border-collapse text-xs">
+      <table className="mt-2 w-full table-fixed border-collapse text-xs">
         <thead>
           <tr className="border-b border-slate-200 text-left text-[11px] font-semibold text-slate-500">
             <th className="w-[36%] py-1.5 pr-2">Tên Thuốc &amp; Nồng độ</th>
@@ -281,219 +268,15 @@ export default function PrescriptionDraftTable({
           )}
         </tbody>
       </table>
-      </div>
-
-      {/* Phone cards: same rules, larger targets, no horizontal scrolling. */}
-      <div className="mt-2 space-y-2.5 md:hidden">
-        {rxLines.map((line) => {
-          const drug = catalog.byId.get(line.drugId);
-          const fullDrugName = drug ? drugDisplayName(drug) : line.medication;
-          const availableStock = drug?.stockQuantity ?? line.stockUnits;
-          const unitLabel = line.unit?.trim() || drug?.unit?.trim() || "Viên";
-          const isAllergic = Boolean(
-            drug?.isPenicillinClass &&
-              patientAllergies.some((allergy) =>
-                allergy.toLowerCase().includes("penicillin"),
-              ),
-          );
-          const isOutOfStock = availableStock <= 0;
-          const isExceedingStock = line.quantity > availableStock;
-          const isLowStock =
-            availableStock > 0 && availableStock < 100 && !isExceedingStock;
-
-          return (
-            <div
-              key={line.id}
-              className={`rounded-lg border p-2.5 ${
-                isAllergic
-                  ? "border-red-300 bg-red-50/80"
-                  : "border-slate-200 bg-white"
-              }`}
-            >
-              <div className="flex items-start gap-2">
-                <div className="min-w-0 flex-1">
-                  <p className="break-words text-xs font-bold text-slate-900">
-                    {fullDrugName}
-                  </p>
-                  <div className="mt-1 flex flex-wrap items-center gap-1">
-                    {isAllergic && (
-                      <span className="inline-block rounded bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-700">
-                        ⚠️ Dị ứng Penicillin
-                      </span>
-                    )}
-                    <span
-                      className={`inline-block rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
-                        isOutOfStock || isExceedingStock
-                          ? "border border-red-200 bg-red-50 text-red-700"
-                          : isLowStock
-                            ? "border border-amber-200 bg-amber-50 text-amber-700"
-                            : "border border-teal-200 bg-teal-50 text-teal-700"
-                      }`}
-                    >
-                      ●{" "}
-                      {isOutOfStock
-                        ? "Hết hàng"
-                        : isExceedingStock
-                          ? "Không đủ tồn kho"
-                          : isLowStock
-                            ? "Sắp hết kho"
-                            : "Còn hàng"}
-                      : {availableStock} {unitLabel}
-                    </span>
-                    <span className="inline-block rounded-full border border-teal-200 bg-teal-50 px-1.5 py-0.5 text-[10px] font-semibold text-teal-700">
-                      ● {line.bhytCoverage}
-                    </span>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setRxLines((prev) =>
-                      prev.filter((item) => item.id !== line.id),
-                    )
-                  }
-                  aria-label={`Xóa ${line.medication}`}
-                  className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-slate-200 text-slate-400 transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-600"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              </div>
-
-              <div className="mt-2 flex items-center justify-between gap-2">
-                <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-                  Số lượng
-                </span>
-                <div className="flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      updateLine(line.id, {
-                        quantity: Math.max(1, line.quantity - 1),
-                      })
-                    }
-                    disabled={line.quantity <= 1}
-                    aria-label="Giảm số lượng"
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 bg-white text-base font-bold text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-300"
-                  >
-                    −
-                  </button>
-                  <input
-                    type="number"
-                    min={1}
-                    inputMode="numeric"
-                    value={line.quantity}
-                    onChange={(e) =>
-                      updateLine(line.id, {
-                        quantity: Math.max(1, Number(e.target.value) || 1),
-                      })
-                    }
-                    aria-label={`Số lượng ${line.medication}`}
-                    className={`h-9 w-16 rounded-md border px-1 text-center text-xs font-semibold text-slate-800 focus:outline-none ${
-                      isExceedingStock
-                        ? "border-red-500 focus:border-red-500 focus:ring-2 focus:ring-red-300"
-                        : "border-slate-200 focus:border-teal-500"
-                    }`}
-                  />
-                  <button
-                    type="button"
-                    onClick={() =>
-                      updateLine(line.id, { quantity: line.quantity + 1 })
-                    }
-                    aria-label="Tăng số lượng"
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 bg-white text-base font-bold text-slate-700 transition-colors hover:bg-slate-50"
-                  >
-                    +
-                  </button>
-                  <span className="w-10 text-[10px] font-semibold text-slate-500">
-                    {unitLabel}
-                  </span>
-                </div>
-              </div>
-              {isExceedingStock && (
-                <p className="mt-1 text-[10px] font-semibold text-red-600">
-                  Kho chỉ còn {availableStock} {unitLabel}
-                </p>
-              )}
-
-              <div className="mt-2 space-y-1">
-                <span className="block text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-                  Cách dùng &amp; tần suất
-                </span>
-                <input
-                  value={line.routeFrequency}
-                  onChange={(e) =>
-                    updateLine(line.id, { routeFrequency: e.target.value })
-                  }
-                  aria-label={`Cách dùng ${line.medication}`}
-                  className="h-9 w-full rounded-md border border-slate-200 px-2 text-xs text-slate-700 focus:border-teal-500 focus:outline-none"
-                />
-                <div className="flex flex-wrap gap-1">
-                  {QUICK_FREQUENCIES.map((value) => (
-                    <button
-                      key={value}
-                      type="button"
-                      onClick={() =>
-                        updateLine(line.id, { routeFrequency: value })
-                      }
-                      className={`min-h-[32px] rounded-full border px-2 py-0.5 text-[10px] font-semibold transition-colors ${
-                        line.routeFrequency === value
-                          ? "border-teal-600 bg-teal-600 text-white"
-                          : "border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100"
-                      }`}
-                    >
-                      {value}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="mt-2 space-y-1">
-                <span className="block text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-                  Thời gian dùng
-                </span>
-                <div className="flex flex-wrap items-center gap-1">
-                  {QUICK_DURATIONS.map((value) => (
-                    <button
-                      key={value}
-                      type="button"
-                      onClick={() => updateLine(line.id, { duration: value })}
-                      className={`min-h-[32px] rounded-full border px-2 py-0.5 text-[10px] font-semibold transition-colors ${
-                        line.duration === value
-                          ? "border-teal-600 bg-teal-600 text-white"
-                          : "border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100"
-                      }`}
-                    >
-                      {value}
-                    </button>
-                  ))}
-                  <input
-                    value={line.duration}
-                    onChange={(e) =>
-                      updateLine(line.id, { duration: e.target.value })
-                    }
-                    aria-label={`Thời gian dùng ${line.medication}`}
-                    className="h-8 w-20 rounded-md border border-slate-200 px-2 text-[11px] text-slate-700 focus:border-teal-500 focus:outline-none"
-                  />
-                </div>
-              </div>
-            </div>
-          );
-        })}
-        {rxLines.length === 0 && (
-          <p className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-center text-xs text-slate-400">
-            Chưa có thuốc nào được kê.
-          </p>
-        )}
-      </div>
 
       {/* Add medicine - full-width row below the table */}
-      <div className="mt-2 flex w-full flex-col gap-2 sm:flex-row sm:items-center">
+      <div className="mt-2 flex w-full items-center gap-2">
         <select
           value={selectedDrug ? String(selectedDrug.id) : ""}
           onChange={(e) => setSelectedDrugId(Number(e.target.value))}
           disabled={catalog.drugs.length === 0}
           aria-label="Chọn thuốc trong danh mục kho"
-          className="h-10 w-full min-w-0 rounded-lg border border-slate-200 bg-white px-2 text-xs text-slate-700 focus:border-teal-500 focus:outline-none disabled:bg-slate-50 disabled:text-slate-400 sm:h-9 sm:flex-1"
+          className="h-9 min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-2 text-xs text-slate-700 focus:border-teal-500 focus:outline-none disabled:bg-slate-50 disabled:text-slate-400"
         >
           {catalog.drugs.map((drug) => {
             // Flag the two reasons a pick is unsafe before it is made: the
@@ -519,7 +302,7 @@ export default function PrescriptionDraftTable({
           type="button"
           onClick={addMedicine}
           disabled={!selectedDrug}
-          className="inline-flex h-10 w-full shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-teal-600 bg-teal-50 px-3 text-xs font-semibold text-teal-700 transition-colors hover:bg-teal-600 hover:text-white disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400 sm:h-9 sm:w-auto"
+          className="inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-teal-600 bg-teal-50 px-3 text-xs font-semibold text-teal-700 transition-colors hover:bg-teal-600 hover:text-white disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400"
         >
           <Plus className="h-3.5 w-3.5" aria-hidden="true" />
           {catalog.isLoading ? "Đang tải danh mục..." : "Thêm thuốc"}

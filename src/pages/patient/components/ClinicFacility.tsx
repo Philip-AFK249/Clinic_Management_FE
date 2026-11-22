@@ -22,7 +22,7 @@ const FACILITY_DETAILS = [
 export default function ClinicFacility() {
   return (
     <section className="bg-white py-16 lg:py-20">
-      <div className="mx-auto grid max-w-7xl items-center gap-12 px-4 sm:px-6 lg:grid-cols-2 lg:px-8">
+      <div className="mx-auto grid max-w-7xl items-center gap-8 px-4 sm:gap-12 sm:px-6 lg:grid-cols-2 lg:px-8">
         {/* Image */}
         <div
           className={`relative overflow-hidden rounded-2xl border border-slate-200/80 shadow-elevated ${CLINIC_FACILITY_IMAGE.aspect}`}

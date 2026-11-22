@@ -114,7 +114,7 @@ export default function VoiceInputCard({
   }
 
   return (
-    <div className="rounded-xl border border-slate-200/80 bg-white p-5 shadow-card">
+    <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-card sm:p-5">
       <div className="flex items-center gap-2.5">
         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-clinical-50 text-clinical-600">
           <Mic className="h-5 w-5" />
@@ -170,7 +170,7 @@ export default function VoiceInputCard({
             type="button"
             onClick={onRetryTriage}
             disabled={!onRetryTriage || textBusy}
-            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-red-300 bg-white px-3 text-xs font-bold text-red-700 transition-colors hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-red-300 bg-white px-3 text-xs font-bold text-red-700 transition-colors hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
             Thử phân tích lại
@@ -212,7 +212,7 @@ export default function VoiceInputCard({
             <button
               type="button"
               onClick={() => onChange("")}
-              className="ml-auto inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-slate-500 transition-colors hover:text-slate-700"
+              className="ml-auto inline-flex min-h-11 items-center gap-1.5 rounded-lg px-3 text-sm font-medium text-slate-500 transition-colors hover:text-slate-700"
             >
               <RotateCcw className="h-4 w-4" aria-hidden="true" />
               Xóa nội dung

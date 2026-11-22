@@ -3,7 +3,7 @@ import { Calendar, Phone } from "lucide-react";
 
 export default function MobileFloatingBar() {
   return (
-    <div className="fixed inset-x-0 bottom-0 z-50 block border-t border-slate-200 bg-white/95 p-3 backdrop-blur-sm md:hidden">
+    <div className="fixed inset-x-0 bottom-0 z-40 block border-t border-slate-200 bg-white/95 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur-sm md:hidden">
       <div className="flex items-center gap-3">
         <a
           href="tel:1900 123 456"

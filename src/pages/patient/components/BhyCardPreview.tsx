@@ -47,7 +47,7 @@ export default function BhyCardPreview({
   const dob = dateOfBirthLabel?.trim();
 
   return (
-    <div className="overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-800 via-teal-800 to-emerald-950 p-5 text-left font-sans text-white shadow-lg">
+    <div className="overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-800 via-teal-800 to-emerald-950 p-4 text-left font-sans text-white shadow-lg sm:p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-200">
@@ -55,7 +55,7 @@ export default function BhyCardPreview({
           </p>
           <p className="text-xs font-bold text-white">THẺ BẢO HIỂM Y TẾ</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           {verified && (
             <span className="inline-flex items-center gap-1 rounded-full bg-white/15 px-2.5 py-1 text-[11px] font-semibold text-emerald-50">
               <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
@@ -72,7 +72,7 @@ export default function BhyCardPreview({
         <p className="text-[10px] font-medium uppercase text-emerald-200">
           Mã số thẻ:
         </p>
-        <p className="font-mono text-xl font-bold tracking-widest text-amber-300">
+        <p className="break-all font-mono text-base font-bold tracking-wide text-amber-300 sm:text-xl sm:tracking-widest">
           {insuranceCode || "-"}
         </p>
       </div>
@@ -122,12 +122,12 @@ export default function BhyCardPreview({
         )}
 
         {validityDisplay && (
-          <div className="col-span-2 flex justify-between gap-3 border-t border-white/10 pt-1 text-[10px] text-emerald-200 sm:col-span-3">
-            <dt className="flex shrink-0 items-center gap-1 font-medium uppercase">
+          <div className="col-span-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5 border-t border-white/10 pt-1 text-[10px] text-emerald-200 sm:col-span-3">
+            <dt className="flex items-center gap-1 font-medium uppercase">
               <ShieldCheck className="h-3 w-3" aria-hidden="true" />
               Giá trị sử dụng:
             </dt>
-            <dd className="text-right">{validityDisplay}</dd>
+            <dd className="break-words text-left sm:text-right">{validityDisplay}</dd>
           </div>
         )}
       </dl>

@@ -108,13 +108,13 @@ export default function PatientNavbar() {
 
       {/* Main Sticky Navbar */}
       <div className="sticky top-0 z-40 border-b border-slate-200/80 bg-white/95 shadow-[0_1px_2px_rgba(15,23,42,0.04)] backdrop-blur-md">
-        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-3 px-4 sm:px-6 lg:px-8 xl:gap-6">
+        <div className="mx-auto flex h-14 max-w-7xl items-center justify-between gap-2 px-3 sm:h-16 sm:gap-3 sm:px-6 lg:px-8 xl:gap-6">
           {/* Brand */}
-          <Link to="/" className="inline-flex min-h-0 shrink-0 items-center gap-2.5">
+          <Link to="/" className="inline-flex min-h-0 shrink-0 items-center gap-2 sm:gap-2.5">
             <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-sky-600 to-blue-700 text-white shadow-sm">
               <Activity className="h-5 w-5" aria-hidden="true" />
             </span>
-            <span className="whitespace-nowrap text-[17px] font-bold tracking-tight text-slate-900">
+            <span className="whitespace-nowrap text-base font-bold tracking-tight text-slate-900 sm:text-[17px]">
               Smart Clinic
             </span>
           </Link>
@@ -250,7 +250,7 @@ export default function PatientNavbar() {
               onClick={() => setMobileOpen((open) => !open)}
               aria-label={mobileOpen ? "Đóng menu" : "Mở menu"}
               aria-expanded={mobileOpen}
-              className="inline-flex h-9 min-h-0 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 transition-colors hover:bg-slate-50 lg:hidden"
+              className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 transition-colors hover:bg-slate-50 lg:hidden"
             >
               {mobileOpen ? (
                 <X className="h-5 w-5" aria-hidden="true" />
@@ -277,7 +277,7 @@ export default function PatientNavbar() {
                         setActiveHash(link.href);
                         setMobileOpen(false);
                       }}
-                      className={`flex h-10 min-h-0 items-center rounded-lg px-3 text-sm font-medium transition-colors ${
+                      className={`flex min-h-11 items-center rounded-lg px-3 text-sm font-medium transition-colors ${
                         active
                           ? "bg-sky-50 font-semibold text-sky-700"
                           : "text-slate-700 hover:bg-slate-50 hover:text-sky-700"
@@ -301,7 +301,7 @@ export default function PatientNavbar() {
                     <Link
                       to="/patient/dashboard"
                       onClick={() => setMobileOpen(false)}
-                      className="flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 hover:text-sky-700"
+                      className="flex min-h-11 items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 hover:text-sky-700"
                     >
                       <CalendarDays className="h-4 w-4 text-slate-400" aria-hidden="true" />
                       Lịch hẹn &amp; Xếp hàng
@@ -309,7 +309,7 @@ export default function PatientNavbar() {
                     <Link
                       to="/patient/profile"
                       onClick={() => setMobileOpen(false)}
-                      className="flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 hover:text-sky-700"
+                      className="flex min-h-11 items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 hover:text-sky-700"
                     >
                       <FileText className="h-4 w-4 text-slate-400" aria-hidden="true" />
                       Hồ sơ sức khỏe (EHR)
@@ -317,7 +317,7 @@ export default function PatientNavbar() {
                     <Link
                       to="/patient/profile"
                       onClick={() => setMobileOpen(false)}
-                      className="flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 hover:text-sky-700"
+                      className="flex min-h-11 items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 hover:text-sky-700"
                     >
                       <CreditCard className="h-4 w-4 text-slate-400" aria-hidden="true" />
                       Thông tin cá nhân &amp; BHYT
@@ -325,7 +325,7 @@ export default function PatientNavbar() {
                     <button
                       type="button"
                       onClick={handleLogout}
-                      className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium text-red-600 transition-colors hover:bg-red-50"
+                      className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium text-red-600 transition-colors hover:bg-red-50"
                     >
                       <LogOut className="h-4 w-4" aria-hidden="true" />
                       Đăng xuất
@@ -335,7 +335,7 @@ export default function PatientNavbar() {
                   <Link
                     to="/login?role=PATIENT"
                     onClick={() => setMobileOpen(false)}
-                    className="flex h-10 min-h-0 items-center justify-center rounded-lg border border-slate-200 px-4 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+                    className="flex min-h-11 items-center justify-center rounded-lg border border-slate-200 px-4 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
                   >
                     Đăng nhập Cổng Bệnh nhân
                   </Link>
@@ -345,7 +345,7 @@ export default function PatientNavbar() {
               <Link
                 to="/patient/booking"
                 onClick={() => setMobileOpen(false)}
-                className="mt-3 flex h-10 min-h-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-sky-600 px-4 text-sm font-semibold text-white shadow-sm shadow-sky-600/20 transition-colors hover:bg-sky-700"
+                className="mt-3 flex min-h-11 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-sky-600 px-4 text-sm font-semibold text-white shadow-sm shadow-sky-600/20 transition-colors hover:bg-sky-700"
               >
                 <CalendarPlus className="h-4 w-4" aria-hidden="true" />
                 Đặt lịch khám ngay

@@ -124,10 +124,10 @@ function InRoomVitals({ ticket, onSaved }: InRoomVitalsProps) {
   return (
     <form
       onSubmit={(event) => void handleSave(event)}
-      className="grid grid-cols-2 items-end gap-2 sm:flex sm:flex-wrap"
+      className="flex flex-wrap items-end gap-2"
     >
       {fields.map((field) => (
-        <label key={field.key} className="block min-w-0">
+        <label key={field.key} className="block">
           <span className="mb-0.5 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">
             {field.label}
           </span>
@@ -139,7 +139,7 @@ function InRoomVitals({ ticket, onSaved }: InRoomVitalsProps) {
               onChange={(event) => update(field.key, event.target.value)}
               placeholder={field.placeholder}
               aria-label={field.label}
-              className="h-9 w-full rounded-md border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-800 outline-none transition-colors focus:border-teal-500 focus:ring-1 focus:ring-teal-500/30 sm:h-8 sm:w-[76px]"
+              className="h-8 w-[76px] rounded-md border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-800 outline-none transition-colors focus:border-teal-500 focus:ring-1 focus:ring-teal-500/30"
             />
             {field.unit && <span className="text-[10px] text-slate-400">{field.unit}</span>}
           </span>
@@ -148,7 +148,7 @@ function InRoomVitals({ ticket, onSaved }: InRoomVitalsProps) {
       <button
         type="submit"
         disabled={saving}
-        className="col-span-2 inline-flex h-9 items-center justify-center gap-1.5 rounded-md bg-teal-600 px-2.5 text-[11px] font-semibold text-white transition-colors hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-60 sm:col-span-1 sm:h-8"
+        className="inline-flex h-8 items-center gap-1.5 rounded-md bg-teal-600 px-2.5 text-[11px] font-semibold text-white transition-colors hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-60"
       >
         {saving ? (
           <Loader2 size={12} className="animate-spin" aria-hidden="true" />
@@ -196,11 +196,11 @@ export default function ActivePatientBanner({
     : null;
 
   return (
-    <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b border-slate-200/80 bg-white px-3 py-2.5 sm:px-4">
+    <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b border-slate-200/80 bg-white px-3 py-2.5">
       {/* Demographics */}
-      <div className="w-full min-w-0 flex-1 lg:min-w-[280px]">
+      <div className="min-w-[280px] flex-1">
         <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-          <h2 className="max-w-full min-w-0 break-words text-base font-bold text-slate-900">
+          <h2 className="whitespace-nowrap text-base font-bold text-slate-900">
             {patient.name}
           </h2>
           <span className="whitespace-nowrap text-xs font-medium text-slate-500">
@@ -211,7 +211,7 @@ export default function ActivePatientBanner({
             Số phiếu: {patient.ticketNumber}
           </span>
         </div>
-        <p className="mt-0.5 break-words text-xs text-slate-500">
+        <p className="mt-0.5 whitespace-nowrap text-xs text-slate-500">
           ID Bệnh nhân:{" "}
           <span className="font-mono font-medium text-slate-700">
             {patient.patientId}
@@ -222,7 +222,7 @@ export default function ActivePatientBanner({
         {/* BHYT verification */}
         <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
           {patient.isOcrVerified ? (
-            <span className="inline-flex max-w-full items-center gap-1 rounded-md border border-teal-200 bg-teal-50 px-2 py-0.5 text-[11px] font-semibold text-teal-700">
+            <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-md border border-teal-200 bg-teal-50 px-2 py-0.5 text-[11px] font-semibold text-teal-700">
               Thẻ BHYT Hợp lệ (OCR) - {patient.insuranceCode}
             </span>
           ) : (
@@ -258,7 +258,7 @@ export default function ActivePatientBanner({
       </div>
 
       {/* Vitals are measured and edited right here in the exam room. */}
-      <div className="w-full min-w-0 flex-1 border-t border-slate-200/80 pt-2 lg:w-auto lg:border-x lg:border-t-0 lg:px-4 lg:pt-0">
+      <div className="min-w-[430px] flex-1 border-x border-slate-200/80 px-4">
         <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-teal-700">
           Sinh hiệu tại phòng khám (BS &amp; Y tá nhập trực tiếp)
         </p>
@@ -269,11 +269,11 @@ export default function ActivePatientBanner({
             onSaved={onVitalsSaved}
           />
         ) : patient.vitalsRecorded === false ? (
-          <div className="flex h-9 items-center gap-2">
+          <div className="flex h-8 items-center gap-2">
             <span className="text-xs text-slate-400">Chưa có chỉ số sinh hiệu</span>
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-2 sm:flex sm:h-8 sm:items-center sm:gap-5">
+          <div className="flex h-8 items-center gap-5 whitespace-nowrap">
             <Vital label="Huyết áp" value={patient.vitals.bp} unit="mmHg" />
             <Vital label="Mạch" value={String(patient.vitals.hr)} unit="ck/p" />
             <Vital label="Nhiệt độ" value={patient.vitals.temp} unit="°C" />
@@ -283,7 +283,7 @@ export default function ActivePatientBanner({
       </div>
 
       {/* Multi-specialty alert + OCR/EHR history trigger */}
-      <div className="flex w-full shrink-0 flex-col items-stretch gap-2 sm:w-auto sm:items-end sm:gap-1.5">
+      <div className="flex shrink-0 flex-col items-end gap-1.5">
         {multiSpecialty && (
           // Hover is bound to the wrapper so the pointer can travel into the
           // popover without it closing underneath the doctor.
@@ -297,7 +297,7 @@ export default function ActivePatientBanner({
               onClick={() => setShowMultiSpecialtyNote((open) => !open)}
               aria-expanded={showMultiSpecialtyNote}
               aria-describedby="multi-specialty-note"
-              className="inline-flex w-full items-center justify-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 px-3 py-1.5 text-center text-[11px] font-bold leading-snug text-amber-900 shadow-sm transition-colors hover:border-amber-400 hover:bg-amber-100 sm:w-auto sm:justify-start sm:text-right"
+              className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-amber-300 bg-amber-50 px-3 py-1.5 text-right text-[11px] font-bold leading-tight text-amber-900 shadow-sm transition-colors hover:border-amber-400 hover:bg-amber-100"
             >
               🩺 Đa khối: Bệnh nhân có triệu chứng kèm tại{" "}
               {multiSpecialty.secondaryDepartmentName ?? "khối khác"}
@@ -307,7 +307,7 @@ export default function ActivePatientBanner({
               <div
                 id="multi-specialty-note"
                 role="tooltip"
-                className="absolute right-0 top-full z-30 mt-1.5 w-[min(20rem,calc(100vw_-_2rem))] rounded-xl border border-amber-200 bg-white p-3 text-left shadow-elevated"
+                className="absolute right-0 top-full z-30 mt-1.5 w-80 rounded-xl border border-amber-200 bg-white p-3 text-left shadow-elevated"
               >
                 <p className="text-[11px] font-bold uppercase tracking-wide text-amber-700">
                   Tư vấn đa khối
@@ -330,7 +330,7 @@ export default function ActivePatientBanner({
         <button
           type="button"
           onClick={onOpenHistory}
-          className="inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-left text-xs font-semibold leading-snug text-slate-700 shadow-sm transition-colors hover:border-teal-300 hover:text-teal-700 sm:w-auto sm:whitespace-nowrap"
+          className="inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-700 shadow-sm transition-colors hover:border-teal-300 hover:text-teal-700"
         >
           <FileText className="h-4 w-4 text-teal-600" aria-hidden="true" />
           Xem Hồ sơ Bệnh án &amp; Đơn thuốc OCR ({patient.pastEncounters.length} lần khám trước)

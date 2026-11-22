@@ -33,7 +33,7 @@ const ERROR_TEXT =
   "Không nhận diện được thẻ BHYT. Vui lòng chụp rõ nét hơn hoặc nhập tay!";
 
 const REVIEW_INPUT_CLASS =
-  "h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 transition-colors focus:border-clinical-500 focus:outline-none focus:ring-2 focus:ring-clinical-100";
+  "min-h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 transition-colors focus:border-clinical-500 focus:outline-none focus:ring-2 focus:ring-clinical-100";
 
 const GENDER_REVIEW_OPTIONS = ["Nam", "Nữ", "Khác"];
 

@@ -90,8 +90,8 @@ export default function BookingTicketModal({
       aria-label="Xác nhận lịch khám"
       className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/50 backdrop-blur-sm"
     >
-      <div className="grid min-h-full place-items-center p-4">
-        <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl">
+      <div className="grid min-h-full place-items-center p-3 sm:p-4">
+        <div className="mx-3 max-h-[90vh] w-full overflow-y-auto rounded-2xl bg-white shadow-2xl sm:mx-auto sm:max-w-lg">
           {/* Header */}
           <div className="flex items-center justify-between border-b border-slate-200/80 px-6 py-4">
             <div>
@@ -111,7 +111,7 @@ export default function BookingTicketModal({
               type="button"
               onClick={onClose}
               aria-label="Đóng xác nhận"
-              className="flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700"
             >
               <X className="h-5 w-5" />
             </button>
@@ -303,11 +303,11 @@ function PassField({
   wide?: boolean;
 }) {
   return (
-    <div className={wide ? "col-span-2" : ""}>
+    <div className={`min-w-0 ${wide ? "col-span-2" : ""}`}>
       <p className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
         {label}
       </p>
-      <p className="text-sm font-semibold text-slate-900">{value}</p>
+      <p className="break-words text-sm font-semibold text-slate-900">{value}</p>
     </div>
   );
 }

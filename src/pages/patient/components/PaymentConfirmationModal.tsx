@@ -36,12 +36,12 @@ export default function PaymentConfirmationModal({
       role="dialog"
       aria-modal="true"
       aria-labelledby="payment-modal-title"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-3 backdrop-blur-sm sm:p-4"
       onClick={(event) => {
         if (event.target === event.currentTarget && !isProcessing) onClose();
       }}
     >
-      <div className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-elevated">
+      <div className="mx-3 max-h-[90vh] w-full overflow-y-auto rounded-2xl bg-white shadow-elevated sm:mx-auto sm:max-w-md">
         <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-5 py-4">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-clinical-600">
@@ -56,7 +56,7 @@ export default function PaymentConfirmationModal({
             onClick={onClose}
             disabled={isProcessing}
             aria-label="Đóng"
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 disabled:opacity-40"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 disabled:opacity-40 sm:h-8 sm:w-8"
           >
             <X className="h-4 w-4" aria-hidden="true" />
           </button>
@@ -115,12 +115,12 @@ export default function PaymentConfirmationModal({
           ) : null}
         </div>
 
-        <div className="flex justify-end gap-2 border-t border-slate-100 bg-slate-50 px-5 py-4">
+        <div className="flex flex-col-reverse gap-2 border-t border-slate-100 bg-slate-50 px-4 py-4 sm:flex-row sm:justify-end sm:px-5">
           <button
             type="button"
             onClick={onClose}
             disabled={isProcessing}
-            className="h-10 rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+            className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
           >
             Để sau
           </button>
@@ -128,7 +128,7 @@ export default function PaymentConfirmationModal({
             type="button"
             onClick={onConfirm}
             disabled={isProcessing}
-            className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-clinical-600 px-4 text-sm font-semibold text-white shadow-card transition-colors hover:bg-clinical-700 disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-clinical-600 px-4 text-sm font-semibold text-white shadow-card transition-colors hover:bg-clinical-700 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
           >
             {isProcessing ? (
               <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />

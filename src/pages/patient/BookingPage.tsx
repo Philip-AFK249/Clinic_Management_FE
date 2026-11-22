@@ -1690,7 +1690,7 @@ export default function BookingPage() {
                   <div className="mt-3">
                     <Link
                       to="/patient/dashboard"
-                      className="inline-flex h-10 items-center justify-center rounded-lg bg-amber-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-amber-700"
+                      className="inline-flex min-h-11 items-center justify-center rounded-lg bg-amber-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-amber-700"
                     >
                       Xem vé khám hiện tại
                     </Link>
@@ -1721,14 +1721,14 @@ export default function BookingPage() {
                   <div className="mt-3 flex flex-wrap gap-2">
                     <Link
                       to="/patient/dashboard"
-                      className="inline-flex h-10 items-center justify-center rounded-lg bg-amber-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-amber-700"
+                      className="inline-flex min-h-11 items-center justify-center rounded-lg bg-amber-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-amber-700"
                     >
                       Mở Bảng điều khiển bệnh nhân
                     </Link>
                     <button
                       type="button"
                       onClick={() => setDuplicateDate(null)}
-                      className="inline-flex h-10 items-center justify-center rounded-lg border border-amber-300 bg-white px-4 text-sm font-semibold text-amber-800 transition-colors hover:bg-amber-100"
+                      className="inline-flex min-h-11 items-center justify-center rounded-lg border border-amber-300 bg-white px-4 text-sm font-semibold text-amber-800 transition-colors hover:bg-amber-100"
                     >
                       Đóng cảnh báo
                     </button>

@@ -22,16 +22,16 @@ export default function DoctorHeader({
   const { logout } = useAuth();
 
   return (
-    <header className="flex min-h-[64px] shrink-0 flex-wrap items-center justify-between gap-2 border-b border-slate-200/80 bg-white px-3 py-2.5 sm:px-5">
+    <header className="flex h-16 shrink-0 items-center justify-between gap-3 border-b border-slate-200/80 bg-white px-3">
       {/* Brand */}
-      <div className="flex min-w-0 flex-1 items-center gap-2.5 lg:flex-none">
+      <div className="flex min-w-0 items-center gap-2.5">
         <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-teal-600 text-white">
           <Stethoscope className="h-5 w-5" />
         </span>
         <div className="min-w-0">
           <p className="truncate text-sm font-bold leading-tight text-slate-900">
             Smart Clinic{" "}
-            <span className="ml-1 whitespace-nowrap rounded-md bg-teal-50 px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-teal-700">
+            <span className="ml-1 rounded-md bg-teal-50 px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-teal-700">
               {isNurseAssistant ? "Phòng khám (BS & Y tá)" : "Bác sĩ (EHR Portal)"}
             </span>
           </p>
@@ -73,7 +73,7 @@ export default function DoctorHeader({
       </div>
 
       {/* Station status + profile + logout */}
-      <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+      <div className="flex shrink-0 items-center gap-2">
         <PortalSwitcher />
         <span className="hidden items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 sm:inline-flex">
           <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
@@ -94,7 +94,7 @@ export default function DoctorHeader({
           >
             {identity.initials}
           </span>
-          <div className="hidden min-w-0 max-w-40 sm:block">
+          <div className="min-w-0 max-w-40">
             <p className="truncate text-xs font-semibold text-slate-900">
               {identity.fullName}
             </p>

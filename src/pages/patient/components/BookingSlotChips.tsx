@@ -35,7 +35,7 @@ export function SlotChip({
       aria-pressed={isSelected}
       aria-disabled={disabled}
       title={isElapsed ? "Khung giờ này đã qua" : undefined}
-      className={`inline-flex h-9 items-center rounded-lg border px-3 text-sm font-semibold transition-colors ${
+      className={`inline-flex min-h-11 w-full items-center justify-center rounded-lg border px-2 text-sm font-semibold transition-colors ${
         isSelected
           ? "border-clinical-600 bg-clinical-600 text-white"
           : disabled
@@ -45,7 +45,7 @@ export function SlotChip({
               : "border-slate-200 bg-white text-slate-700 hover:border-clinical-300 hover:bg-clinical-50/40"
       }`}
     >
-      <span className="flex items-center gap-1.5">
+      <span className="flex flex-col items-center gap-0.5 sm:flex-row sm:gap-1.5">
         <span>{slot}</span>
         {isElapsed && (
           <span className="text-[10px] font-semibold uppercase tracking-wide opacity-80">
@@ -103,7 +103,7 @@ export default function BookingSlotChips({
                 </span>
               )}
             </p>
-            <div className="flex flex-wrap gap-2">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
               {group.slots.map((slot) => (
                 <SlotChip
                   key={slot}

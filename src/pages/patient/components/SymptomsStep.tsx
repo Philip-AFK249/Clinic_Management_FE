@@ -331,7 +331,7 @@ export default function SymptomsStep({
             <button
               type="button"
               onClick={onRequestRescan}
-              className="inline-flex h-10 items-center gap-2 rounded-lg border border-emerald-300 bg-white px-4 text-sm font-semibold text-emerald-700 transition-colors hover:bg-emerald-100"
+              className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-emerald-300 bg-white px-4 text-sm font-semibold text-emerald-700 transition-colors hover:bg-emerald-100"
             >
               <RefreshCw className="h-4 w-4" aria-hidden="true" />
               Quét lại thẻ BHYT

@@ -164,7 +164,7 @@ function StaffCard({ staff }: { staff: StaffMember }) {
         {isDoctor ? (
           <Link
             to={`/patient/booking?doctorId=${staff.id}`}
-            className="mt-4 flex items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-cta px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-cta-hover"
+            className="mt-4 flex min-h-11 items-center justify-center gap-2 rounded-xl bg-cta px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-cta-hover"
           >
             <Calendar className="h-4 w-4" aria-hidden="true" />
             Đặt lịch khám
@@ -172,7 +172,7 @@ function StaffCard({ staff }: { staff: StaffMember }) {
         ) : (
           <a
             href={`tel:${staff.phone}`}
-            className="mt-4 flex items-center justify-center gap-1.5 whitespace-nowrap rounded-xl bg-slate-100 px-3 py-2 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-200"
+            className="mt-4 flex min-h-11 items-center justify-center gap-1.5 rounded-xl bg-slate-100 px-3 py-2 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-200"
           >
             <Phone className="h-3.5 w-3.5 text-clinical-600" aria-hidden="true" />
             Liên hệ trực tiếp
